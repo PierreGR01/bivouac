@@ -1,0 +1,245 @@
+/**
+ * Design Tokens - Application Bivouac
+ * Tokens spécifiques à la thématique outdoor/bivouac
+ */
+
+:root {
+  /* === COULEURS SÉMANTIQUES PAR SAISON === */
+  
+  /* Printemps / Toute saison */
+  --color-season-spring: #10b981;
+  --color-season-spring-hover: #059669;
+  --color-season-spring-light: #d1fae5;
+  --color-season-spring-dark: #047857;
+  
+  /* Été */
+  --color-season-summer: #ea580c;
+  --color-season-summer-hover: #c2410c;
+  --color-season-summer-light: #fed7aa;
+  --color-season-summer-dark: #9a3412;
+  
+  /* Hiver */
+  --color-season-winter: #64748b;
+  --color-season-winter-hover: #475569;
+  --color-season-winter-light: #e2e8f0;
+  --color-season-winter-dark: #334155;
+  
+  /* === COULEURS FONCTIONNELLES === */
+  
+  /* Navigation & Itinéraires */
+  --color-route: #2563eb;
+  --color-route-hover: #1d4ed8;
+  --color-route-light: #dbeafe;
+  --color-route-dark: #1e40af;
+  
+  /* Point d'eau */
+  --color-water: #0ea5e9;
+  --color-water-hover: #0284c7;
+  --color-water-light: #e0f2fe;
+  
+  /* Réglementation */
+  --color-regulation-ok: #10b981;
+  --color-regulation-warning: #f59e0b;
+  --color-regulation-forbidden: #ef4444;
+  
+  /* === ESPACEMENTS SPÉCIFIQUES === */
+  
+  /* Panneaux */
+  --spacing-panel-gap: 2px;        /* Espace entre SearchBar et panels */
+  --spacing-panel-content: 1.5rem; /* Padding interne des panels */
+  --spacing-section: 1rem;         /* Espacement entre sections */
+  
+  /* Grilles */
+  --spacing-grid-sm: 0.75rem;      /* 12px - Cards proches */
+  --spacing-grid-md: 1rem;         /* 16px - Cards standard */
+  --spacing-grid-lg: 1.5rem;       /* 24px - Sections */
+  
+  /* === DIMENSIONS === */
+  
+  /* Panels */
+  --panel-width-desktop: 480px;
+  --panel-top-desktop: 158px;      /* SearchBar height + gap */
+  --panel-radius-top: 0.75rem;     /* 12px */
+  --panel-radius-bottom: 0.75rem;  /* 12px */
+  
+  /* SearchBar */
+  --searchbar-width-max: 480px;
+  --searchbar-gap: 0.5rem;         /* Gap entre boutons */
+  
+  /* Marqueurs */
+  --marker-size-sm: 24px;
+  --marker-size-md: 32px;
+  --marker-size-lg: 40px;
+  --marker-border-width: 3px;
+  --marker-border-color: #ffffff;
+  
+  /* === OMBRES === */
+  
+  --shadow-panel: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  --shadow-card: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  --shadow-marker: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-button: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+  
+  /* === BACKDROP === */
+  
+  --backdrop-blur: 12px;
+  --backdrop-opacity: 0.7;
+  --backdrop-border-opacity: 0.3;
+  
+  /* === Z-INDEX SCALE === */
+  
+  --z-map: 0;
+  --z-panels: 500;
+  --z-searchbar: 600;
+  --z-mobile-panel: 1000;
+  --z-modal: 1100;
+  
+  /* === ANIMATIONS === */
+  
+  --transition-fast: 150ms;
+  --transition-normal: 200ms;
+  --transition-slow: 300ms;
+  
+  --animation-slide-up: slideUp 0.3s ease-out;
+  --animation-fade-in: fadeIn 0.3s ease-out;
+  --animation-pulse: pulse 2s ease-in-out infinite;
+  
+  /* === BREAKPOINTS === */
+  
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+}
+
+/* === ANIMATIONS KEYFRAMES === */
+
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.8;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+/* === CLASSES UTILITAIRES === */
+
+.panel-desktop {
+  position: fixed;
+  top: var(--panel-top-desktop);
+  left: 1.5rem;
+  width: var(--panel-width-desktop);
+  max-height: calc(100vh - var(--panel-top-desktop) - 1.5rem);
+  background: rgba(255, 255, 255, var(--backdrop-opacity));
+  backdrop-filter: blur(var(--backdrop-blur));
+  border: 1px solid rgba(255, 255, 255, var(--backdrop-border-opacity));
+  box-shadow: var(--shadow-panel);
+  border-radius: 0 0 var(--panel-radius-bottom) var(--panel-radius-bottom);
+  z-index: var(--z-panels);
+  animation: var(--animation-fade-in);
+}
+
+.panel-mobile {
+  position: fixed;
+  inset: auto 0 0 0;
+  max-height: calc(100vh - 120px);
+  background: white;
+  border-radius: var(--panel-radius-top) var(--panel-radius-top) 0 0;
+  box-shadow: var(--shadow-panel);
+  z-index: var(--z-mobile-panel);
+  animation: var(--animation-slide-up);
+}
+
+.searchbar-container {
+  position: fixed;
+  top: 1.5rem;
+  left: 1.5rem;
+  width: var(--searchbar-width-max);
+  background: rgba(255, 255, 255, var(--backdrop-opacity));
+  backdrop-filter: blur(var(--backdrop-blur));
+  border: 1px solid rgba(255, 255, 255, var(--backdrop-border-opacity));
+  box-shadow: var(--shadow-panel);
+  padding: 1rem;
+  border-radius: var(--panel-radius-top);
+  z-index: var(--z-searchbar);
+}
+
+.marker-spring {
+  background-color: var(--color-season-spring);
+  border: var(--marker-border-width) solid var(--marker-border-color);
+  border-radius: 50%;
+  width: var(--marker-size-sm);
+  height: var(--marker-size-sm);
+  box-shadow: var(--shadow-marker);
+}
+
+.marker-summer {
+  background-color: var(--color-season-summer);
+  border: var(--marker-border-width) solid var(--marker-border-color);
+  border-radius: 50%;
+  width: var(--marker-size-sm);
+  height: var(--marker-size-sm);
+  box-shadow: var(--shadow-marker);
+}
+
+.marker-winter {
+  background-color: var(--color-season-winter);
+  border: var(--marker-border-width) solid var(--marker-border-color);
+  border-radius: 50%;
+  width: var(--marker-size-sm);
+  height: var(--marker-size-sm);
+  box-shadow: var(--shadow-marker);
+}
+
+.marker-temporary {
+  background-color: var(--color-regulation-warning);
+  border: 4px solid var(--marker-border-color);
+  border-radius: 50%;
+  width: var(--marker-size-md);
+  height: var(--marker-size-md);
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.5);
+  animation: var(--animation-pulse);
+}
+
+/* === RESPONSIVE UTILITIES === */
+
+@media (max-width: 767px) {
+  .searchbar-container {
+    left: 1.5rem;
+    right: 1.5rem;
+    width: auto;
+  }
+}

@@ -1,0 +1,17 @@
+export interface PoiLocation {
+  id: string;
+  position: {
+    lat: number;
+    lng: number;
+  };
+  title: string;
+  description: string;
+  photos: string[];
+  season: 'hiver' | 'été' | 'toute-annee';
+  waterProximity: 'proche' | 'éloigné' | null; // proche: <100m, éloigné: 100-200m, null: >200m
+  regulations: string;
+  altitude?: number; // Altitude en mètres (récupérée automatiquement)
+  capacity?: '1' | '2-3' | '4-5' | '5+'; // Capacité d'accueil en nombre de tentes
+  difficulty?: number; // Difficulté d'accès (0-5)
+  ratings?: number[]; // Notes des utilisateurs (0-5)
+}
