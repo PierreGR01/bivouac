@@ -171,12 +171,22 @@
     font-size: var(--text-base);
     font-weight: var(--font-weight-medium);
     line-height: 1.5;
+    touch-action: manipulation;
   }
 
   input {
     font-size: var(--text-base);
     font-weight: var(--font-weight-normal);
     line-height: 1.5;
+    touch-action: manipulation;
+  }
+
+  a {
+    touch-action: manipulation;
+  }
+
+  label {
+    touch-action: manipulation;
   }
 
   /* Personnalisation des contrôles Leaflet */

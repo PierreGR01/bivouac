@@ -1,6 +1,13 @@
 /* Leaflet CSS */
 @import 'leaflet/dist/leaflet.css';
 
+/* Prevent double-tap zoom on map markers and interactive map elements */
+.leaflet-marker-icon,
+.leaflet-marker-shadow,
+.leaflet-interactive {
+  touch-action: manipulation;
+}
+
 /* Custom marker styles */
 .custom-marker {
   background-color: #10b981;
