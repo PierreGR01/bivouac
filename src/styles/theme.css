@@ -174,11 +174,22 @@
     touch-action: manipulation;
   }
 
-  input {
+  input,
+  select,
+  textarea {
     font-size: var(--text-base);
     font-weight: var(--font-weight-normal);
     line-height: 1.5;
     touch-action: manipulation;
+  }
+
+  /* Prevent iOS Safari from zooming in on input focus (triggers when font-size < 16px) */
+  @media (max-width: 767px) {
+    input,
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
   }
 
   a {
