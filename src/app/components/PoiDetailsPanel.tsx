@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { PoiLocation } from '../types';
-import { X, Droplets, Snowflake, Sun, AlertCircle, MapPin, Shield, AlertTriangle, Mountain, Tent, Star } from 'lucide-react';
+import { X, Droplets, Snowflake, Sun, AlertCircle, MapPin, Shield, AlertTriangle, Mountain, Tent, Star, Trash2, Loader2 } from 'lucide-react';
 import { ProtectedArea, findAreasContainingPoint, getProtectedAreaInfo } from '../services/protected-areas';
+import { useAuth } from '../contexts/AuthContext';
 import * as api from '/utils/supabase/api';
 
 interface PoiDetailsPanelProps {
@@ -171,17 +172,17 @@ export function PoiDetailsPanel({ location, onClose, protectedAreas = [] }: PoiD
 }
 
 // Composant pour le contenu partagé
-function PanelContent({ 
-  location, 
-  currentPhotoIndex, 
-  setCurrentPhotoIndex, 
+function PanelContent({
+  location,
+  currentPhotoIndex,
+  setCurrentPhotoIndex,
   getSeasonIcon,
   getSeasonStyle,
   onClose,
   areasContainingPoi = [],
   isMobile = false,
   onPhotoClick
-}: { 
+}: {
   location: PoiLocation;
   currentPhotoIndex: number;
   setCurrentPhotoIndex: (index: number) => void;
@@ -192,9 +193,12 @@ function PanelContent({
   isMobile?: boolean;
   onPhotoClick?: () => void;
 }) {
+  const { isAdmin } = useAuth();
   const [newRating, setNewRating] = useState<number>(0);
   const [hoverRating, setHoverRating] = useState<number>(0);
   const [isSubmittingRating, setIsSubmittingRating] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [localRatings, setLocalRatings] = useState<number[]>(location.ratings || []);
 
   // Calculer la moyenne des notes
@@ -206,7 +210,7 @@ function PanelContent({
   // Fonction pour soumettre une note
   const handleSubmitRating = async () => {
     if (newRating === 0) return;
-    
+
     setIsSubmittingRating(true);
     try {
       const updatedPoi = await api.addRating(location.id, newRating);
@@ -228,6 +232,22 @@ function PanelContent({
       alert(`Note de ${newRating}/5 ajoutée localement. Le serveur n'est peut-être pas disponible.`);
     } finally {
       setIsSubmittingRating(false);
+    }
+  };
+
+  // Fonction pour supprimer un POI
+  const handleDeletePoi = async () => {
+    setIsDeleting(true);
+    try {
+      await api.deletePoi(location.id);
+      alert('Spot supprimé avec succès');
+      onClose?.();
+    } catch (error) {
+      console.error('Erreur lors de la suppression:', error);
+      alert('Erreur lors de la suppression du spot');
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
     }
   };
 
@@ -579,6 +599,53 @@ function PanelContent({
           )}
         </div>
       </div>
+
+      {/* Bouton de suppression pour les admins */}
+      {isAdmin && (
+        <div className="mt-4 pt-4 border-t border-gray-200">
+          {showDeleteConfirm ? (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+              <p className="text-sm text-red-800 font-medium mb-3">
+                Êtes-vous sûr de vouloir supprimer ce spot ? Cette action est irréversible.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={handleDeletePoi}
+                  disabled={isDeleting}
+                  className="flex-1 bg-red-600 text-white px-3 py-2 rounded-lg hover:bg-red-700 disabled:bg-red-400 transition-colors flex items-center justify-center gap-2 font-medium"
+                >
+                  {isDeleting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Suppression...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4" />
+                      Confirmer la suppression
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  disabled={isDeleting}
+                  className="flex-1 bg-gray-200 text-gray-800 px-3 py-2 rounded-lg hover:bg-gray-300 disabled:opacity-50 transition-colors font-medium"
+                >
+                  Annuler
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="w-full bg-red-50 text-red-700 px-4 py-2 rounded-lg hover:bg-red-100 transition-colors flex items-center justify-center gap-2 font-medium border border-red-200"
+            >
+              <Trash2 className="w-4 h-4" />
+              Supprimer ce spot
+            </button>
+          )}
+        </div>
+      )}
     </>
   );
 }

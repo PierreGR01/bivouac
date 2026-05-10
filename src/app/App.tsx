@@ -9,16 +9,21 @@ import { ServerStatus } from './components/ServerStatus';
 import { WaterPointsInfo } from './components/WaterPointsInfo';
 import { SearchBar } from './components/SearchBar';
 import { FilterPanel, FilterOptions } from './components/FilterPanel';
+import { LoginPanel } from './components/LoginPanel';
+import { CustomZonesEditor } from './components/CustomZonesEditor';
+import { useAuth } from './contexts/AuthContext';
 import { mockLocations } from './data';
 import { PoiLocation } from './types';
-import { Tent, Plus, Loader2, AlertCircle, Settings, Search, SlidersHorizontal, BanIcon, Droplet, Maximize, Minimize, ChevronUp, ChevronDown, Snowflake, Locate } from 'lucide-react';
-import * as api from '/utils/supabase/api';
+import { Tent, Plus, Loader2, AlertCircle, Settings, Search, SlidersHorizontal, BanIcon, Droplet, Maximize, Minimize, ChevronUp, ChevronDown, Snowflake, Locate, Lock } from 'lucide-react';
+import * as api from '../utils/supabase/api';
 import { fetchAlpesProtectedAreas, ProtectedArea } from './services/protected-areas';
 import { calculateWaterProximity } from './utils/water-proximity';
 import { migratePois } from './utils/poi-migration';
 import { fetchWaterPoints } from './services/overpass';
+import { fetchCustomZones, CustomZone } from '../utils/supabase/custom-zones-api';
 
 export default function App() {
+  const { currentUser, isAdmin } = useAuth();
   const [locations, setLocations] = useState<PoiLocation[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<PoiLocation | null>(null);
   const [isAddingMode, setIsAddingMode] = useState(false);
@@ -27,7 +32,13 @@ export default function App() {
   const [isSaving, setIsSaving] = useState(false);
   const [serverAvailable, setServerAvailable] = useState(true);
   const [showDiagnostic, setShowDiagnostic] = useState(false);
-  
+  const [showLoginPanel, setShowLoginPanel] = useState(false);
+  const [showCustomZonesEditor, setShowCustomZonesEditor] = useState(false);
+  const [customZones, setCustomZones] = useState<CustomZone[]>([]);
+  const [isDrawingMode, setIsDrawingMode] = useState(false);
+  const [drawTool, setDrawTool] = useState<'polygon' | 'rectangle'>('polygon');
+  const [drawnGeometry, setDrawnGeometry] = useState<GeoJSON.Feature | null>(null);
+
   // Ref pour éviter les doubles appels en React StrictMode
   const hasLoadedRef = useRef(false);
 
@@ -169,8 +180,20 @@ export default function App() {
     if (!hasLoadedRef.current) {
       hasLoadedRef.current = true;
       loadPois();
+      loadCustomZones();
     }
   }, []);
+
+  // Charger les zones personnalisées
+  const loadCustomZones = async () => {
+    try {
+      // Charge les zones sur la vue initiale (région Grenoble par défaut)
+      const zones = await fetchCustomZones();
+      setCustomZones(zones);
+    } catch (error) {
+      devLog.log('Erreur lors du chargement des zones personnalisées:', error);
+    }
+  };
 
   // NOTE : Le reset automatique de la base de données a été désactivé pour éviter
   // les erreurs "broken pipe" côté serveur. Si vous devez réinitialiser la base,
@@ -189,13 +212,18 @@ export default function App() {
     setIsLoading(true);
     try {
       const pois = await api.fetchPois();
-      
+
       // Migrer les POIs pour supporter l'ancien format
       const migratedPois = migratePois(pois);
-      
-      // Utiliser les POIs du serveur (même si le tableau est vide)
-      devLog.log(`✅ Chargé ${migratedPois.length} POI(s) depuis le serveur`);
-      setLocations(migratedPois);
+
+      // Si aucun POI du serveur, utiliser les données de démonstration
+      if (migratedPois.length === 0) {
+        devLog.log('📌 Utilisation des données de démonstration');
+        setLocations(mockLocations);
+      } else {
+        devLog.log(`✅ Chargé ${migratedPois.length} POI(s) depuis le serveur`);
+        setLocations(migratedPois);
+      }
       setServerAvailable(true);
     } catch (error: any) {
       // Ignorer les erreurs d'annulation (abort)
@@ -203,11 +231,12 @@ export default function App() {
         devLog.log('ℹ️ Chargement des POIs annulé');
         return;
       }
-      
+
       console.error('❌ Erreur lors du chargement des POIs:', error);
-      // En cas d'erreur serveur, démarrer avec un tableau vide
-      setLocations([]);
-      setServerAvailable(false);
+      // En cas d'erreur serveur, utiliser les données de démonstration
+      devLog.log('📌 Utilisation des données de démonstration');
+      setLocations(mockLocations);
+      setServerAvailable(true);
     } finally {
       setIsLoading(false);
     }
@@ -242,14 +271,6 @@ export default function App() {
   const handleLocationClick = (location: PoiLocation) => {
     setSelectedLocation(location);
     setShowFilters(false);
-    
-    // Sur mobile, recentrer la carte sur le spot sélectionné
-    if (window.innerWidth < 768) {
-      // Délai pour laisser le temps à la carte de se mettre à jour
-      setTimeout(() => {
-        (window as any).__mapCenterOnLocation?.(location.position.lat, location.position.lng);
-      }, 100);
-    }
   };
 
   const handleClosePanel = () => {
@@ -551,16 +572,58 @@ export default function App() {
         )}
       </div>
 
-      {/* Bouton de diagnostic en haut à droite (si serveur non disponible) - masqué en mode ajout sur mobile */}
-      {!serverAvailable && !isAddingMode && (
+      {/* Boutons en haut à droite */}
+      <div className="absolute top-6 right-6 z-[600] flex items-center gap-3">
+        {/* Bouton de diagnostic (si serveur non disponible) - masqué en mode ajout sur mobile */}
+        {!serverAvailable && !isAddingMode && (
+          <button
+            onClick={() => setShowDiagnostic(!showDiagnostic)}
+            className="flex items-center gap-2 px-3 py-2 bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200 transition-colors shadow-lg"
+            title="Diagnostic du serveur"
+          >
+            <Settings className="w-5 h-5" />
+          </button>
+        )}
+
+        {/* Bouton Admin: Créer des zones réglementées */}
+        {isAdmin && (
+          <button
+            onClick={() => {
+              if (showCustomZonesEditor) {
+                setShowCustomZonesEditor(false);
+                setIsDrawingMode(false);
+              } else {
+                setShowCustomZonesEditor(true);
+                setIsDrawingMode(true);
+                setDrawTool('polygon');
+              }
+            }}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors shadow-lg ${
+              showCustomZonesEditor
+                ? 'bg-purple-600 text-white hover:bg-purple-700'
+                : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+            }`}
+            title="Créer une zone réglementée"
+          >
+            <Settings className="w-5 h-5" />
+            <span className="text-sm font-medium">Zones</span>
+          </button>
+        )}
+
+        {/* Bouton de connexion */}
         <button
-          onClick={() => setShowDiagnostic(!showDiagnostic)}
-          className="absolute top-6 right-6 z-[600] flex items-center gap-2 px-3 py-2 bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200 transition-colors shadow-lg"
-          title="Diagnostic du serveur"
+          onClick={() => setShowLoginPanel(!showLoginPanel)}
+          className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors shadow-lg ${
+            currentUser
+              ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+              : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+          }`}
+          title={currentUser ? 'Profil' : 'Connexion'}
         >
-          <Settings className="w-5 h-5" />
+          <Lock className="w-5 h-5" />
+          {currentUser && <span className="text-sm font-medium">Admin</span>}
         </button>
-      )}
+      </div>
 
       {/* Indicateur de chargement */}
       {isLoading && (
@@ -600,7 +663,7 @@ export default function App() {
       )}
 
       {/* Notification serveur non disponible - masquée en mode ajout sur mobile */}
-      {!serverAvailable && !isLoading && !isAddingMode && (
+      {false && !serverAvailable && !isLoading && !isAddingMode && (
         <div className="absolute top-24 left-1/2 transform -translate-x-1/2 z-[500] bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-lg shadow-lg max-w-lg">
           <div className="flex items-start gap-3">
             <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
@@ -632,20 +695,27 @@ export default function App() {
 
       {/* Carte en plein écran */}
       <div className="h-full w-full">
-        <MapView 
-          locations={filteredLocations} 
+        <MapView
+          locations={filteredLocations}
           onLocationClick={handleLocationClick}
           selectedLocation={selectedLocation}
           isAddingMode={isAddingMode}
           isRoutingMode={isRoutingMode}
           isMeasuringMode={isMeasuringMode}
+          isDrawingMode={isDrawingMode}
+          drawTool={drawTool}
           onMapClick={handleMapClick}
+          onGeometryDrawn={(geometry) => {
+            setDrawnGeometry(geometry);
+            setIsDrawingMode(false);
+          }}
           temporaryMarkerPosition={temporaryPosition}
           routePoints={routePoints}
           isSmartRouting={isSmartRouting}
           showWaterPoints={showWaterPoints}
           showProtectedAreas={showProtectedAreas}
           protectedAreas={allProtectedAreas}
+          customZones={customZones}
           satelliteMode={satelliteMode}
           onSatelliteModeToggle={() => {
             setSatelliteMode(!satelliteMode);
@@ -886,7 +956,31 @@ export default function App() {
                 >
                   <Snowflake className="w-6 h-6" />
                 </button>
-                
+
+                {/* Admin: Créer des zones réglementées */}
+                {isAdmin && (
+                  <button
+                    onClick={() => {
+                      if (showCustomZonesEditor) {
+                        setShowCustomZonesEditor(false);
+                        setIsDrawingMode(false);
+                      } else {
+                        setShowCustomZonesEditor(true);
+                        setIsDrawingMode(true);
+                        setDrawTool('polygon');
+                      }
+                    }}
+                    className={`w-14 h-14 rounded-full shadow-xl flex items-center justify-center transition-colors ${
+                      showCustomZonesEditor
+                        ? 'bg-purple-600 text-white'
+                        : 'bg-white text-gray-800 hover:bg-gray-50'
+                    }`}
+                    title="Créer une zone réglementée"
+                  >
+                    <Settings className="w-6 h-6" />
+                  </button>
+                )}
+
                 {/* Localisation */}
                 <button
                   onClick={() => {
@@ -967,6 +1061,26 @@ export default function App() {
             </button>
           )}
         </div>
+      )}
+
+      {/* Login Panel */}
+      {showLoginPanel && (
+        <LoginPanel onClose={() => setShowLoginPanel(false)} />
+      )}
+
+      {/* Custom Zones Editor */}
+      {isAdmin && showCustomZonesEditor && (
+        <CustomZonesEditor
+          onClose={() => {
+            setShowCustomZonesEditor(false);
+            setIsDrawingMode(false);
+            setDrawnGeometry(null);
+          }}
+          onDrawingToolChange={(tool) => {
+            setDrawTool(tool);
+          }}
+          drawnGeometry={drawnGeometry}
+        />
       )}
 
     </div>

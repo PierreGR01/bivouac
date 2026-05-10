@@ -28,6 +28,8 @@ export default defineConfig({
     alias: {
       // Alias @ to the src directory
       '@': path.resolve(__dirname, './src'),
+      // Alias / to the src directory for absolute imports
+      '/': path.resolve(__dirname, './src'),
     },
   },
 

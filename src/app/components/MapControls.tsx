@@ -1,5 +1,5 @@
 import React from 'react';
-import { Droplet, BanIcon, Route, Plus, Minus, Ruler, Snowflake, Locate } from 'lucide-react';
+import { Droplet, BanIcon, Route, Plus, Minus, Ruler, Snowflake, Locate, Settings } from 'lucide-react';
 
 interface MapControlsProps {
   showWaterPoints: boolean;
@@ -14,6 +14,9 @@ interface MapControlsProps {
   onSatelliteModeToggle: () => void;
   winterMode?: boolean;
   onWinterModeToggle?: () => void;
+  isAdmin?: boolean;
+  showCustomZonesEditor?: boolean;
+  onCustomZonesToggle?: () => void;
 }
 
 export function MapControls({
@@ -28,7 +31,10 @@ export function MapControls({
   satelliteMode,
   onSatelliteModeToggle,
   winterMode = false,
-  onWinterModeToggle
+  onWinterModeToggle,
+  isAdmin = false,
+  showCustomZonesEditor = false,
+  onCustomZonesToggle
 }: MapControlsProps) {
   const handleZoomIn = () => {
     (window as any).__mapZoomIn?.();
@@ -136,13 +142,28 @@ export function MapControls({
         <button
           onClick={onWinterModeToggle}
           className={`w-10 h-10 rounded-lg transition-all flex items-center justify-center ${
-            winterMode 
-              ? 'bg-blue-600 text-white' 
+            winterMode
+              ? 'bg-blue-600 text-white'
               : 'text-gray-700 hover:bg-gray-100'
           }`}
           title={winterMode ? 'Désactiver le mode hiver' : 'Activer le mode hiver'}
         >
           <Snowflake className="w-5 h-5" />
+        </button>
+      )}
+
+      {/* Admin: Créer des zones réglementées */}
+      {isAdmin && onCustomZonesToggle && (
+        <button
+          onClick={onCustomZonesToggle}
+          className={`w-10 h-10 rounded-lg transition-all flex items-center justify-center ${
+            showCustomZonesEditor
+              ? 'bg-purple-600 text-white'
+              : 'text-gray-700 hover:bg-gray-100'
+          }`}
+          title="Créer une zone réglementée"
+        >
+          <Settings className="w-5 h-5" />
         </button>
       )}
 

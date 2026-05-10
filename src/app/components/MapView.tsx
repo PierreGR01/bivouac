@@ -1,9 +1,12 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import L from 'leaflet';
+import 'leaflet-draw';
+import 'leaflet-draw/dist/leaflet.draw.css';
 import { Trash2 } from 'lucide-react';
 import { PoiLocation } from '../types';
 import { fetchWaterPoints, WaterPoint, isDrinkable, getWaterPointLabel, getWaterPointInfo, RateLimitError, filterAndSortWaterPoints } from '../services/overpass';
 import { ProtectedArea, getProtectedAreaLabel, getProtectedAreaInfo, shouldDisplayOnMap } from '../services/protected-areas';
+import { CustomZone } from '../../utils/supabase/custom-zones-api';
 import { MapControls } from './MapControls';
 
 interface MapViewProps {
@@ -13,13 +16,17 @@ interface MapViewProps {
   isAddingMode?: boolean;
   isRoutingMode?: boolean;
   isMeasuringMode?: boolean;
+  isDrawingMode?: boolean;
+  drawTool?: 'polygon' | 'rectangle';
   onMapClick?: (lat: number, lng: number) => void;
+  onGeometryDrawn?: (geometry: GeoJSON.Feature) => void;
   temporaryMarkerPosition?: { lat: number; lng: number } | null;
   routePoints?: Array<{ lat: number; lng: number }>;
   isSmartRouting?: boolean;
   showWaterPoints?: boolean;
   showProtectedAreas?: boolean;
   protectedAreas?: ProtectedArea[];
+  customZones?: CustomZone[];
   onMapMove?: (bounds: any) => void;
   onWaterPointsToggle?: () => void;
   onProtectedAreasToggle?: () => void;
@@ -33,20 +40,24 @@ interface MapViewProps {
   onWinterModeToggle?: () => void;
 }
 
-export function MapView({ 
-  locations, 
-  onLocationClick, 
+export function MapView({
+  locations,
+  onLocationClick,
   selectedLocation,
   isAddingMode = false,
   isRoutingMode = false,
   isMeasuringMode = false,
+  isDrawingMode = false,
+  drawTool = 'polygon',
   onMapClick,
+  onGeometryDrawn,
   temporaryMarkerPosition,
   routePoints = [],
   isSmartRouting = true,
   showWaterPoints = false,
   showProtectedAreas = false,
   protectedAreas = [],
+  customZones = [],
   onMapMove,
   onWaterPointsToggle,
   onProtectedAreasToggle,
@@ -67,10 +78,13 @@ export function MapView({
   const routeLayerRef = useRef<L.Polyline | null>(null);
   const waterMarkersRef = useRef<L.Marker[]>([]);
   const protectedAreasLayersRef = useRef<L.Polygon[]>([]);
+  const customZonesLayersRef = useRef<L.Polygon[]>([]);
   const measureLineRef = useRef<L.Polyline | null>(null);
   const measureMarkerRef = useRef<L.Marker | null>(null);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const slopesLayerRef = useRef<L.TileLayer | null>(null);
+  const drawControlRef = useRef<any>(null);
+  const drawLayerRef = useRef<L.FeatureGroup | null>(null);
   
   const [waterPoints, setWaterPoints] = useState<WaterPoint[]>([]);
   const [isLoadingWater, setIsLoadingWater] = useState(false);
@@ -108,43 +122,24 @@ export function MapView({
     (window as any).__mapZoomIn = () => map.zoomIn();
     (window as any).__mapZoomOut = () => map.zoomOut();
     
-    // Helper: Animation using flyTo (Leaflet's optimized movement method)
-    const animateMapLinear = (targetLat: number, targetLng: number, targetZoom: number) => {
-      // Use Leaflet's flyTo which is optimized for animated movement
-      // duration is in seconds
-      map.flyTo([targetLat, targetLng], targetZoom, {
-        duration: 0.5
-      });
-    };
-
-    // Exposer la fonction de recentrage pour les clics sur les spots
-    (window as any).__mapCenterOnLocation = (lat: number, lng: number) => {
-      const isMobile = window.innerWidth < 768;
+    // Move the map so `lat/lng` appears at the center of the top third, no animation
+    const panToTop = (lat: number, lng: number) => {
       const zoom = map.getZoom();
-
-      if (!isMobile) {
-        // Desktop: fast animation
-        animateMapLinear(lat, lng, zoom);
-      } else {
-        // Mobile: use fixed latitude offset to push spot up above content panel
-        const latOffset = 0.05; // Offset in degrees
-        animateMapLinear(lat - latOffset, lng, zoom);
-      }
+      const mapHeight = map.getSize().y;
+      const targetY = mapHeight / 6;
+      const spotPoint = map.project([lat, lng], zoom);
+      const centerPoint = L.point(spotPoint.x, spotPoint.y + (mapHeight / 2 - targetY));
+      const center = map.unproject(centerPoint, zoom);
+      map.setView(center, zoom, { animate: false });
     };
 
-    // Exposer la fonction pour centrer la carte sur les coordonnées (géolocalisation)
+    // Expose for geolocation button (zoom to 14, center normally)
     (window as any).__mapCenterTo = (lat: number, lng: number) => {
-      const isMobile = window.innerWidth < 768;
-      const zoom = 14;
+      map.setView([lat, lng], 14, { animate: false });
+    };
 
-      if (!isMobile) {
-        // Desktop: fast animation
-        animateMapLinear(lat, lng, zoom);
-      } else {
-        // Mobile: use fixed latitude offset to push spot up above content panel
-        const latOffset = 0.05; // Offset in degrees
-        animateMapLinear(lat - latOffset, lng, zoom);
-      }
+    (window as any).__mapPanToSpot = (lat: number, lng: number) => {
+      panToTop(lat, lng);
     };
 
     // Notifier les bounds initiaux
@@ -164,8 +159,8 @@ export function MapView({
       tileLayerRef.current = null;
       delete (window as any).__mapZoomIn;
       delete (window as any).__mapZoomOut;
-      delete (window as any).__mapCenterOnLocation;
       delete (window as any).__mapCenterTo;
+      delete (window as any).__mapPanToSpot;
     };
   }, []);
 
@@ -266,6 +261,58 @@ export function MapView({
       }
     }
   }, [winterMode]);
+
+  // Gérer le mode dessin (Leaflet Draw)
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+
+    const map = mapInstanceRef.current;
+
+    // Disable any previous handler
+    if (drawControlRef.current) {
+      drawControlRef.current.disable();
+      drawControlRef.current = null;
+    }
+    map.off('draw:created');
+
+    if (isDrawingMode) {
+      if (!drawLayerRef.current) {
+        const drawnItems = new L.FeatureGroup();
+        map.addLayer(drawnItems);
+        drawLayerRef.current = drawnItems;
+      }
+
+      const shapeOptions = { color: '#f97316', fillOpacity: 0.2, weight: 2 };
+      const handler = drawTool === 'rectangle'
+        ? new (L as any).Draw.Rectangle(map, { shapeOptions })
+        : new (L as any).Draw.Polygon(map, { shapeOptions, showArea: true });
+
+      handler.enable();
+      drawControlRef.current = handler;
+
+      map.on('draw:created', (e: any) => {
+        const layer = e.layer;
+        drawLayerRef.current?.addLayer(layer);
+        const geometry = layer.toGeoJSON();
+        if (onGeometryDrawn) {
+          onGeometryDrawn(geometry);
+        }
+      });
+
+      return () => {
+        map.off('draw:created');
+        if (drawControlRef.current) {
+          drawControlRef.current.disable();
+          drawControlRef.current = null;
+        }
+      };
+    } else {
+      if (drawLayerRef.current) {
+        map.removeLayer(drawLayerRef.current);
+        drawLayerRef.current = null;
+      }
+    }
+  }, [isDrawingMode, drawTool, onGeometryDrawn]);
 
   // Gérer le clic sur la carte en mode ajout, routage ou mesure
   useEffect(() => {
@@ -480,6 +527,7 @@ export function MapView({
       marker.on('click', () => {
         if (!isAddingMode) {
           onLocationClick(location);
+          (window as any).__mapPanToSpot?.(location.position.lat, location.position.lng);
         }
       });
 
@@ -525,28 +573,6 @@ export function MapView({
     }
   }, [temporaryMarkerPosition]);
 
-  // Centrer sur le point sélectionné (sans changer le zoom)
-  useEffect(() => {
-    if (!mapInstanceRef.current || !selectedLocation) return;
-
-    // Valider les coordonnées avant flyTo
-    if (!selectedLocation.position || 
-        typeof selectedLocation.position.lat !== 'number' || 
-        typeof selectedLocation.position.lng !== 'number' ||
-        isNaN(selectedLocation.position.lat) || 
-        isNaN(selectedLocation.position.lng)) {
-      console.error('Impossible de centrer sur un point avec des coordonnées invalides:', selectedLocation);
-      return;
-    }
-
-    // Centrer sans changer le zoom (utiliser le zoom actuel)
-    const currentZoom = mapInstanceRef.current.getZoom();
-    mapInstanceRef.current.flyTo(
-      [selectedLocation.position.lat, selectedLocation.position.lng],
-      currentZoom,
-      { duration: 1 }
-    );
-  }, [selectedLocation]);
 
   // Gérer les points d'itinéraire
   useEffect(() => {
@@ -969,6 +995,93 @@ export function MapView({
       protectedAreasLayersRef.current.push(polygon);
     });
   }, [protectedAreas, showProtectedAreas]);
+
+  // Afficher les zones réglementées personnalisées sur la carte
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+
+    const map = mapInstanceRef.current;
+
+    // Nettoyer les anciennes zones
+    customZonesLayersRef.current.forEach(layer => layer.remove());
+    customZonesLayersRef.current = [];
+
+    if (!showProtectedAreas || !customZones || customZones.length === 0) return;
+
+    // Ajouter les nouvelles zones personnalisées
+    customZones.forEach((zone) => {
+      if (!zone.geometry || !zone.geometry.geometry) return;
+
+      const geom = zone.geometry.geometry;
+      if (geom.type !== 'Polygon' && geom.type !== 'MultiPolygon') return;
+
+      // Déterminer la couleur en fonction du type de restriction
+      const restrictionColors: Record<string, string> = {
+        camping_forbidden: '#f97316', // orange
+        bivouac_forbidden: '#ef4444', // red
+        fire_forbidden: '#eab308', // yellow
+        other: '#8b5cf6' // purple
+      };
+      const color = restrictionColors[zone.restriction_type] || '#f97316';
+
+      // Créer le polygone
+      const coordinates = geom.type === 'Polygon'
+        ? geom.coordinates[0].map((coord: [number, number]) => [coord[1], coord[0]] as [number, number])
+        : [];
+
+      if (coordinates.length === 0) return;
+
+      const polygon = L.polygon(coordinates, {
+        color,
+        weight: 2,
+        opacity: 0.9,
+        fillColor: color,
+        fillOpacity: 0.25,
+        interactive: true,
+      });
+
+      // Événements pour l'interactivité
+      polygon.on('mouseenter', function() {
+        this.bringToFront();
+        this.setStyle({ weight: 3, opacity: 1, fillOpacity: 0.35 });
+      });
+      polygon.on('mouseleave', function() {
+        this.setStyle({ weight: 2, opacity: 0.9, fillOpacity: 0.25 });
+      });
+
+      // Popup avec informations
+      const popupContent = `
+        <div class="text-sm max-w-sm">
+          <h3 class="font-semibold text-orange-700 mb-2">${zone.name}</h3>
+          ${zone.description ? `<p class="text-xs text-gray-600 mb-3">${zone.description}</p>` : ''}
+          <div class="space-y-1">
+            <p class="text-xs font-semibold text-gray-700">Restriction :</p>
+            <p class="text-xs text-gray-700">
+              ${zone.restriction_type === 'camping_forbidden' ? 'Camping interdit' :
+                zone.restriction_type === 'bivouac_forbidden' ? 'Bivouac interdit' :
+                zone.restriction_type === 'fire_forbidden' ? 'Feu interdit' : 'Autre'}
+            </p>
+          </div>
+          ${zone.seasons && zone.seasons.length > 0 ? `
+            <div class="mt-2">
+              <p class="text-xs font-semibold text-gray-700">Saisons :</p>
+              <p class="text-xs text-gray-700">${zone.seasons.join(', ')}</p>
+            </div>
+          ` : ''}
+          ${zone.source_url ? `
+            <p class="mt-2 text-xs">
+              <a href="${zone.source_url}" target="_blank" class="text-blue-600 hover:underline">Source officielle →</a>
+            </p>
+          ` : ''}
+          <p class="mt-2 text-xs text-gray-500">Niveau: ${zone.protection_level}</p>
+        </div>
+      `;
+
+      polygon.bindPopup(popupContent);
+      polygon.addTo(map);
+      customZonesLayersRef.current.push(polygon);
+    });
+  }, [customZones, showProtectedAreas]);
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
