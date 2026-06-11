@@ -1,5 +1,6 @@
 import { WaterPoint } from '../services/overpass';
 import { devLog } from './logger';
+import { WATER_PROXIMITY_NEAR_M, WATER_PROXIMITY_FAR_M } from '../constants';
 
 /**
  * Calcule la distance en mètres entre deux coordonnées géographiques
@@ -70,14 +71,14 @@ export function calculateWaterProximity(
   devLog.log(`💧 Distance minimale trouvée : ${minDistance.toFixed(2)}m`);
 
   // Déterminer la proximité selon les seuils
-  if (minDistance < 100) {
-    devLog.log('💧 Résultat : proche (<100m)');
+  if (minDistance < WATER_PROXIMITY_NEAR_M) {
+    devLog.log(`💧 Résultat : proche (<${WATER_PROXIMITY_NEAR_M}m)`);
     return 'proche';
-  } else if (minDistance < 200) {
-    devLog.log('💧 Résultat : éloigné (100-200m)');
+  } else if (minDistance < WATER_PROXIMITY_FAR_M) {
+    devLog.log(`💧 Résultat : éloigné (${WATER_PROXIMITY_NEAR_M}-${WATER_PROXIMITY_FAR_M}m)`);
     return 'éloigné';
   } else {
-    devLog.log('💧 Résultat : trop loin (>200m)');
+    devLog.log(`💧 Résultat : trop loin (>${WATER_PROXIMITY_FAR_M}m)`);
     return null;
   }
 }

@@ -8,6 +8,7 @@ import { fetchWaterPoints, WaterPoint, isDrinkable, getWaterPointLabel, getWater
 import { ProtectedArea, getProtectedAreaLabel, getProtectedAreaInfo, shouldDisplayOnMap } from '../services/protected-areas';
 import { CustomZone } from '../../utils/supabase/custom-zones-api';
 import { MapControls } from './MapControls';
+import { MAP_CENTER, MAP_DEFAULT_ZOOM } from '../constants';
 
 interface MapViewProps {
   locations: PoiLocation[];
@@ -103,11 +104,9 @@ export function MapView({
   useEffect(() => {
     if (!mapRef.current || mapInstanceRef.current) return;
 
-    // Créer la carte sans contrôles de zoom (gérés manuellement)
-    // Centrer sur Grenoble: 45.188529, 5.724524
     const map = L.map(mapRef.current, {
       zoomControl: false // Désactiver le contrôle par défaut
-    }).setView([45.188529, 5.724524], 12);
+    }).setView([MAP_CENTER.lat, MAP_CENTER.lng], MAP_DEFAULT_ZOOM);
 
     // Ajouter les tuiles avec fond topographique
     const tileLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {

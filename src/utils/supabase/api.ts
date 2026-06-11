@@ -1,8 +1,8 @@
 import { supabaseClient } from './client';
 import { PoiLocation } from '../../app/types';
 
-const EDGE_FUNCTION_URL = 'https://fdzcdmyehllqvofysgdf.supabase.co/functions/v1/make-server-e51cba93';
-const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZkemNkbXllaGxscXZvZnlzZ2RmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyNzYwMDksImV4cCI6MjA4NTg1MjAwOX0.8vWjNpZiWtKTOY6mmUhfsTOik69nc0iiD0FRysjoFX0';
+const EDGE_FUNCTION_URL = import.meta.env.VITE_EDGE_FUNCTION_URL as string;
+const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
 async function getAuthHeader(): Promise<string> {
   const session = await supabaseClient.auth.getSession();
