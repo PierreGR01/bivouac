@@ -1,5 +1,7 @@
 import React from 'react';
-import { X, Route, Trash2, Check, Zap } from 'lucide-react';
+import { Route, Trash2, Check, Zap } from 'lucide-react';
+import { Panel } from './ui/bivouac-panel';
+import { BivouacButton } from './ui/bivouac-button';
 
 interface RoutePanelProps {
   onClose: () => void;
@@ -25,136 +27,16 @@ export function RoutePanel({
   onMaxDistanceChange,
 }: RoutePanelProps) {
   return (
-    <>
-      {/* Mobile: panneau du bas */}
-      <div 
-        className="md:hidden fixed inset-x-0 bottom-0 bg-white rounded-t-3xl shadow-2xl z-[1000]"
-        style={{
-          maxHeight: 'calc(100vh - 120px)',
-          animation: 'slideUp 0.3s ease-out'
-        }}
-      >
-        <style>{`
-          @keyframes slideUp {
-            from {
-              transform: translateY(100%);
-            }
-            to {
-              transform: translateY(0);
-            }
-          }
-        `}</style>
-        
-        {/* Poignée de glissement */}
-        <div className="flex justify-center pt-3 pb-2">
-          <div className="w-12 h-1.5 bg-gray-300 rounded-full" />
-        </div>
-
-        {/* Bouton fermer */}
-        <button
-          onClick={onClose}
-          className="absolute top-6 right-6 p-2 bg-white rounded-full shadow-lg hover:bg-gray-100 transition-colors z-10"
-        >
-          <X className="w-5 h-5" />
-        </button>
-
-        {/* Contenu scrollable */}
-        <div className="overflow-y-auto px-6 pb-6" style={{ maxHeight: 'calc(100vh - 180px)' }}>
-          <PanelContent 
-            isSmartRouting={isSmartRouting}
-            onToggleSmartRouting={onToggleSmartRouting}
-            onClearRoute={onClearRoute}
-            onFinishRoute={onFinishRoute}
-            routePointsCount={routePointsCount}
-            nearbyPoisCount={nearbyPoisCount}
-            maxDistance={maxDistance}
-            onMaxDistanceChange={onMaxDistanceChange}
-            onClose={onClose}
-          />
-        </div>
-      </div>
-
-      {/* Desktop: panneau latéral gauche */}
-      <div 
-        className="hidden md:block fixed top-[158px] left-6 w-[480px] bg-white shadow-2xl z-[500] rounded-b-xl"
-        style={{
-          animation: 'fadeIn 0.3s ease-out',
-          maxHeight: 'calc(100vh - 10.5rem)'
-        }}
-      >
-        <style>{`
-          @keyframes fadeIn {
-            from {
-              opacity: 0;
-            }
-            to {
-              opacity: 1;
-            }
-          }
-        `}</style>
-
-        {/* Contenu scrollable */}
-        <div className="overflow-y-auto px-6 py-6" style={{ maxHeight: 'calc(100vh - 10.5rem)' }}>
-          <PanelContent 
-            isSmartRouting={isSmartRouting}
-            onToggleSmartRouting={onToggleSmartRouting}
-            onClearRoute={onClearRoute}
-            onFinishRoute={onFinishRoute}
-            routePointsCount={routePointsCount}
-            nearbyPoisCount={nearbyPoisCount}
-            maxDistance={maxDistance}
-            onMaxDistanceChange={onMaxDistanceChange}
-            onClose={onClose}
-          />
-        </div>
-      </div>
-    </>
-  );
-}
-
-function PanelContent({
-  isSmartRouting,
-  onToggleSmartRouting,
-  onClearRoute,
-  onFinishRoute,
-  routePointsCount,
-  nearbyPoisCount,
-  maxDistance,
-  onMaxDistanceChange,
-  onClose,
-}: {
-  isSmartRouting: boolean;
-  onToggleSmartRouting: (value: boolean) => void;
-  onClearRoute: () => void;
-  onFinishRoute: () => void;
-  routePointsCount: number;
-  nearbyPoisCount: number;
-  maxDistance: number;
-  onMaxDistanceChange: (value: number) => void;
-  onClose?: () => void;
-}) {
-  return (
-    <div>
-      {/* En-tête avec titre et bouton fermer */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Route className="w-5 h-5 text-emerald-600" />
-          <h2 className="text-xl font-bold text-gray-800 drop-shadow-sm">Tracer un itinéraire</h2>
-        </div>
-        {onClose && (
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-          >
-            <X className="w-5 h-5 text-gray-800" />
-          </button>
-        )}
-      </div>
-
+    <Panel
+      onClose={onClose}
+      title="Tracer un itinéraire"
+      icon={<Route className="w-5 h-5" />}
+    >
       {/* Instructions */}
       <div className="bg-emerald-50 border-l-4 border-emerald-400 p-3 rounded-r-lg mb-4">
         <p className="text-sm text-emerald-800">
-          Cliquez sur la carte pour placer des points et créer votre itinéraire. Les spots de bivouac proches seront automatiquement filtrés.
+          Cliquez sur la carte pour placer des points. Les spots de bivouac proches seront
+          automatiquement filtrés.
         </p>
       </div>
 
@@ -172,7 +54,7 @@ function PanelContent({
 
       {/* Toggle mode de routage */}
       <div className="mb-4">
-        <label className="flex items-center gap-3 cursor-pointer p-3 border-2 border-gray-300 rounded-lg hover:border-emerald-300 transition-colors bg-white">
+        <label className="flex items-center gap-3 cursor-pointer p-3 border border-gray-200 rounded-lg hover:border-emerald-300 transition-colors bg-white">
           <input
             type="checkbox"
             checked={isSmartRouting}
@@ -182,8 +64,8 @@ function PanelContent({
           <div className="flex items-center gap-2 flex-1">
             <Zap className="w-5 h-5 text-emerald-600" />
             <div>
-              <span className="font-medium text-gray-800 block">Tracé intelligent</span>
-              <span className="text-xs text-gray-600">Suit les chemins sur la carte</span>
+              <span className="font-medium text-gray-800 block text-sm">Tracé intelligent</span>
+              <span className="text-xs text-gray-500">Suit les chemins sur la carte</span>
             </div>
           </div>
         </label>
@@ -195,7 +77,7 @@ function PanelContent({
       </div>
 
       {/* Distance maximale */}
-      <div className="mb-4">
+      <div className="mb-5">
         <label className="block text-sm font-semibold mb-2 text-gray-800">
           Distance maximale de l'itinéraire
         </label>
@@ -218,25 +100,27 @@ function PanelContent({
         </p>
       </div>
 
-      {/* Boutons d'action */}
+      {/* Actions */}
       <div className="flex gap-3">
-        <button
+        <BivouacButton
+          variant="destructive"
+          icon={<Trash2 className="w-4 h-4" />}
           onClick={onClearRoute}
           disabled={routePointsCount === 0}
-          className="flex-1 flex items-center justify-center gap-2 px-4 py-3 border-2 border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+          className="flex-1 py-2.5"
         >
-          <Trash2 className="w-5 h-5" />
-          <span className="font-medium">Effacer</span>
-        </button>
-        <button
+          Effacer
+        </BivouacButton>
+        <BivouacButton
+          variant="primary"
+          icon={<Check className="w-4 h-4" />}
           onClick={onFinishRoute}
           disabled={routePointsCount < 2}
-          className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-emerald-600"
+          className="flex-1 py-2.5"
         >
-          <Check className="w-5 h-5" />
-          <span className="font-medium">Terminer</span>
-        </button>
+          Terminer
+        </BivouacButton>
       </div>
-    </div>
+    </Panel>
   );
 }

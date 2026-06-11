@@ -77,7 +77,7 @@ export function SearchBar({
                 <div className="bg-emerald-600 p-2 rounded-lg shadow-md">
                   <Tent className="w-5 h-5 text-white" />
                 </div>
-                <h1 className="text-lg font-bold text-gray-800 drop-shadow-sm whitespace-nowrap">Bivouac Spots</h1>
+                <h1 className="text-lg font-bold text-gray-800 whitespace-nowrap">Bivouac Spots</h1>
               </div>
 
               {/* Champ de recherche */}
