@@ -230,24 +230,29 @@ async function executeOverpassQuery(
     const clientTimeout = setTimeout(() => controller.abort(), (timeout + 20) * 1000); // +20s de marge pour laisser le serveur répondre
 
     const OVERPASS_ENDPOINTS = [
-      'https://overpass-api.de/api/interpreter',
       'https://overpass.kumi.systems/api/interpreter',
+      'https://overpass-api.de/api/interpreter',
+      'https://overpass.openstreetmap.ru/api/interpreter',
     ];
 
     let response: Response | null = null;
     let lastError: Error | null = null;
     for (const endpoint of OVERPASS_ENDPOINTS) {
+      const perEndpointController = new AbortController();
+      const perEndpointTimeout = setTimeout(() => perEndpointController.abort(), 20000);
       try {
         response = await fetch(endpoint, {
           method: 'POST',
           body: `data=${encodeURIComponent(query)}`,
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          signal: controller.signal,
+          signal: perEndpointController.signal,
         });
+        clearTimeout(perEndpointTimeout);
         if (response.ok || response.status === 429 || response.status === 504 || response.status === 503) break;
         lastError = new Error(`HTTP ${response.status}`);
       } catch (err: any) {
-        if (err.name === 'AbortError') throw err;
+        clearTimeout(perEndpointTimeout);
+        if (err.name === 'AbortError' && controller.signal.aborted) throw err;
         lastError = err;
       }
     }
