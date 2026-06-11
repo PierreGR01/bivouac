@@ -221,20 +221,27 @@ app.post("/make-server-e51cba93/water-points", safeHandler(async (c: any) => {
 
     let lastError: string = 'No endpoint succeeded';
     for (const endpoint of ENDPOINTS) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 35000);
       try {
         const resp = await fetch(endpoint, {
           method: 'POST',
           body: `data=${encodeURIComponent(query)}`,
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          signal: AbortSignal.timeout(35000),
+          signal: ctrl.signal,
         });
+        clearTimeout(timer);
         if (resp.ok) {
           const data = await resp.json();
+          console.log(`✅ Overpass proxy: ${(data.elements || []).length} éléments depuis ${endpoint}`);
           return c.json({ success: true, data });
         }
         lastError = `HTTP ${resp.status} from ${endpoint}`;
+        console.warn(`⚠️ Overpass ${endpoint}: ${resp.status}`);
       } catch (err: any) {
+        clearTimeout(timer);
         lastError = err?.message || String(err);
+        console.warn(`⚠️ Overpass ${endpoint} erreur: ${lastError}`);
       }
     }
 
