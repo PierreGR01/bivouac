@@ -225,60 +225,78 @@ async function executeOverpassQuery(
   `;
 
   try {
-    // Ajouter un timeout côté client pour éviter d'attendre indéfiniment
-    const controller = new AbortController();
-    const clientTimeout = setTimeout(() => controller.abort(), (timeout + 20) * 1000); // +20s de marge pour laisser le serveur répondre
+    // Essayer d'abord le proxy Edge Function (pas de CORS)
+    const EDGE_URL = (import.meta as any).env?.VITE_EDGE_FUNCTION_URL;
+    const ANON_KEY = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY;
+    let data: any = null;
 
-    const OVERPASS_ENDPOINTS = [
-      'https://overpass.kumi.systems/api/interpreter',
-      'https://overpass-api.de/api/interpreter',
-      'https://overpass.openstreetmap.ru/api/interpreter',
-    ];
-
-    let response: Response | null = null;
-    let lastError: Error | null = null;
-    for (const endpoint of OVERPASS_ENDPOINTS) {
-      const perEndpointController = new AbortController();
-      const perEndpointTimeout = setTimeout(() => perEndpointController.abort(), 20000);
+    if (EDGE_URL && ANON_KEY) {
       try {
-        response = await fetch(endpoint, {
+        const proxyResp = await fetch(`${EDGE_URL}/water-points`, {
           method: 'POST',
-          body: `data=${encodeURIComponent(query)}`,
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          signal: perEndpointController.signal,
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON_KEY}` },
+          body: JSON.stringify({ south: bounds.south, west: bounds.west, north: bounds.north, east: bounds.east, timeout }),
+          signal: AbortSignal.timeout(45000),
         });
-        clearTimeout(perEndpointTimeout);
-        if (response.ok || response.status === 429 || response.status === 504 || response.status === 503) break;
-        lastError = new Error(`HTTP ${response.status}`);
-      } catch (err: any) {
-        clearTimeout(perEndpointTimeout);
-        if (err.name === 'AbortError' && controller.signal.aborted) throw err;
-        lastError = err;
+        if (proxyResp.ok) {
+          const json = await proxyResp.json();
+          if (json.success && json.data) {
+            data = json.data;
+            devLog.log('✅ Points d\'eau via proxy Edge Function');
+          }
+        }
+      } catch (proxyErr: any) {
+        devLog.warn(`⚠️ Proxy Edge Function indisponible: ${proxyErr?.message}`);
       }
     }
-    if (!response) throw lastError ?? new Error('Overpass API inaccessible');
 
-    clearTimeout(clientTimeout);
+    // Fallback direct si le proxy a échoué
+    if (!data) {
+      const controller = new AbortController();
+      const clientTimeout = setTimeout(() => controller.abort(), (timeout + 20) * 1000);
 
-    if (response.status === 429) {
-      const retryAfter = response.headers.get('Retry-After');
-      const waitSeconds = retryAfter ? parseInt(retryAfter) : 60;
-      throw new RateLimitError(`Trop de requêtes. Veuillez patienter ${waitSeconds} secondes avant de réessayer.`);
+      const OVERPASS_ENDPOINTS = [
+        'https://overpass.kumi.systems/api/interpreter',
+        'https://overpass-api.de/api/interpreter',
+        'https://overpass.openstreetmap.ru/api/interpreter',
+      ];
+
+      let response: Response | null = null;
+      let lastError: Error | null = null;
+      for (const endpoint of OVERPASS_ENDPOINTS) {
+        const perEndpointController = new AbortController();
+        const perEndpointTimeout = setTimeout(() => perEndpointController.abort(), 20000);
+        try {
+          response = await fetch(endpoint, {
+            method: 'POST',
+            body: `data=${encodeURIComponent(query)}`,
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            signal: perEndpointController.signal,
+          });
+          clearTimeout(perEndpointTimeout);
+          if (response.ok || response.status === 429 || response.status === 504 || response.status === 503) break;
+          lastError = new Error(`HTTP ${response.status}`);
+        } catch (err: any) {
+          clearTimeout(perEndpointTimeout);
+          if (err.name === 'AbortError' && controller.signal.aborted) throw err;
+          lastError = err;
+        }
+      }
+      clearTimeout(clientTimeout);
+      if (!response) throw lastError ?? new Error('Overpass API inaccessible');
+
+      if (response.status === 429) {
+        const retryAfter = response.headers.get('Retry-After');
+        const waitSeconds = retryAfter ? parseInt(retryAfter) : 60;
+        throw new RateLimitError(`Trop de requêtes. Veuillez patienter ${waitSeconds} secondes avant de réessayer.`);
+      }
+      if (response.status === 504) throw new Error('Timeout serveur (504)');
+      if (response.status === 503) throw new Error('Service indisponible (503)');
+      if (!response.ok) throw new Error(`Erreur Overpass API: ${response.status} ${response.statusText}`);
+
+      data = await response.json();
     }
 
-    if (response.status === 504) {
-      throw new Error(`Timeout serveur (504)`);
-    }
-
-    if (response.status === 503) {
-      throw new Error(`Service indisponible (503)`);
-    }
-
-    if (!response.ok) {
-      throw new Error(`Erreur Overpass API: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
     const waterPoints = parseWaterPoints(data);
     
     // Mettre en cache

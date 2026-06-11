@@ -192,6 +192,59 @@ app.delete("/make-server-e51cba93/pois/:id", safeHandler(async (c: any) => {
   }
 }));
 
+// Proxy Overpass API — évite les erreurs CORS depuis le navigateur
+app.post("/make-server-e51cba93/water-points", safeHandler(async (c: any) => {
+  try {
+    const body = await c.req.json();
+    const { south, west, north, east, timeout = 30 } = body;
+
+    if (south === undefined || west === undefined || north === undefined || east === undefined) {
+      return c.json({ success: false, error: "Missing bounds: south, west, north, east" }, 400);
+    }
+
+    const query = `
+      [out:json][timeout:${timeout}][maxsize:536870912];
+      (
+        node["amenity"="drinking_water"](${south},${west},${north},${east});
+        node["amenity"="water_point"](${south},${west},${north},${east});
+        node["natural"="spring"](${south},${west},${north},${east});
+        node["man_made"="water_well"](${south},${west},${north},${east});
+      );
+      out body qt;
+    `;
+
+    const ENDPOINTS = [
+      'https://overpass-api.de/api/interpreter',
+      'https://overpass.kumi.systems/api/interpreter',
+      'https://overpass.openstreetmap.ru/api/interpreter',
+    ];
+
+    let lastError: string = 'No endpoint succeeded';
+    for (const endpoint of ENDPOINTS) {
+      try {
+        const resp = await fetch(endpoint, {
+          method: 'POST',
+          body: `data=${encodeURIComponent(query)}`,
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          signal: AbortSignal.timeout(35000),
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          return c.json({ success: true, data });
+        }
+        lastError = `HTTP ${resp.status} from ${endpoint}`;
+      } catch (err: any) {
+        lastError = err?.message || String(err);
+      }
+    }
+
+    return c.json({ success: false, error: lastError }, 502);
+  } catch (error) {
+    console.error("Error proxying Overpass:", error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+}));
+
 // Gestionnaire d'erreurs global pour attraper toutes les erreurs non gérées
 app.onError((error: any, c: any) => {
   // Ignorer silencieusement les erreurs de connexion fermée
