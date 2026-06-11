@@ -229,14 +229,29 @@ async function executeOverpassQuery(
     const controller = new AbortController();
     const clientTimeout = setTimeout(() => controller.abort(), (timeout + 20) * 1000); // +20s de marge pour laisser le serveur répondre
 
-    const response = await fetch('https://overpass-api.de/api/interpreter', {
-      method: 'POST',
-      body: query,
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      signal: controller.signal,
-    });
+    const OVERPASS_ENDPOINTS = [
+      'https://overpass-api.de/api/interpreter',
+      'https://overpass.kumi.systems/api/interpreter',
+    ];
+
+    let response: Response | null = null;
+    let lastError: Error | null = null;
+    for (const endpoint of OVERPASS_ENDPOINTS) {
+      try {
+        response = await fetch(endpoint, {
+          method: 'POST',
+          body: `data=${encodeURIComponent(query)}`,
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          signal: controller.signal,
+        });
+        if (response.ok || response.status === 429 || response.status === 504 || response.status === 503) break;
+        lastError = new Error(`HTTP ${response.status}`);
+      } catch (err: any) {
+        if (err.name === 'AbortError') throw err;
+        lastError = err;
+      }
+    }
+    if (!response) throw lastError ?? new Error('Overpass API inaccessible');
 
     clearTimeout(clientTimeout);
 
