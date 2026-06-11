@@ -28,6 +28,7 @@ interface MapViewProps {
   showProtectedAreas?: boolean;
   protectedAreas?: ProtectedArea[];
   customZones?: CustomZone[];
+  onZoneClick?: (zone: CustomZone) => void;
   onMapMove?: (bounds: any) => void;
   onWaterPointsToggle?: () => void;
   onProtectedAreasToggle?: () => void;
@@ -59,6 +60,7 @@ export function MapView({
   showProtectedAreas = false,
   protectedAreas = [],
   customZones = [],
+  onZoneClick,
   onMapMove,
   onWaterPointsToggle,
   onProtectedAreasToggle,
@@ -1014,16 +1016,13 @@ export function MapView({
       const geom = zone.geometry.geometry;
       if (geom.type !== 'Polygon' && geom.type !== 'MultiPolygon') return;
 
-      // Déterminer la couleur en fonction du type de restriction
-      const restrictionColors: Record<string, string> = {
-        camping_forbidden: '#f97316', // orange
-        bivouac_forbidden: '#ef4444', // red
-        fire_forbidden: '#eab308', // yellow
-        other: '#8b5cf6' // purple
-      };
-      const color = restrictionColors[zone.restriction_type] || '#f97316';
+      // Couleur selon le type de restriction le plus sévère
+      const types = zone.restriction_types ?? [];
+      const color = types.includes('bivouac_forbidden') ? '#ef4444'
+        : types.includes('camping_forbidden') ? '#f97316'
+        : types.includes('fire_forbidden') ? '#eab308'
+        : '#8b5cf6';
 
-      // Créer le polygone
       const coordinates = geom.type === 'Polygon'
         ? geom.coordinates[0].map((coord: [number, number]) => [coord[1], coord[0]] as [number, number])
         : [];
@@ -1039,7 +1038,6 @@ export function MapView({
         interactive: true,
       });
 
-      // Événements pour l'interactivité
       polygon.on('mouseenter', function() {
         this.bringToFront();
         this.setStyle({ weight: 3, opacity: 1, fillOpacity: 0.35 });
@@ -1048,35 +1046,44 @@ export function MapView({
         this.setStyle({ weight: 2, opacity: 0.9, fillOpacity: 0.25 });
       });
 
-      // Popup avec informations
+      polygon.on('click', () => {
+        if (onZoneClick) {
+          onZoneClick(zone);
+        }
+      });
+
+      const restrictionLabels: Record<string, string> = {
+        camping_forbidden: 'Camping interdit',
+        bivouac_forbidden: 'Bivouac interdit',
+        fire_forbidden: 'Feu interdit',
+      };
+      const restrictionsHtml = types
+        .map(t => `<span class="inline-block text-xs bg-red-100 text-red-700 rounded px-1.5 py-0.5 mr-1 mb-1">${restrictionLabels[t] ?? t}</span>`)
+        .join('');
+
+      const timeHtml = zone.time_range_start && zone.time_range_end
+        ? `<p class="text-xs text-gray-600 mt-1">⏱ De ${zone.time_range_start} à ${zone.time_range_end}</p>`
+        : '';
+      const periodHtml = zone.period_start && zone.period_end
+        ? `<p class="text-xs text-gray-600 mt-1">📅 Du ${zone.period_start} au ${zone.period_end}</p>`
+        : '';
+      const sourceHtml = zone.source_url
+        ? `<p class="mt-2 text-xs"><a href="${zone.source_url}" target="_blank" class="text-blue-600 hover:underline">Source officielle →</a></p>`
+        : '';
+
       const popupContent = `
-        <div class="text-sm max-w-sm">
-          <h3 class="font-semibold text-orange-700 mb-2">${zone.name}</h3>
-          ${zone.description ? `<p class="text-xs text-gray-600 mb-3">${zone.description}</p>` : ''}
-          <div class="space-y-1">
-            <p class="text-xs font-semibold text-gray-700">Restriction :</p>
-            <p class="text-xs text-gray-700">
-              ${zone.restriction_type === 'camping_forbidden' ? 'Camping interdit' :
-                zone.restriction_type === 'bivouac_forbidden' ? 'Bivouac interdit' :
-                zone.restriction_type === 'fire_forbidden' ? 'Feu interdit' : 'Autre'}
-            </p>
-          </div>
-          ${zone.seasons && zone.seasons.length > 0 ? `
-            <div class="mt-2">
-              <p class="text-xs font-semibold text-gray-700">Saisons :</p>
-              <p class="text-xs text-gray-700">${zone.seasons.join(', ')}</p>
-            </div>
-          ` : ''}
-          ${zone.source_url ? `
-            <p class="mt-2 text-xs">
-              <a href="${zone.source_url}" target="_blank" class="text-blue-600 hover:underline">Source officielle →</a>
-            </p>
-          ` : ''}
-          <p class="mt-2 text-xs text-gray-500">Niveau: ${zone.protection_level}</p>
+        <div class="text-sm" style="min-width:180px">
+          <p class="font-semibold text-gray-800 mb-2">${zone.name}</p>
+          ${zone.description ? `<p class="text-xs text-gray-500 mb-2">${zone.description}</p>` : ''}
+          <div class="flex flex-wrap mb-1">${restrictionsHtml}</div>
+          ${timeHtml}${periodHtml}${sourceHtml}
         </div>
       `;
 
-      polygon.bindPopup(popupContent);
+      if (!onZoneClick) {
+        polygon.bindPopup(popupContent);
+      }
+
       polygon.addTo(map);
       customZonesLayersRef.current.push(polygon);
     });

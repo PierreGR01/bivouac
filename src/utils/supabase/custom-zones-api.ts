@@ -5,26 +5,26 @@ export interface CustomZone {
   name: string;
   description: string;
   geometry: GeoJSON.Feature;
-  restriction_type: 'camping_forbidden' | 'bivouac_forbidden' | 'fire_forbidden' | 'other';
-  seasons: string[]; // 'all_year', 'winter', 'summer', or specific dates
+  restriction_types: string[]; // ['camping_forbidden', 'bivouac_forbidden', 'fire_forbidden']
   source_url?: string;
   created_at: string;
-  valid_from?: string;
-  valid_until?: string;
   created_by: string;
-  protection_level: 'strict' | 'moderate' | 'low';
+  time_range_start?: string; // HH:mm e.g. "09:00"
+  time_range_end?: string;   // HH:mm e.g. "19:00"
+  period_start?: string;     // dd/mm e.g. "01/05"
+  period_end?: string;       // dd/mm e.g. "30/09"
 }
 
 export interface CustomZoneInput {
   name: string;
   description?: string;
   geometry: GeoJSON.Feature;
-  restriction_type: 'camping_forbidden' | 'bivouac_forbidden' | 'fire_forbidden' | 'other';
-  seasons: string[];
+  restriction_types: string[];
   source_url?: string;
-  valid_from?: string;
-  valid_until?: string;
-  protection_level: 'strict' | 'moderate' | 'low';
+  time_range_start?: string;
+  time_range_end?: string;
+  period_start?: string;
+  period_end?: string;
 }
 
 export async function fetchCustomZones(): Promise<CustomZone[]> {
@@ -41,7 +41,6 @@ export async function fetchCustomZones(): Promise<CustomZone[]> {
   }
 }
 
-// Create a new custom zone
 export async function createCustomZone(zone: CustomZoneInput): Promise<CustomZone | null> {
   try {
     const session = await supabaseClient.auth.getSession();
@@ -71,7 +70,6 @@ export async function createCustomZone(zone: CustomZoneInput): Promise<CustomZon
   }
 }
 
-// Update a custom zone
 export async function updateCustomZone(id: string, zone: Partial<CustomZoneInput>): Promise<CustomZone | null> {
   try {
     const { data, error } = await supabaseClient
@@ -89,7 +87,6 @@ export async function updateCustomZone(id: string, zone: Partial<CustomZoneInput
   }
 }
 
-// Delete a custom zone
 export async function deleteCustomZone(id: string): Promise<void> {
   try {
     const { error } = await supabaseClient
@@ -104,7 +101,6 @@ export async function deleteCustomZone(id: string): Promise<void> {
   }
 }
 
-// Get a single custom zone
 export async function getCustomZone(id: string): Promise<CustomZone | null> {
   try {
     const { data, error } = await supabaseClient

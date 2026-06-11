@@ -1,32 +1,65 @@
 import React, { useState } from 'react';
 import { X, Loader2, AlertCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { createCustomZone } from '../../utils/supabase/custom-zones-api';
+import { createCustomZone, updateCustomZone, deleteCustomZone, CustomZone } from '../../utils/supabase/custom-zones-api';
+import { BivouacButton } from './ui/bivouac-button';
 
 interface CustomZoneFormProps {
   geometry: GeoJSON.Feature;
   onClose: () => void;
   onSuccess: () => void;
+  zone?: CustomZone;
 }
 
-export function CustomZoneForm({ geometry, onClose, onSuccess }: CustomZoneFormProps) {
+const RESTRICTION_OPTIONS = [
+  { value: 'camping_forbidden', label: 'Camping interdit' },
+  { value: 'bivouac_forbidden', label: 'Bivouac interdit' },
+  { value: 'fire_forbidden', label: 'Feu interdit' },
+];
+
+function Toggle({ enabled, onChange, disabled }: { enabled: boolean; onChange: () => void; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onChange}
+      disabled={disabled}
+      className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-1 ${
+        enabled ? 'bg-emerald-600' : 'bg-gray-200'
+      } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+    >
+      <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
+        enabled ? 'translate-x-[18px]' : 'translate-x-[3px]'
+      }`} />
+    </button>
+  );
+}
+
+export function CustomZoneForm({ geometry, onClose, onSuccess, zone }: CustomZoneFormProps) {
   const { currentUser } = useAuth();
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [restrictionType, setRestrictionType] = useState<'camping_forbidden' | 'bivouac_forbidden' | 'fire_forbidden' | 'other'>('camping_forbidden');
-  const [seasons, setSeasons] = useState<string[]>(['all_year']);
-  const [sourceUrl, setSourceUrl] = useState('');
-  const [validFrom, setValidFrom] = useState('');
-  const [validUntil, setValidUntil] = useState('');
-  const [protectionLevel, setProtectionLevel] = useState<'strict' | 'moderate' | 'low'>('moderate');
+  const isEditing = !!zone;
+
+  const [name, setName] = useState(zone?.name ?? '');
+  const [description, setDescription] = useState(zone?.description ?? '');
+  const [restrictionTypes, setRestrictionTypes] = useState<string[]>(
+    zone?.restriction_types ?? ['camping_forbidden']
+  );
+  const [sourceUrl, setSourceUrl] = useState(zone?.source_url ?? '');
+
+  const [timeRangeEnabled, setTimeRangeEnabled] = useState(!!(zone?.time_range_start));
+  const [timeRangeStart, setTimeRangeStart] = useState(zone?.time_range_start ?? '09:00');
+  const [timeRangeEnd, setTimeRangeEnd] = useState(zone?.time_range_end ?? '19:00');
+
+  const [periodEnabled, setPeriodEnabled] = useState(!!(zone?.period_start));
+  const [periodStart, setPeriodStart] = useState(zone?.period_start ?? '');
+  const [periodEnd, setPeriodEnd] = useState(zone?.period_end ?? '');
+
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const handleSeasonToggle = (season: string) => {
-    setSeasons(prev =>
-      prev.includes(season)
-        ? prev.filter(s => s !== season)
-        : [...prev, season]
+  const handleRestrictionToggle = (value: string) => {
+    setRestrictionTypes(prev =>
+      prev.includes(value) ? prev.filter(r => r !== value) : [...prev, value]
     );
   };
 
@@ -38,228 +71,253 @@ export function CustomZoneForm({ geometry, onClose, onSuccess }: CustomZoneFormP
       setError('Le nom de la zone est obligatoire');
       return;
     }
-
-    if (seasons.length === 0) {
-      setError('Sélectionnez au moins une saison');
+    if (restrictionTypes.length === 0) {
+      setError('Sélectionnez au moins un type de restriction');
+      return;
+    }
+    if (periodEnabled && (!periodStart.trim() || !periodEnd.trim())) {
+      setError('Saisissez les dates de début et de fin de la période (JJ/MM)');
       return;
     }
 
     setIsLoading(true);
     try {
-      await createCustomZone({
+      const payload = {
         name: name.trim(),
         description: description.trim(),
         geometry,
-        restriction_type: restrictionType,
-        seasons,
+        restriction_types: restrictionTypes,
         source_url: sourceUrl.trim() || undefined,
-        valid_from: validFrom || undefined,
-        valid_until: validUntil || undefined,
-        protection_level: protectionLevel,
-      });
+        time_range_start: timeRangeEnabled ? timeRangeStart : undefined,
+        time_range_end: timeRangeEnabled ? timeRangeEnd : undefined,
+        period_start: periodEnabled ? periodStart.trim() : undefined,
+        period_end: periodEnabled ? periodEnd.trim() : undefined,
+      };
 
+      if (isEditing && zone) {
+        await updateCustomZone(zone.id, payload);
+      } else {
+        await createCustomZone(payload);
+      }
       onSuccess();
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Erreur lors de la création de la zone';
-      setError(message);
+      setError(err instanceof Error ? err.message : 'Erreur lors de la sauvegarde');
     } finally {
       setIsLoading(false);
     }
   };
 
+  const handleDelete = async () => {
+    if (!zone) return;
+    setIsLoading(true);
+    try {
+      await deleteCustomZone(zone.id);
+      onSuccess();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur lors de la suppression');
+      setIsLoading(false);
+    }
+  };
+
+  const inputClass = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500';
+  const smallInputClass = 'w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500';
+
   return (
-    <div className="fixed bottom-4 right-4 w-96 bg-white rounded-lg shadow-lg border border-gray-200 p-4 z-50 max-h-[90vh] overflow-y-auto" style={{ position: 'fixed', bottom: '16px', right: '16px', zIndex: 9999, width: '384px' }}>
-      <div className="flex justify-between items-center mb-4 sticky top-0 bg-white pb-2 border-b">
-        <h3 className="text-lg font-semibold">Créer une zone réglementée</h3>
-        <button
-          onClick={onClose}
-          className="text-gray-500 hover:text-gray-700"
-        >
-          <X size={20} />
+    <div
+      className="fixed bottom-4 right-4 w-[22rem] bg-white rounded-lg shadow-2xl border border-gray-200 p-4 z-[9999] max-h-[90vh] overflow-y-auto"
+      style={{ position: 'fixed', bottom: '16px', right: '16px', zIndex: 9999 }}
+    >
+      {/* Header */}
+      <div className="flex justify-between items-center mb-4 sticky top-0 bg-white pb-2 border-b border-gray-100">
+        <h3 className="text-lg font-bold text-gray-800">
+          {isEditing ? 'Modifier la zone' : 'Créer une zone réglementée'}
+        </h3>
+        <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full transition-colors">
+          <X size={18} className="text-gray-500" />
         </button>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Name */}
+        {/* Nom */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Nom de la zone *
-          </label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Nom de la zone *</label>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Ex: Parc du Mont-Blanc"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Ex: Parc national des Écrins"
+            className={inputClass}
             disabled={isLoading}
           />
         </div>
 
         {/* Description */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Description
-          </label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Contexte et détails de la restriction..."
-            rows={3}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            rows={2}
+            className={inputClass}
             disabled={isLoading}
           />
         </div>
 
-        {/* Restriction Type */}
+        {/* Types de restrictions (cumulatifs) */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Type de restriction *
-          </label>
-          <select
-            value={restrictionType}
-            onChange={(e) => setRestrictionType(e.target.value as any)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            disabled={isLoading}
-          >
-            <option value="camping_forbidden">Camping interdit</option>
-            <option value="bivouac_forbidden">Bivouac interdit</option>
-            <option value="fire_forbidden">Feu interdit</option>
-            <option value="other">Autre</option>
-          </select>
-        </div>
-
-        {/* Seasons */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Saisons applicables *
-          </label>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+            Types de restrictions *
+          </p>
           <div className="space-y-2">
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={seasons.includes('all_year')}
-                onChange={() => handleSeasonToggle('all_year')}
-                disabled={isLoading}
-                className="rounded"
-              />
-              <span className="text-sm text-gray-700">Toute l'année</span>
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={seasons.includes('summer')}
-                onChange={() => handleSeasonToggle('summer')}
-                disabled={isLoading}
-                className="rounded"
-              />
-              <span className="text-sm text-gray-700">Été</span>
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={seasons.includes('winter')}
-                onChange={() => handleSeasonToggle('winter')}
-                disabled={isLoading}
-                className="rounded"
-              />
-              <span className="text-sm text-gray-700">Hiver</span>
-            </label>
+            {RESTRICTION_OPTIONS.map(({ value, label }) => (
+              <label key={value} className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={restrictionTypes.includes(value)}
+                  onChange={() => handleRestrictionToggle(value)}
+                  disabled={isLoading}
+                  className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                />
+                <span className="text-sm text-gray-700">{label}</span>
+              </label>
+            ))}
           </div>
         </div>
 
-        {/* Protection Level */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Niveau de protection *
-          </label>
-          <select
-            value={protectionLevel}
-            onChange={(e) => setProtectionLevel(e.target.value as any)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            disabled={isLoading}
-          >
-            <option value="strict">Strict</option>
-            <option value="moderate">Modéré</option>
-            <option value="low">Bas</option>
-          </select>
+        {/* Tranche horaire */}
+        <div className="border border-gray-200 rounded-lg p-3 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-700 leading-tight">
+              Restriction sur une tranche horaire
+            </span>
+            <Toggle enabled={timeRangeEnabled} onChange={() => setTimeRangeEnabled(v => !v)} disabled={isLoading} />
+          </div>
+          {timeRangeEnabled && (
+            <div className="flex items-end gap-2 pt-1">
+              <div className="flex-1">
+                <label className="block text-xs text-gray-500 mb-1">De</label>
+                <input type="time" value={timeRangeStart} onChange={(e) => setTimeRangeStart(e.target.value)} disabled={isLoading} className={smallInputClass} />
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs text-gray-500 mb-1">À</label>
+                <input type="time" value={timeRangeEnd} onChange={(e) => setTimeRangeEnd(e.target.value)} disabled={isLoading} className={smallInputClass} />
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Source URL */}
+        {/* Période de l'année */}
+        <div className="border border-gray-200 rounded-lg p-3 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-700 leading-tight">
+              Restriction sur une période de l'année
+            </span>
+            <Toggle enabled={periodEnabled} onChange={() => setPeriodEnabled(v => !v)} disabled={isLoading} />
+          </div>
+          {periodEnabled && (
+            <div className="flex items-end gap-2 pt-1">
+              <div className="flex-1">
+                <label className="block text-xs text-gray-500 mb-1">Du (JJ/MM)</label>
+                <input
+                  type="text"
+                  value={periodStart}
+                  onChange={(e) => setPeriodStart(e.target.value)}
+                  placeholder="01/05"
+                  maxLength={5}
+                  disabled={isLoading}
+                  className={smallInputClass}
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs text-gray-500 mb-1">Au (JJ/MM)</label>
+                <input
+                  type="text"
+                  value={periodEnd}
+                  onChange={(e) => setPeriodEnd(e.target.value)}
+                  placeholder="30/09"
+                  maxLength={5}
+                  disabled={isLoading}
+                  className={smallInputClass}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Source officielle */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Source officielle (URL)
-          </label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Source officielle (URL)</label>
           <input
             type="url"
             value={sourceUrl}
             onChange={(e) => setSourceUrl(e.target.value)}
             placeholder="https://..."
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className={inputClass}
             disabled={isLoading}
           />
         </div>
 
-        {/* Validity Dates */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Valide à partir de
-            </label>
-            <input
-              type="date"
-              value={validFrom}
-              onChange={(e) => setValidFrom(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              disabled={isLoading}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Valide jusqu'au
-            </label>
-            <input
-              type="date"
-              value={validUntil}
-              onChange={(e) => setValidUntil(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              disabled={isLoading}
-            />
-          </div>
-        </div>
-
-        {/* Error Message */}
+        {/* Erreur */}
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-md text-sm flex items-center gap-2">
-            <AlertCircle size={16} />
+          <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm flex items-center gap-2">
+            <AlertCircle size={15} />
             {error}
           </div>
         )}
 
-        {/* Actions */}
-        <div className="flex gap-2 pt-4 border-t">
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="flex-1 bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2 font-medium transition-colors"
-          >
-            {isLoading ? (
-              <>
-                <Loader2 size={18} className="animate-spin" />
-                Création...
-              </>
-            ) : (
-              'Créer la zone'
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isLoading}
-            className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-md hover:bg-gray-300 disabled:opacity-50 font-medium transition-colors"
-          >
+        {/* Actions principales */}
+        <div className="flex gap-2 pt-2 border-t border-gray-100">
+          <BivouacButton type="submit" variant="primary" disabled={isLoading} className="flex-1">
+            {isLoading && !confirmDelete
+              ? <><Loader2 size={15} className="animate-spin" /> Sauvegarde…</>
+              : isEditing ? 'Modifier la zone' : 'Créer la zone'}
+          </BivouacButton>
+          <BivouacButton type="button" variant="outline" onClick={onClose} disabled={isLoading} className="flex-1">
             Annuler
-          </button>
+          </BivouacButton>
         </div>
+
+        {/* Suppression (mode édition uniquement) */}
+        {isEditing && (
+          <div className="pt-2 border-t border-gray-100">
+            {confirmDelete ? (
+              <div className="space-y-2">
+                <p className="text-sm text-red-700 font-medium text-center">Supprimer définitivement ?</p>
+                <div className="flex gap-2">
+                  <BivouacButton
+                    type="button"
+                    variant="destructive"
+                    onClick={handleDelete}
+                    disabled={isLoading}
+                    className="flex-1"
+                  >
+                    {isLoading ? <Loader2 size={15} className="animate-spin" /> : 'Oui, supprimer'}
+                  </BivouacButton>
+                  <BivouacButton
+                    type="button"
+                    variant="outline"
+                    onClick={() => setConfirmDelete(false)}
+                    disabled={isLoading}
+                    className="flex-1"
+                  >
+                    Annuler
+                  </BivouacButton>
+                </div>
+              </div>
+            ) : (
+              <BivouacButton
+                type="button"
+                variant="destructive"
+                onClick={() => setConfirmDelete(true)}
+                disabled={isLoading}
+                className="w-full bg-red-50 text-red-700 border border-red-200 hover:bg-red-100"
+              >
+                Supprimer cette zone
+              </BivouacButton>
+            )}
+          </div>
+        )}
       </form>
     </div>
   );
