@@ -202,50 +202,51 @@ app.post("/make-server-e51cba93/water-points", safeHandler(async (c: any) => {
       return c.json({ success: false, error: "Missing bounds: south, west, north, east" }, 400);
     }
 
-    const query = `
-      [out:json][timeout:${timeout}][maxsize:536870912];
-      (
-        node["amenity"="drinking_water"](${south},${west},${north},${east});
-        node["amenity"="water_point"](${south},${west},${north},${east});
-        node["natural"="spring"](${south},${west},${north},${east});
-        node["man_made"="water_well"](${south},${west},${north},${east});
-      );
-      out body qt;
-    `;
+    const query = `[out:json][timeout:${timeout}];(node["amenity"="drinking_water"](${south},${west},${north},${east});node["amenity"="water_point"](${south},${west},${north},${east});node["natural"="spring"](${south},${west},${north},${east});node["man_made"="water_well"](${south},${west},${north},${east}););out body qt;`;
 
     const ENDPOINTS = [
       'https://overpass-api.de/api/interpreter',
       'https://overpass.kumi.systems/api/interpreter',
       'https://overpass.openstreetmap.ru/api/interpreter',
+      'https://overpass.nchc.org.tw/api/interpreter',
     ];
+
+    const HEADERS = {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Accept': 'application/json',
+      'User-Agent': 'bivouac-app/1.0 (contact: github.com/PierreGR01/bivouac)',
+    };
 
     let lastError: string = 'No endpoint succeeded';
     for (const endpoint of ENDPOINTS) {
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 35000);
+      const timer = setTimeout(() => ctrl.abort(), 30000);
       try {
+        console.log(`🔍 Tentative Overpass: ${endpoint}`);
         const resp = await fetch(endpoint, {
           method: 'POST',
           body: `data=${encodeURIComponent(query)}`,
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          headers: HEADERS,
           signal: ctrl.signal,
         });
         clearTimeout(timer);
+        console.log(`📡 ${endpoint} → ${resp.status}`);
         if (resp.ok) {
           const data = await resp.json();
           console.log(`✅ Overpass proxy: ${(data.elements || []).length} éléments depuis ${endpoint}`);
           return c.json({ success: true, data });
         }
-        lastError = `HTTP ${resp.status} from ${endpoint}`;
-        console.warn(`⚠️ Overpass ${endpoint}: ${resp.status}`);
+        const bodyText = await resp.text().catch(() => '');
+        lastError = `HTTP ${resp.status} from ${endpoint}: ${bodyText.slice(0, 200)}`;
       } catch (err: any) {
         clearTimeout(timer);
-        lastError = err?.message || String(err);
+        lastError = `${endpoint}: ${err?.message || String(err)}`;
         console.warn(`⚠️ Overpass ${endpoint} erreur: ${lastError}`);
       }
     }
 
-    return c.json({ success: false, error: lastError }, 502);
+    console.error(`❌ Tous les endpoints Overpass ont échoué: ${lastError}`);
+    return c.json({ success: false, error: lastError }, 503);
   } catch (error) {
     console.error("Error proxying Overpass:", error);
     return c.json({ success: false, error: String(error) }, 500);
