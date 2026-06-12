@@ -157,7 +157,18 @@ export function getZoneRestrictionStatus(
     relevantZones: relevant.length,
     matchingZones: matching.length,
     point,
-    rawGeometryTypes: relevant.map(z => (z.geometry as unknown as Record<string, unknown>)?.type),
+    zones: relevant.map(z => {
+      const raw = z.geometry as unknown as Record<string, unknown>;
+      const inner = raw?.type === 'Feature'
+        ? (raw as GeoJSON.Feature).geometry as GeoJSON.Geometry | null
+        : raw as GeoJSON.Geometry;
+      const coords = inner?.type === 'Polygon'
+        ? (inner as GeoJSON.Polygon).coordinates[0].slice(0, 3)
+        : inner?.type === 'MultiPolygon'
+        ? (inner as GeoJSON.MultiPolygon).coordinates[0][0].slice(0, 3)
+        : null;
+      return { name: z.name, innerType: inner?.type, firstCoords: coords };
+    }),
   });
   const hasSchedule = (z: CustomZone) =>
     !!(z.time_range_start || z.time_range_end || z.period_start || z.period_end);
