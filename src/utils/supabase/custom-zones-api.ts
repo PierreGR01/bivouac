@@ -116,9 +116,20 @@ function isPointInGeoJSONRing(point: { lat: number; lng: number }, ring: number[
 }
 
 export function isPointInCustomZone(point: { lat: number; lng: number }, zone: CustomZone): boolean {
-  const feature = zone.geometry;
-  if (!feature?.geometry) return false;
-  const geom = feature.geometry as GeoJSON.Geometry;
+  const raw = zone.geometry as unknown;
+  if (!raw) return false;
+
+  // Supabase peut retourner soit un Feature GeoJSON, soit directement une géométrie
+  let geom: GeoJSON.Geometry | null = null;
+  const rawObj = raw as Record<string, unknown>;
+  if (rawObj.type === 'Feature') {
+    geom = (rawObj as GeoJSON.Feature).geometry as GeoJSON.Geometry;
+  } else if (rawObj.type === 'Polygon' || rawObj.type === 'MultiPolygon') {
+    geom = raw as GeoJSON.Geometry;
+  }
+
+  if (!geom) return false;
+
   if (geom.type === 'Polygon') {
     return isPointInGeoJSONRing(point, (geom as GeoJSON.Polygon).coordinates[0]);
   }
@@ -135,10 +146,19 @@ export function getZoneRestrictionStatus(
   customZones: CustomZone[]
 ): { blocked: CustomZone[]; warnings: CustomZone[] } {
   const relevant = customZones.filter(z =>
-    z.restriction_types.includes('bivouac_forbidden') ||
-    z.restriction_types.includes('camping_forbidden')
+    Array.isArray(z.restriction_types) && (
+      z.restriction_types.includes('bivouac_forbidden') ||
+      z.restriction_types.includes('camping_forbidden')
+    )
   );
   const matching = relevant.filter(z => isPointInCustomZone(point, z));
+  console.log('[ZoneCheck]', {
+    totalZones: customZones.length,
+    relevantZones: relevant.length,
+    matchingZones: matching.length,
+    point,
+    rawGeometryTypes: relevant.map(z => (z.geometry as unknown as Record<string, unknown>)?.type),
+  });
   const hasSchedule = (z: CustomZone) =>
     !!(z.time_range_start || z.time_range_end || z.period_start || z.period_end);
   return {
