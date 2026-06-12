@@ -7,7 +7,7 @@ import { FilterOptions } from './components/FilterPanel';
 import { NewPoi } from './components/AddPoiPanel';
 import { MOBILE_BREAKPOINT_PX } from './constants';
 import { useAuth } from './contexts/AuthContext';
-import { Tent, Plus, Loader2, AlertCircle, Settings, Search, SlidersHorizontal, BanIcon, Droplet, Maximize, Minimize, ChevronUp, ChevronDown, Snowflake, Locate, Lock } from 'lucide-react';
+import { Tent, Plus, Loader2, AlertCircle, Settings, Search, SlidersHorizontal, BanIcon, Droplet, ChevronUp, ChevronDown, Snowflake, Locate, Lock } from 'lucide-react';
 import { usePois } from './hooks/usePois';
 import { useMapLayers } from './hooks/useMapLayers';
 import { useFilters } from './hooks/useFilters';
@@ -43,63 +43,8 @@ export default function App() {
   const [editingZone, setEditingZone] = useState<CustomZone | null>(null);
   const [editingOsmZone, setEditingOsmZone] = useState<ProtectedArea | null>(null);
   const [showMobileOptions, setShowMobileOptions] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-
-  const fullscreenSupported =
-    typeof document.documentElement.requestFullscreen === 'function' ||
-    typeof (document.documentElement as any).webkitRequestFullscreen === 'function';
-
-
-  // Auto-fullscreen on mobile on first interaction
-  useEffect(() => {
-    if (window.innerWidth < MOBILE_BREAKPOINT_PX && fullscreenSupported) {
-      const handleFirstClick = () => {
-        const elem = document.documentElement;
-        if (!document.fullscreenElement) {
-          if (elem.requestFullscreen) {
-            elem.requestFullscreen().catch(err => devLog.log('Plein écran impossible:', err));
-          } else if ((elem as any).webkitRequestFullscreen) {
-            (elem as any).webkitRequestFullscreen();
-          }
-        }
-        document.removeEventListener('click', handleFirstClick);
-      };
-      document.addEventListener('click', handleFirstClick);
-      return () => document.removeEventListener('click', handleFirstClick);
-    }
-  }, [fullscreenSupported]);
-
-  // Track fullscreen state
-  useEffect(() => {
-    const handler = () => {
-      setIsFullscreen(!!document.fullscreenElement || !!(document as any).webkitFullscreenElement);
-    };
-    document.addEventListener('fullscreenchange', handler);
-    document.addEventListener('webkitfullscreenchange', handler);
-    return () => {
-      document.removeEventListener('fullscreenchange', handler);
-      document.removeEventListener('webkitfullscreenchange', handler);
-    };
-  }, []);
 
   // --- Composed handlers ---
-
-  const toggleFullscreen = () => {
-    const isCurrently = document.fullscreenElement || (document as any).webkitFullscreenElement;
-    if (!isCurrently) {
-      const elem = document.documentElement;
-      if (elem.requestFullscreen) {
-        elem.requestFullscreen().catch(() => toast.error('Plein écran non supporté sur ce navigateur'));
-      } else if ((elem as any).webkitRequestFullscreen) {
-        (elem as any).webkitRequestFullscreen();
-      } else {
-        toast.error('Plein écran non supporté sur ce navigateur');
-      }
-    } else {
-      if (document.exitFullscreen) document.exitFullscreen();
-      else if ((document as any).webkitExitFullscreen) (document as any).webkitExitFullscreen();
-    }
-  };
 
   const handleLocationClick = (location: typeof pois.selectedLocation) => {
     pois.setSelectedLocation(location);
@@ -197,12 +142,17 @@ export default function App() {
             isAddingMode={isAddingMode}
             isRoutingMode={filters.isRoutingMode}
             isPanelOpen={isPanelOpen}
+            isAdmin={isAdmin}
+            currentUser={currentUser}
+            onLoginClick={() => setShowLoginPanel(!showLoginPanel)}
+            onToggleZones={handleToggleCustomZones}
+            showCustomZonesEditor={showCustomZonesEditor}
           />
         )}
       </div>
 
-      {/* Top-right buttons */}
-      <div className="absolute top-6 right-6 z-[600] flex items-center gap-3">
+      {/* Top-right buttons — desktop only */}
+      <div className="hidden md:flex absolute top-6 right-6 z-[600] items-center gap-3">
         {!pois.serverAvailable && !isAddingMode && (
           <button
             onClick={() => setShowDiagnostic(!showDiagnostic)}
@@ -456,68 +406,70 @@ export default function App() {
 
       <Toaster position="bottom-center" />
 
-      {/* Mobile floating action buttons */}
+      {/* Mobile: controls toggle — bottom right */}
       {!isAddingMode && (
-        <div className="md:hidden fixed bottom-11 right-6 z-[600] flex flex-col gap-3">
-          <div className="flex flex-col gap-3 items-end">
-            {showMobileOptions && (
-              <div className="flex flex-col gap-3 animate-in slide-in-from-bottom-2 duration-200">
+        <div className="md:hidden fixed bottom-6 right-6 z-[600] flex flex-col items-end gap-2">
+          {/* Expanded controls panel — icons only, compact */}
+          {showMobileOptions && (
+            <div className="bg-white rounded-2xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-2 duration-200">
+              <button
+                onClick={map.toggleProtectedAreas}
+                className={`w-11 h-11 flex items-center justify-center transition-colors ${
+                  map.showProtectedAreas ? 'bg-red-50' : 'hover:bg-gray-50'
+                }`}
+                title="Zones réglementées"
+              >
+                <BanIcon className={`w-5 h-5 ${map.showProtectedAreas ? 'text-red-600' : 'text-gray-600'}`} />
+              </button>
+
+              <button
+                onClick={map.toggleWaterPoints}
+                className={`w-11 h-11 flex items-center justify-center transition-colors ${
+                  map.showWaterPoints ? 'bg-sky-50' : 'hover:bg-gray-50'
+                }`}
+                title="Points d'eau"
+              >
+                <Droplet className={`w-5 h-5 ${map.showWaterPoints ? 'text-sky-600' : 'text-gray-600'}`} />
+              </button>
+
+              <button
+                onClick={map.toggleSatellite}
+                className={`w-11 h-11 flex items-center justify-center transition-colors ${
+                  map.satelliteMode ? 'bg-emerald-50' : 'hover:bg-gray-50'
+                }`}
+                title={map.satelliteMode ? 'Vue topographique' : 'Vue satellite'}
+              >
+                <svg className={`w-5 h-5 ${map.satelliteMode ? 'text-emerald-700' : 'text-gray-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </button>
+
+              <button
+                onClick={map.toggleWinter}
+                className={`w-11 h-11 flex items-center justify-center transition-colors ${
+                  map.winterMode ? 'bg-blue-50' : 'hover:bg-gray-50'
+                }`}
+                title={map.winterMode ? 'Désactiver le mode hiver' : 'Activer le mode hiver'}
+              >
+                <Snowflake className={`w-5 h-5 ${map.winterMode ? 'text-blue-600' : 'text-gray-600'}`} />
+              </button>
+
+              {isAdmin && (
                 <button
-                  onClick={map.toggleProtectedAreas}
-                  className={`w-14 h-14 rounded-full shadow-xl flex items-center justify-center transition-colors ${
-                    map.showProtectedAreas ? 'bg-red-600 text-white' : 'bg-white text-gray-800 hover:bg-gray-50'
+                  onClick={() => { handleToggleCustomZones(); setShowMobileOptions(false); }}
+                  className={`w-11 h-11 flex items-center justify-center transition-colors ${
+                    showCustomZonesEditor ? 'bg-purple-50' : 'hover:bg-gray-50'
                   }`}
-                  title="Zones réglementées"
+                  title="Zones custom"
                 >
-                  <BanIcon className="w-6 h-6" />
+                  <Settings className={`w-5 h-5 ${showCustomZonesEditor ? 'text-purple-600' : 'text-gray-600'}`} />
                 </button>
+              )}
 
-                <button
-                  onClick={map.toggleWaterPoints}
-                  className={`w-14 h-14 rounded-full shadow-xl flex items-center justify-center transition-colors ${
-                    map.showWaterPoints ? 'bg-sky-600 text-white' : 'bg-white text-gray-800 hover:bg-gray-50'
-                  }`}
-                  title="Points d'eau"
-                >
-                  <Droplet className="w-6 h-6" />
-                </button>
-
-                <button
-                  onClick={map.toggleSatellite}
-                  className={`w-14 h-14 rounded-full shadow-xl flex items-center justify-center transition-colors ${
-                    map.satelliteMode ? 'bg-emerald-700 text-white' : 'bg-white text-gray-800 hover:bg-gray-50'
-                  }`}
-                  title={map.satelliteMode ? 'Vue topographique' : 'Vue satellite'}
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </button>
-
-                <button
-                  onClick={map.toggleWinter}
-                  className={`w-14 h-14 rounded-full shadow-xl flex items-center justify-center transition-colors ${
-                    map.winterMode ? 'bg-blue-600 text-white' : 'bg-white text-gray-800 hover:bg-gray-50'
-                  }`}
-                  title={map.winterMode ? 'Désactiver le mode hiver' : 'Activer le mode hiver'}
-                >
-                  <Snowflake className="w-6 h-6" />
-                </button>
-
-                {isAdmin && (
-                  <button
-                    onClick={handleToggleCustomZones}
-                    className={`w-14 h-14 rounded-full shadow-xl flex items-center justify-center transition-colors ${
-                      showCustomZonesEditor ? 'bg-purple-600 text-white' : 'bg-white text-gray-800 hover:bg-gray-50'
-                    }`}
-                    title="Créer une zone réglementée"
-                  >
-                    <Settings className="w-6 h-6" />
-                  </button>
-                )}
-
+              <div className="border-t border-gray-100">
                 <button
                   onClick={() => {
+                    setShowMobileOptions(false);
                     if ('geolocation' in navigator) {
                       navigator.geolocation.getCurrentPosition(
                         ({ coords }) => (window as any).__mapCenterTo?.(coords.latitude, coords.longitude),
@@ -527,55 +479,53 @@ export default function App() {
                       toast.error('La géolocalisation n\'est pas supportée.');
                     }
                   }}
-                  className="w-14 h-14 bg-white rounded-full shadow-xl flex items-center justify-center hover:bg-gray-50 transition-colors"
+                  className="w-11 h-11 flex items-center justify-center hover:bg-gray-50 transition-colors"
                   title="Ma position"
                 >
-                  <Locate className="w-6 h-6 text-gray-800" />
+                  <Locate className="w-5 h-5 text-gray-600" />
                 </button>
 
                 <button
-                  onClick={() => filters.setShowFilters(!filters.showFilters)}
-                  className="relative w-14 h-14 bg-white rounded-full shadow-xl flex items-center justify-center hover:bg-gray-50 transition-colors"
+                  onClick={() => { filters.setShowFilters(!filters.showFilters); setShowMobileOptions(false); }}
+                  className="relative w-11 h-11 flex items-center justify-center hover:bg-gray-50 transition-colors"
                   title="Filtres"
                 >
-                  <SlidersHorizontal className="w-6 h-6 text-gray-800" />
+                  <SlidersHorizontal className="w-5 h-5 text-gray-600" />
                   {filters.activeFiltersCount > 0 && (
-                    <div className="absolute -top-1 -right-1 bg-emerald-600 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center shadow-md">
+                    <div className="absolute top-1 right-1 bg-emerald-600 text-white text-xs font-bold rounded-full w-4 h-4 flex items-center justify-center">
                       {filters.activeFiltersCount}
                     </div>
                   )}
                 </button>
               </div>
-            )}
-
-            <button
-              onClick={() => setShowMobileOptions(!showMobileOptions)}
-              className="w-14 h-14 bg-gray-800 text-white rounded-full shadow-xl flex items-center justify-center hover:bg-gray-700 transition-colors"
-              title={showMobileOptions ? 'Masquer les options' : 'Plus d\'options'}
-            >
-              {showMobileOptions ? <ChevronDown className="w-6 h-6" /> : <ChevronUp className="w-6 h-6" />}
-            </button>
-          </div>
-
-          {fullscreenSupported && (
-            <button
-              onClick={toggleFullscreen}
-              className="w-14 h-14 bg-white rounded-full shadow-xl flex items-center justify-center hover:bg-gray-50 transition-colors"
-              title={isFullscreen ? 'Quitter le plein écran' : 'Plein écran'}
-            >
-              {isFullscreen ? <Minimize className="w-6 h-6 text-gray-800" /> : <Maximize className="w-6 h-6 text-gray-800" />}
-            </button>
+            </div>
           )}
 
-          {!filters.isRoutingMode && (
-            <button
-              onClick={handleOpenAddPanel}
-              className="w-14 h-14 bg-emerald-600 text-white rounded-full shadow-xl flex items-center justify-center hover:bg-emerald-700 transition-colors"
-              title="Ajouter un spot"
-            >
-              <Plus className="w-6 h-6" />
-            </button>
-          )}
+          {/* Toggle button — rounded square, desktop-panel style */}
+          <button
+            onClick={() => setShowMobileOptions(!showMobileOptions)}
+            className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-colors shadow-lg ${
+              showMobileOptions
+                ? 'bg-gray-200 text-gray-700'
+                : 'bg-white text-gray-600 hover:bg-gray-50'
+            }`}
+            title={showMobileOptions ? 'Masquer les options' : 'Plus d\'options'}
+          >
+            {showMobileOptions ? <ChevronDown className="w-5 h-5" /> : <ChevronUp className="w-5 h-5" />}
+          </button>
+        </div>
+      )}
+
+      {/* Mobile: Add spot button — bottom center */}
+      {!isAddingMode && !filters.isRoutingMode && (
+        <div className="md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-[600] pointer-events-auto">
+          <button
+            onClick={handleOpenAddPanel}
+            className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 transition-colors shadow-lg"
+          >
+            <Plus className="w-5 h-5" />
+            <span className="text-sm">Ajouter un spot</span>
+          </button>
         </div>
       )}
 
