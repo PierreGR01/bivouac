@@ -72,8 +72,8 @@ export function SearchBar({
               }`}
             >
               <Search className={`w-[17px] h-[17px] flex-shrink-0 ${showSearchInput ? 'text-emerald-600' : 'text-gray-600'}`} />
-              <span className={`text-[15px] font-medium truncate ${searchTerm ? 'text-gray-800' : 'text-gray-500'}`}>
-                {searchTerm || 'Rechercher...'}
+              <span className={`text-[15px] font-medium truncate ${searchTerm ? 'text-gray-800' : 'text-gray-600'}`}>
+                {searchTerm || 'Recherche'}
               </span>
             </button>
 
