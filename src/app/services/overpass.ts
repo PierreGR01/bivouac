@@ -511,7 +511,7 @@ function parseWaterPoints(data: any): WaterPoint[] {
       waterType = 'waterfall';
     } else if (tags.natural === 'water') {
       waterType = 'uncontrolled_water';
-    } else if (tags.waterway === 'stream' || tags.waterway === 'river') {
+    } else if (tags.waterway && ['stream', 'river', 'canal', 'ditch', 'drain', 'creek'].includes(tags.waterway)) {
       waterType = 'stream';
     }
 
@@ -653,7 +653,7 @@ export async function fetchNearbyStreams(
   const s = lat - radiusDeg, n = lat + radiusDeg;
   const w = lng - radiusDeg, e = lng + radiusDeg;
 
-  const query = `[out:json][timeout:10];(way["waterway"="stream"]["access"!="private"](${s},${w},${n},${e});way["waterway"="river"]["access"!="private"](${s},${w},${n},${e}););out tags center qt;`;
+  const query = `[out:json][timeout:10];(way["waterway"~"^(stream|river|canal|ditch|drain|creek)$"]["access"!="private"](${s},${w},${n},${e}););out tags center qt;`;
 
   const EDGE_URL = (import.meta as any).env?.VITE_EDGE_FUNCTION_URL;
   const ANON_KEY = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY;
