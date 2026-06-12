@@ -317,7 +317,8 @@ export default function App() {
           onWinterModeToggle={map.toggleWinter}
           onWaterStateChange={({ isLoading, showButton }) => {
             map.setIsLoadingWaterPoints(isLoading);
-            map.setShowWaterPointsButton(showButton && map.showWaterPoints);
+            // La condition de rendu gère déjà map.showWaterPoints — pas besoin de la tester ici
+            map.setShowWaterPointsButton(showButton);
           }}
           onWaterPointsLoaded={map.setWaterPoints}
           onWaterPointsToggle={map.toggleWaterPoints}

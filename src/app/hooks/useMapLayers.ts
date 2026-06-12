@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchProtectedAreas, ProtectedArea } from '../services/protected-areas';
 import { fetchCustomZones } from '../../utils/supabase/custom-zones-api';
@@ -22,7 +22,15 @@ export function useMapLayers() {
   const [showProtectedAreas, setShowProtectedAreas] = useState(false);
   const [showProtectedAreasButton, setShowProtectedAreasButton] = useState(false);
   const [isLoadingProtectedAreas, setIsLoadingProtectedAreas] = useState(false);
-  const [mapBounds, setMapBoundsState] = useState<MapBounds | null>(null);
+
+  // Refs = toujours la valeur courante, sans problème de closure stale
+  const mapBoundsRef = useRef<MapBounds | null>(null);
+  const showProtectedAreasRef = useRef(false);
+  const showWaterPointsRef = useRef(false);
+
+  // Synchroniser les refs avec les states
+  useEffect(() => { showProtectedAreasRef.current = showProtectedAreas; }, [showProtectedAreas]);
+  useEffect(() => { showWaterPointsRef.current = showWaterPoints; }, [showWaterPoints]);
 
   const customZonesQuery = useQuery({
     queryKey: ['customZones'],
@@ -42,6 +50,34 @@ export function useMapLayers() {
     enabled: false,
     staleTime: Infinity,
   });
+
+  // Appelé par App.tsx sur chaque moveend — utilise des refs pour éviter les closures stales
+  const setMapBounds = useCallback((bounds: MapBounds) => {
+    mapBoundsRef.current = bounds;
+    // Réafficher les boutons si les toggles sont actifs
+    if (showProtectedAreasRef.current) setShowProtectedAreasButton(true);
+    if (showWaterPointsRef.current) setShowWaterPointsButton(true);
+  }, []);
+
+  // Charge les zones protégées pour le viewport courant (toujours les bounds frais via ref)
+  const loadProtectedAreasForView = useCallback(async () => {
+    const bounds = mapBoundsRef.current;
+    if (!bounds) return;
+    setShowProtectedAreasButton(false);
+    setIsLoadingProtectedAreas(true);
+    try {
+      devLog.log('🗻 Chargement zones protégées (viewport)...');
+      const areas = await fetchProtectedAreas(bounds);
+      const hiddenIds = new Set(hiddenOsmQuery.data ?? []);
+      const filtered = areas.filter((a: ProtectedArea) => !hiddenIds.has(a.id));
+      devLog.log(`✅ ${filtered.length} zones protégées`);
+      queryClient.setQueryData(['protectedAreas'], filtered);
+    } catch (err) {
+      devLog.warn('⚠️ Erreur zones protégées:', err);
+    } finally {
+      setIsLoadingProtectedAreas(false);
+    }
+  }, [hiddenOsmQuery.data, queryClient]);
 
   const toggleSatellite = () => {
     setSatelliteMode(prev => {
@@ -67,40 +103,10 @@ export function useMapLayers() {
   const toggleProtectedAreas = () => {
     setShowProtectedAreas(prev => {
       const next = !prev;
-      if (next) setShowProtectedAreasButton(true);
-      else setShowProtectedAreasButton(false);
+      setShowProtectedAreasButton(next); // Affiche le bouton à l'activation, le cache à la désactivation
       return next;
     });
   };
-
-  // Appelé par App.tsx sur chaque mouvement de carte
-  const setMapBounds = useCallback((bounds: MapBounds) => {
-    setMapBoundsState(bounds);
-    // Si les zones protégées sont actives → proposer de recharger
-    setShowProtectedAreas(current => {
-      if (current) setShowProtectedAreasButton(true);
-      return current;
-    });
-  }, []);
-
-  // Charge les zones protégées pour le viewport courant
-  const loadProtectedAreasForView = useCallback(async () => {
-    if (!mapBounds) return;
-    setShowProtectedAreasButton(false);
-    setIsLoadingProtectedAreas(true);
-    try {
-      devLog.log('🗻 Chargement zones protégées (viewport)...');
-      const areas = await fetchProtectedAreas(mapBounds);
-      const hiddenIds = new Set(hiddenOsmQuery.data ?? []);
-      const filtered = areas.filter(a => !hiddenIds.has(a.id));
-      devLog.log(`✅ ${filtered.length} zones protégées`);
-      queryClient.setQueryData(['protectedAreas'], filtered);
-    } catch (err) {
-      devLog.warn('⚠️ Erreur chargement zones protégées:', err);
-    } finally {
-      setIsLoadingProtectedAreas(false);
-    }
-  }, [mapBounds, hiddenOsmQuery.data, queryClient]);
 
   return {
     satelliteMode,
