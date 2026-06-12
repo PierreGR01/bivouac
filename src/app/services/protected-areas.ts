@@ -198,12 +198,17 @@ async function executeProtectedAreasQuery(
     const edgeFunctionUrl = import.meta.env.VITE_EDGE_FUNCTION_URL;
     let data: any = null;
 
+    const anonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY;
+
     // Priorité : proxy Edge Function (évite CORS en production)
-    if (edgeFunctionUrl) {
+    if (edgeFunctionUrl && anonKey) {
       try {
         const proxyResp = await fetch(`${edgeFunctionUrl}/protected-areas`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${anonKey}`,
+          },
           body: JSON.stringify({ south, west, north, east, timeout }),
           signal: controller.signal,
         });
