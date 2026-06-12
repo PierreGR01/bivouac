@@ -1,8 +1,17 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { fetchAlpesProtectedAreas, ProtectedArea } from '../services/protected-areas';
+import { fetchProtectedAreas, ProtectedArea } from '../services/protected-areas';
 import { fetchCustomZones, CustomZone } from '../../utils/supabase/custom-zones-api';
+import { fetchHiddenOsmZoneIds } from '../../utils/supabase/hidden-osm-zones-api';
 import { devLog } from '../utils/logger';
+
+type MapBounds = { south: number; west: number; north: number; east: number };
+
+// Arrondit les bounds à 1 décimale (~10km) pour éviter trop de requêtes
+function roundBoundsKey(b: MapBounds): string {
+  const r = (v: number) => Math.round(v * 10) / 10;
+  return `${r(b.south)},${r(b.west)},${r(b.north)},${r(b.east)}`;
+}
 
 export function useMapLayers() {
   const [satelliteMode, setSatelliteMode] = useState(false);
@@ -15,29 +24,34 @@ export function useMapLayers() {
   const [waterPoints, setWaterPoints] = useState<any[]>([]);
 
   const [showProtectedAreas, setShowProtectedAreas] = useState(false);
+  const [mapBounds, setMapBounds] = useState<MapBounds | null>(null);
 
   const customZonesQuery = useQuery({
     queryKey: ['customZones'],
-    queryFn: async () => {
-      const zones = await fetchCustomZones();
-      return zones;
-    },
+    queryFn: fetchCustomZones,
     staleTime: 10 * 60 * 1000,
   });
 
+  const hiddenOsmQuery = useQuery({
+    queryKey: ['hiddenOsmZones'],
+    queryFn: fetchHiddenOsmZoneIds,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const boundsKey = mapBounds ? roundBoundsKey(mapBounds) : null;
+
   const protectedAreasQuery = useQuery({
-    queryKey: ['protectedAreas'],
+    queryKey: ['protectedAreas', boundsKey],
     queryFn: async () => {
-      devLog.log('🗻 Chargement des zones protégées (région Alpes)...');
-      const areas = await fetchAlpesProtectedAreas();
-      if (areas.length === 0) {
-        devLog.log('⚠️ Aucune zone protégée trouvée');
-      } else {
-        devLog.log(`✅ ${areas.length} zones protégées chargées (Alpes)`);
-      }
-      return areas;
+      if (!mapBounds) return [];
+      devLog.log('🗻 Chargement zones protégées (viewport)...');
+      const areas = await fetchProtectedAreas(mapBounds);
+      const hiddenIds = new Set(hiddenOsmQuery.data ?? []);
+      const filtered = areas.filter(a => !hiddenIds.has(a.id));
+      devLog.log(`✅ ${filtered.length} zones protégées (${areas.length - filtered.length} masquées)`);
+      return filtered;
     },
-    enabled: false,
+    enabled: showProtectedAreas && !!mapBounds,
     staleTime: 30 * 60 * 1000,
   });
 
@@ -63,11 +77,7 @@ export function useMapLayers() {
   };
 
   const toggleProtectedAreas = () => {
-    const next = !showProtectedAreas;
-    if (next && (protectedAreasQuery.data ?? []).length === 0) {
-      protectedAreasQuery.refetch();
-    }
-    setShowProtectedAreas(next);
+    setShowProtectedAreas(prev => !prev);
   };
 
   return {
@@ -87,6 +97,7 @@ export function useMapLayers() {
     setWaterPoints,
     showProtectedAreas,
     setShowProtectedAreas,
+    setMapBounds,
     allProtectedAreas: protectedAreasQuery.data ?? [],
     isLoadingProtectedAreas: protectedAreasQuery.isFetching,
     customZones: customZonesQuery.data ?? [],

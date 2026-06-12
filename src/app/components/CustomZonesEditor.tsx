@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { X, Loader2, Upload, Hexagon, Square, Check } from 'lucide-react';
 import { CustomZoneForm } from './CustomZoneForm';
 import { CustomZone } from '../../utils/supabase/custom-zones-api';
+import { ProtectedArea } from '../services/protected-areas';
 
 type DrawTool = 'polygon' | 'rectangle';
 
@@ -11,13 +12,25 @@ interface CustomZonesEditorProps {
   onDrawingToolChange?: (tool: DrawTool) => void;
   drawnGeometry?: GeoJSON.Feature | null;
   editingZone?: CustomZone | null;
+  editingOsmZone?: ProtectedArea | null;
 }
 
-export function CustomZonesEditor({ onClose, onDrawingToolChange, drawnGeometry, editingZone }: CustomZonesEditorProps) {
+function osmZoneToGeojson(area: ProtectedArea): GeoJSON.Feature {
+  return {
+    type: 'Feature',
+    properties: {},
+    geometry: {
+      type: 'Polygon',
+      coordinates: [area.geometry.map(p => [p.lng, p.lat])],
+    },
+  };
+}
+
+export function CustomZonesEditor({ onClose, onDrawingToolChange, drawnGeometry, editingZone, editingOsmZone }: CustomZonesEditorProps) {
   const { isAdmin } = useAuth();
   const [activeTool, setActiveTool] = useState<DrawTool>('polygon');
   const [selectedGeometry, setSelectedGeometry] = useState<GeoJSON.Feature | null>(
-    editingZone?.geometry ?? null
+    editingZone?.geometry ?? (editingOsmZone ? osmZoneToGeojson(editingOsmZone) : null)
   );
   const [isLoading, setIsLoading] = useState(false);
 
@@ -62,10 +75,13 @@ export function CustomZonesEditor({ onClose, onDrawingToolChange, drawnGeometry,
   };
 
   if (selectedGeometry) {
+    const osmName = editingOsmZone?.name ?? editingOsmZone?.tags?.['name:fr'] ?? editingOsmZone?.tags?.name;
     return (
       <CustomZoneForm
         geometry={selectedGeometry}
         zone={editingZone ?? undefined}
+        osmZoneId={editingOsmZone?.id}
+        prefill={editingOsmZone ? { name: osmName } : undefined}
         onClose={() => { setSelectedGeometry(null); onClose(); }}
         onSuccess={() => { setSelectedGeometry(null); onClose(); }}
       />

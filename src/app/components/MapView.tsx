@@ -29,6 +29,7 @@ interface MapViewProps {
   protectedAreas?: ProtectedArea[];
   customZones?: CustomZone[];
   onZoneClick?: (zone: CustomZone) => void;
+  onProtectedAreaClick?: (area: ProtectedArea) => void;
   onMapMove?: (bounds: any) => void;
   onWaterPointsToggle?: () => void;
   onProtectedAreasToggle?: () => void;
@@ -61,6 +62,7 @@ export function MapView({
   protectedAreas = [],
   customZones = [],
   onZoneClick,
+  onProtectedAreaClick,
   onMapMove,
   onWaterPointsToggle,
   onProtectedAreasToggle,
@@ -990,12 +992,17 @@ export function MapView({
         </div>
       `;
 
-      polygon.bindPopup(popupContent);
+      if (onProtectedAreaClick) {
+        polygon.on('click', () => onProtectedAreaClick(area));
+      } else {
+        polygon.bindPopup(popupContent);
+      }
+
       polygon.addTo(map);
       (polygon as any)._zIndex = zIndex;
       protectedAreasLayersRef.current.push(polygon);
     });
-  }, [protectedAreas, showProtectedAreas]);
+  }, [protectedAreas, showProtectedAreas, onProtectedAreaClick]);
 
   // Afficher les zones réglementées personnalisées sur la carte
   useEffect(() => {

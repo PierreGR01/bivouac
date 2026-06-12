@@ -3,6 +3,7 @@ import { X, Loader2, AlertCircle } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { createCustomZone, updateCustomZone, deleteCustomZone, CustomZone } from '../../utils/supabase/custom-zones-api';
+import { hideOsmZone } from '../../utils/supabase/hidden-osm-zones-api';
 import { BivouacButton } from './ui/bivouac-button';
 
 interface CustomZoneFormProps {
@@ -10,6 +11,8 @@ interface CustomZoneFormProps {
   onClose: () => void;
   onSuccess: () => void;
   zone?: CustomZone;
+  osmZoneId?: string;
+  prefill?: { name?: string };
 }
 
 const RESTRICTION_OPTIONS = [
@@ -35,12 +38,13 @@ function Toggle({ enabled, onChange, disabled }: { enabled: boolean; onChange: (
   );
 }
 
-export function CustomZoneForm({ geometry, onClose, onSuccess, zone }: CustomZoneFormProps) {
+export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, prefill }: CustomZoneFormProps) {
   const { currentUser } = useAuth();
   const queryClient = useQueryClient();
   const isEditing = !!zone;
+  const isOsmZone = !!osmZoneId;
 
-  const [name, setName] = useState(zone?.name ?? '');
+  const [name, setName] = useState(zone?.name ?? prefill?.name ?? '');
   const [description, setDescription] = useState(zone?.description ?? '');
   const [restrictionTypes, setRestrictionTypes] = useState<string[]>(
     zone?.restriction_types ?? ['camping_forbidden']
@@ -100,6 +104,12 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone }: CustomZon
         await updateCustomZone(zone.id, payload);
       } else {
         await createCustomZone(payload);
+        // Si zone OSM : masquer l'original après création de la copie custom
+        if (osmZoneId) {
+          await hideOsmZone(osmZoneId);
+          await queryClient.invalidateQueries({ queryKey: ['hiddenOsmZones'] });
+          await queryClient.invalidateQueries({ queryKey: ['protectedAreas'] });
+        }
       }
       await queryClient.invalidateQueries({ queryKey: ['customZones'] });
       onSuccess();
@@ -111,11 +121,16 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone }: CustomZon
   };
 
   const handleDelete = async () => {
-    if (!zone) return;
     setIsLoading(true);
     try {
-      await deleteCustomZone(zone.id);
-      await queryClient.invalidateQueries({ queryKey: ['customZones'] });
+      if (isOsmZone && osmZoneId) {
+        await hideOsmZone(osmZoneId);
+        await queryClient.invalidateQueries({ queryKey: ['hiddenOsmZones'] });
+        await queryClient.invalidateQueries({ queryKey: ['protectedAreas'] });
+      } else if (zone) {
+        await deleteCustomZone(zone.id);
+        await queryClient.invalidateQueries({ queryKey: ['customZones'] });
+      }
       onSuccess();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur lors de la suppression');
@@ -282,29 +297,25 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone }: CustomZon
           </BivouacButton>
         </div>
 
-        {/* Suppression (mode édition uniquement) */}
-        {isEditing && (
+        {/* Suppression / Désactivation */}
+        {(isEditing || isOsmZone) && (
           <div className="pt-2 border-t border-gray-100">
             {confirmDelete ? (
               <div className="space-y-2">
-                <p className="text-sm text-red-700 font-medium text-center">Supprimer définitivement ?</p>
+                {isOsmZone && (
+                  <div className="bg-red-50 border border-red-300 rounded-lg p-3">
+                    <p className="text-sm text-red-800 font-bold">⚠️ Action irréversible</p>
+                    <p className="text-xs text-red-700 mt-1">Cette zone OSM sera masquée définitivement pour tous les utilisateurs. Cette action ne peut pas être annulée.</p>
+                  </div>
+                )}
+                <p className="text-sm text-red-700 font-medium text-center">
+                  {isOsmZone ? 'Confirmer la désactivation ?' : 'Supprimer définitivement ?'}
+                </p>
                 <div className="flex gap-2">
-                  <BivouacButton
-                    type="button"
-                    variant="destructive"
-                    onClick={handleDelete}
-                    disabled={isLoading}
-                    className="flex-1"
-                  >
-                    {isLoading ? <Loader2 size={15} className="animate-spin" /> : 'Oui, supprimer'}
+                  <BivouacButton type="button" variant="destructive" onClick={handleDelete} disabled={isLoading} className="flex-1">
+                    {isLoading ? <Loader2 size={15} className="animate-spin" /> : (isOsmZone ? 'Oui, désactiver' : 'Oui, supprimer')}
                   </BivouacButton>
-                  <BivouacButton
-                    type="button"
-                    variant="outline"
-                    onClick={() => setConfirmDelete(false)}
-                    disabled={isLoading}
-                    className="flex-1"
-                  >
+                  <BivouacButton type="button" variant="outline" onClick={() => setConfirmDelete(false)} disabled={isLoading} className="flex-1">
                     Annuler
                   </BivouacButton>
                 </div>
@@ -317,7 +328,7 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone }: CustomZon
                 disabled={isLoading}
                 className="w-full bg-red-50 text-red-700 border border-red-200 hover:bg-red-100"
               >
-                Supprimer cette zone
+                {isOsmZone ? 'Désactiver cette zone' : 'Supprimer cette zone'}
               </BivouacButton>
             )}
           </div>

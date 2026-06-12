@@ -12,6 +12,7 @@ import { usePois } from './hooks/usePois';
 import { useMapLayers } from './hooks/useMapLayers';
 import { useFilters } from './hooks/useFilters';
 import { CustomZone } from '../utils/supabase/custom-zones-api';
+import { ProtectedArea } from './services/protected-areas';
 
 const PoiDetailsPanel = React.lazy(() => import('./components/PoiDetailsPanel').then(m => ({ default: m.PoiDetailsPanel })));
 const AddPoiPanel = React.lazy(() => import('./components/AddPoiPanel').then(m => ({ default: m.AddPoiPanel })));
@@ -40,6 +41,7 @@ export default function App() {
   const [showLoginPanel, setShowLoginPanel] = useState(false);
   const [showCustomZonesEditor, setShowCustomZonesEditor] = useState(false);
   const [editingZone, setEditingZone] = useState<CustomZone | null>(null);
+  const [editingOsmZone, setEditingOsmZone] = useState<ProtectedArea | null>(null);
   const [showMobileOptions, setShowMobileOptions] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -164,6 +166,15 @@ export default function App() {
   const handleZoneClick = (zone: CustomZone) => {
     if (!isAdmin) return;
     setEditingZone(zone);
+    setEditingOsmZone(null);
+    setShowCustomZonesEditor(true);
+    setIsDrawingMode(false);
+  };
+
+  const handleOsmZoneClick = (area: ProtectedArea) => {
+    if (!isAdmin) return;
+    setEditingOsmZone(area);
+    setEditingZone(null);
     setShowCustomZonesEditor(true);
     setIsDrawingMode(false);
   };
@@ -298,6 +309,8 @@ export default function App() {
           protectedAreas={map.allProtectedAreas}
           customZones={map.customZones}
           onZoneClick={isAdmin ? handleZoneClick : undefined}
+          onProtectedAreaClick={isAdmin ? handleOsmZoneClick : undefined}
+          onMapMove={(bounds) => map.setMapBounds(bounds)}
           satelliteMode={map.satelliteMode}
           onSatelliteModeToggle={map.toggleSatellite}
           winterMode={map.winterMode}
@@ -564,10 +577,12 @@ export default function App() {
             setIsDrawingMode(false);
             setDrawnGeometry(null);
             setEditingZone(null);
+            setEditingOsmZone(null);
           }}
           onDrawingToolChange={setDrawTool}
           drawnGeometry={drawnGeometry}
           editingZone={editingZone}
+          editingOsmZone={editingOsmZone}
         />
         </Suspense>
       )}
