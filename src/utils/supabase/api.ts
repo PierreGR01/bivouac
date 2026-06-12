@@ -17,6 +17,7 @@ export async function fetchPois(): Promise<PoiLocation[]> {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${ANON_KEY}`,
       },
+      signal: AbortSignal.timeout(30_000),
     });
 
     if (!response.ok) {
@@ -41,6 +42,7 @@ export async function createPoi(poi: Partial<PoiLocation>): Promise<boolean> {
         'Authorization': authHeader,
       },
       body: JSON.stringify(poi),
+      signal: AbortSignal.timeout(30_000),
     });
 
     if (!response.ok) {
@@ -63,6 +65,7 @@ export async function deletePoi(poiId: string): Promise<void> {
         'Content-Type': 'application/json',
         'Authorization': authHeader,
       },
+      signal: AbortSignal.timeout(30_000),
     });
 
     if (!response.ok) {
@@ -84,6 +87,7 @@ export async function addRating(poiId: string, rating: number): Promise<PoiLocat
         'Authorization': authHeader,
       },
       body: JSON.stringify({ rating }),
+      signal: AbortSignal.timeout(30_000),
     });
 
     if (!response.ok) {
@@ -106,6 +110,7 @@ export async function fetchAltitude(lat: number, lng: number): Promise<number | 
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${ANON_KEY}`,
       },
+      signal: AbortSignal.timeout(15_000),
     });
 
     if (!response.ok) {
@@ -129,6 +134,7 @@ export async function resetPois(): Promise<boolean> {
         'Content-Type': 'application/json',
         'Authorization': authHeader,
       },
+      signal: AbortSignal.timeout(30_000),
     });
 
     if (!response.ok) {

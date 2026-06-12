@@ -813,7 +813,7 @@ export function MapView({
       } finally {
         setIsLoadingWater(false);
         // Toujours masquer le bouton après un chargement — il réapparaîtra au prochain mouvement de carte
-        onWaterStateChange?.({ isLoading: false, showButton: false });
+        onWaterStateChangeRef.current?.({ isLoading: false, showButton: false });
       }
     };
 
