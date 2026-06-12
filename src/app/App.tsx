@@ -22,6 +22,7 @@ const LoginPanel = React.lazy(() => import('./components/LoginPanel').then(m => 
 const CustomZonesEditor = React.lazy(() => import('./components/CustomZonesEditor').then(m => ({ default: m.CustomZonesEditor })));
 const ServerStatus = React.lazy(() => import('./components/ServerStatus').then(m => ({ default: m.ServerStatus })));
 const WaterPointsInfo = React.lazy(() => import('./components/WaterPointsInfo').then(m => ({ default: m.WaterPointsInfo })));
+const ZoneInfoPanel = React.lazy(() => import('./components/ZoneInfoPanel').then(m => ({ default: m.ZoneInfoPanel })));
 
 export default function App() {
   const { currentUser, isAdmin } = useAuth();
@@ -44,6 +45,8 @@ export default function App() {
   const [editingOsmZone, setEditingOsmZone] = useState<ProtectedArea | null>(null);
   const [showMobileOptions, setShowMobileOptions] = useState(false);
   const [userPosition, setUserPosition] = useState<{ lat: number; lng: number } | null>(null);
+  const [selectedZone, setSelectedZone] = useState<CustomZone | null>(null);
+  const [selectedProtectedArea, setSelectedProtectedArea] = useState<ProtectedArea | null>(null);
 
   // --- Composed handlers ---
 
@@ -123,6 +126,23 @@ export default function App() {
     setEditingZone(null);
     setShowCustomZonesEditor(true);
     setIsDrawingMode(false);
+  };
+
+  const handleZoneInfoClick = (zone: CustomZone) => {
+    setSelectedZone(zone);
+    setSelectedProtectedArea(null);
+    setShowMobileOptions(false);
+  };
+
+  const handleProtectedAreaInfoClick = (area: ProtectedArea) => {
+    setSelectedProtectedArea(area);
+    setSelectedZone(null);
+    setShowMobileOptions(false);
+  };
+
+  const handleCloseZoneInfo = () => {
+    setSelectedZone(null);
+    setSelectedProtectedArea(null);
   };
 
   const isPanelOpen =
@@ -257,8 +277,8 @@ export default function App() {
           showProtectedAreas={map.showProtectedAreas}
           protectedAreas={map.allProtectedAreas}
           customZones={map.customZones}
-          onZoneClick={isAdmin ? handleZoneClick : undefined}
-          onProtectedAreaClick={isAdmin ? handleOsmZoneClick : undefined}
+          onZoneClick={isAdmin ? handleZoneClick : handleZoneInfoClick}
+          onProtectedAreaClick={isAdmin ? handleOsmZoneClick : handleProtectedAreaInfoClick}
           onMapMove={(bounds) => map.setMapBounds(bounds)}
           satelliteMode={map.satelliteMode}
           onSatelliteModeToggle={map.toggleSatellite}
@@ -278,9 +298,9 @@ export default function App() {
         />
       </div>
 
-      {/* Water/protected areas loading indicators */}
-      {!isAddingMode && !(pois.selectedLocation && window.innerWidth < MOBILE_BREAKPOINT_PX) && (
-        <div className="fixed md:absolute bottom-[80px] md:bottom-24 left-1/2 -translate-x-1/2 z-[1050] flex gap-3">
+      {/* Water/protected areas loading indicators — desktop only */}
+      {!isAddingMode && !(pois.selectedLocation && window.innerWidth < MOBILE_BREAKPOINT_PX) && !(selectedZone || selectedProtectedArea) && (
+        <div className="hidden md:flex md:absolute md:bottom-24 md:left-1/2 md:-translate-x-1/2 z-[1050] gap-3">
           {map.showWaterPointsButton && !map.isLoadingWaterPoints && map.showWaterPoints && (
             <button
               onClick={() => {
@@ -288,7 +308,7 @@ export default function App() {
                 map.setShowWaterPointsButton(false);
                 (window as any).__loadWaterPointsManually?.();
               }}
-              className="p-2.5 md:px-4 md:py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-lg shadow-lg transition-all flex items-center gap-2 font-medium text-sm"
+              className="px-4 py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-lg shadow-lg transition-all flex items-center gap-2 font-medium text-sm whitespace-nowrap"
               title="Rechercher les points d'eau"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -297,21 +317,19 @@ export default function App() {
                 <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
                 <path d="M16 16h5v5"/>
               </svg>
-              <span className="hidden md:inline">Rechercher les points d'eau</span>
+              Rechercher les points d'eau
             </button>
           )}
-
           {map.isLoadingWaterPoints && map.showWaterPoints && (
             <div className="px-4 py-2.5 bg-white rounded-lg shadow-lg flex items-center gap-2">
               <Loader2 className="w-4 h-4 text-sky-600 animate-spin" />
               <span className="text-gray-700 text-sm font-medium">Chargement points d'eau...</span>
             </div>
           )}
-
           {map.showProtectedAreasButton && !map.isLoadingProtectedAreas && map.showProtectedAreas && (
             <button
               onClick={() => map.loadProtectedAreasForView()}
-              className="p-2.5 md:px-4 md:py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg shadow-lg transition-all flex items-center gap-2 font-medium text-sm"
+              className="px-4 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg shadow-lg transition-all flex items-center gap-2 font-medium text-sm whitespace-nowrap"
               title="Rechercher les zones réglementées"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -320,17 +338,13 @@ export default function App() {
                 <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
                 <path d="M16 16h5v5"/>
               </svg>
-              <span className="hidden md:inline">Rechercher les zones réglementées</span>
+              Rechercher les zones réglementées
             </button>
           )}
-
           {map.isLoadingProtectedAreas && map.showProtectedAreas && (
-            <div className="px-4 py-2.5 bg-white rounded-lg shadow-lg flex flex-col gap-1">
-              <div className="flex items-center gap-2">
-                <Loader2 className="w-4 h-4 text-red-600 animate-spin" />
-                <span className="text-gray-700 text-sm font-medium">Chargement des zones...</span>
-              </div>
-              <span className="text-xs text-gray-500 pl-6">Cela peut prendre jusqu'à 1 minute</span>
+            <div className="px-4 py-2.5 bg-white rounded-lg shadow-lg flex items-center gap-2">
+              <Loader2 className="w-4 h-4 text-red-600 animate-spin" />
+              <span className="text-gray-700 text-sm font-medium">Chargement des zones...</span>
             </div>
           )}
         </div>
@@ -343,6 +357,16 @@ export default function App() {
             location={pois.selectedLocation}
             onClose={handleClosePanel}
             protectedAreas={map.allProtectedAreas}
+          />
+        </Suspense>
+      )}
+
+      {(selectedZone || selectedProtectedArea) && (
+        <Suspense fallback={null}>
+          <ZoneInfoPanel
+            zone={selectedZone}
+            protectedArea={selectedProtectedArea}
+            onClose={handleCloseZoneInfo}
           />
         </Suspense>
       )}
@@ -409,8 +433,53 @@ export default function App() {
       <Toaster position="bottom-center" />
 
       {/* Mobile: controls toggle — bottom right */}
-      {!isAddingMode && (
+      {!isAddingMode && !(selectedZone || selectedProtectedArea) && (
         <div className="md:hidden fixed bottom-6 right-6 z-[600] flex flex-col items-end gap-2">
+
+          {/* Mobile refresh buttons — stacked above the panel */}
+          {map.showWaterPointsButton && !map.isLoadingWaterPoints && map.showWaterPoints && (
+            <button
+              onClick={() => {
+                map.setIsLoadingWaterPoints(true);
+                map.setShowWaterPointsButton(false);
+                (window as any).__loadWaterPointsManually?.();
+              }}
+              className="w-12 h-12 rounded-2xl bg-sky-600 hover:bg-sky-700 text-white flex items-center justify-center shadow-lg transition-colors"
+              title="Rechercher les points d'eau"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                <path d="M3 3v5h5"/>
+                <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+                <path d="M16 16h5v5"/>
+              </svg>
+            </button>
+          )}
+          {map.isLoadingWaterPoints && map.showWaterPoints && (
+            <div className="w-12 h-12 rounded-2xl bg-white flex items-center justify-center shadow-lg">
+              <Loader2 className="w-4 h-4 text-sky-600 animate-spin" />
+            </div>
+          )}
+          {map.showProtectedAreasButton && !map.isLoadingProtectedAreas && map.showProtectedAreas && (
+            <button
+              onClick={() => map.loadProtectedAreasForView()}
+              className="w-12 h-12 rounded-2xl bg-orange-600 hover:bg-orange-700 text-white flex items-center justify-center shadow-lg transition-colors"
+              title="Rechercher les zones réglementées"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                <path d="M3 3v5h5"/>
+                <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+                <path d="M16 16h5v5"/>
+              </svg>
+            </button>
+          )}
+          {map.isLoadingProtectedAreas && map.showProtectedAreas && (
+            <div className="w-12 h-12 rounded-2xl bg-white flex items-center justify-center shadow-lg">
+              <Loader2 className="w-4 h-4 text-red-600 animate-spin" />
+            </div>
+          )}
+
           {/* Expanded controls panel — icons only, compact */}
           {showMobileOptions && (
             <div className="bg-white rounded-2xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-2 duration-200">

@@ -1003,33 +1003,7 @@ export function MapView({
         this.setStyle({ weight: 2, opacity: 0.8 });
       });
 
-      // Popup avec informations détaillées
-      const popupContent = `
-        <div class="text-sm max-w-sm">
-          <h3 class="font-semibold text-orange-700 mb-2">${info.title}</h3>
-          ${info.description ? `<p class="text-xs text-gray-600 mb-3">${info.description}</p>` : ''}
-          ${info.restrictions.length > 0 ? `
-            <div class="space-y-1">
-              <p class="text-xs font-semibold text-gray-700">Réglementation :</p>
-              <ul class="text-xs space-y-1">
-                ${info.restrictions.map(r => `<li class="text-gray-700">${r}</li>`).join('')}
-              </ul>
-            </div>
-          ` : ''}
-          ${area.tags.website ? `
-            <p class="mt-2 text-xs">
-              <a href="${area.tags.website}" target="_blank" class="text-blue-600 hover:underline">Plus d'infos →</a>
-            </p>
-          ` : ''}
-          <p class="mt-2 text-xs text-gray-500">Source: OpenStreetMap</p>
-        </div>
-      `;
-
-      if (onProtectedAreaClick) {
-        polygon.on('click', () => onProtectedAreaClick(area));
-      } else {
-        polygon.bindPopup(popupContent);
-      }
+      polygon.on('click', () => onProtectedAreaClick?.(area));
 
       polygon.addTo(map);
       (polygon as any)._zIndex = zIndex;
@@ -1086,48 +1060,12 @@ export function MapView({
         this.setStyle({ weight: 2, opacity: 0.9, fillOpacity: 0.25 });
       });
 
-      polygon.on('click', () => {
-        if (onZoneClick) {
-          onZoneClick(zone);
-        }
-      });
-
-      const restrictionLabels: Record<string, string> = {
-        camping_forbidden: 'Camping interdit',
-        bivouac_forbidden: 'Bivouac interdit',
-        fire_forbidden: 'Feu interdit',
-      };
-      const restrictionsHtml = types
-        .map(t => `<span class="inline-block text-xs bg-red-100 text-red-700 rounded px-1.5 py-0.5 mr-1 mb-1">${restrictionLabels[t] ?? t}</span>`)
-        .join('');
-
-      const timeHtml = zone.time_range_start && zone.time_range_end
-        ? `<p class="text-xs text-gray-600 mt-1">⏱ De ${zone.time_range_start} à ${zone.time_range_end}</p>`
-        : '';
-      const periodHtml = zone.period_start && zone.period_end
-        ? `<p class="text-xs text-gray-600 mt-1">📅 Du ${zone.period_start} au ${zone.period_end}</p>`
-        : '';
-      const sourceHtml = zone.source_url
-        ? `<p class="mt-2 text-xs"><a href="${zone.source_url}" target="_blank" class="text-blue-600 hover:underline">Source officielle →</a></p>`
-        : '';
-
-      const popupContent = `
-        <div class="text-sm" style="min-width:180px">
-          <p class="font-semibold text-gray-800 mb-2">${zone.name}</p>
-          ${zone.description ? `<p class="text-xs text-gray-500 mb-2">${zone.description}</p>` : ''}
-          <div class="flex flex-wrap mb-1">${restrictionsHtml}</div>
-          ${timeHtml}${periodHtml}${sourceHtml}
-        </div>
-      `;
-
-      if (!onZoneClick) {
-        polygon.bindPopup(popupContent);
-      }
+      polygon.on('click', () => onZoneClick?.(zone));
 
       polygon.addTo(map);
       customZonesLayersRef.current.push(polygon);
     });
-  }, [customZones, showProtectedAreas]);
+  }, [customZones, showProtectedAreas, onZoneClick]);
 
   // Marqueur de position GPS utilisateur
   useEffect(() => {
