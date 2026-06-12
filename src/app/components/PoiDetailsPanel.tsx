@@ -35,6 +35,9 @@ export function PoiDetailsPanel({
 }: PoiDetailsPanelProps) {
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
+  const { isAdmin } = useAuth();
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   if (!location) return null;
 
@@ -45,6 +48,59 @@ export function PoiDetailsPanel({
       protectedAreas
     );
   }, [location, protectedAreas]);
+
+  const handleDeletePoi = async () => {
+    setIsDeleting(true);
+    try {
+      await api.deletePoi(location.id);
+      alert('Spot supprimé avec succès');
+      onClose();
+    } catch (error) {
+      console.error('Erreur lors de la suppression:', error);
+      alert('Erreur lors de la suppression du spot');
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  };
+
+  const adminFooter = isAdmin ? (
+    showDeleteConfirm ? (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+        <p className="text-sm text-red-800 font-medium mb-3">
+          Êtes-vous sûr de vouloir supprimer ce spot ?
+        </p>
+        <div className="flex gap-3">
+          <BivouacButton
+            variant="destructive"
+            icon={isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+            onClick={handleDeletePoi}
+            disabled={isDeleting}
+            className="flex-1"
+          >
+            {isDeleting ? 'Suppression…' : 'Confirmer'}
+          </BivouacButton>
+          <BivouacButton
+            variant="outline"
+            onClick={() => setShowDeleteConfirm(false)}
+            disabled={isDeleting}
+            className="flex-1"
+          >
+            Annuler
+          </BivouacButton>
+        </div>
+      </div>
+    ) : (
+      <BivouacButton
+        variant="destructive"
+        icon={<Trash2 className="w-4 h-4" />}
+        onClick={() => setShowDeleteConfirm(true)}
+        className="w-full bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 py-2.5"
+      >
+        Supprimer ce spot
+      </BivouacButton>
+    )
+  ) : undefined;
 
   return (
     <>
@@ -87,14 +143,13 @@ export function PoiDetailsPanel({
         </div>
       )}
 
-      <Panel onClose={onClose} title={location.title} mobileMaxHeight="66.67vh">
+      <Panel onClose={onClose} title={location.title} mobileMaxHeight="66.67vh" stickyFooter={adminFooter}>
         <PanelContent
           location={location}
           currentPhotoIndex={currentPhotoIndex}
           setCurrentPhotoIndex={setCurrentPhotoIndex}
           areasContainingPoi={areasContainingPoi}
           onPhotoClick={() => setIsPhotoModalOpen(true)}
-          onClose={onClose}
         />
       </Panel>
     </>
@@ -118,21 +173,16 @@ function PanelContent({
   setCurrentPhotoIndex,
   areasContainingPoi = [],
   onPhotoClick,
-  onClose,
 }: {
   location: PoiLocation;
   currentPhotoIndex: number;
   setCurrentPhotoIndex: (index: number) => void;
   areasContainingPoi?: ProtectedArea[];
   onPhotoClick?: () => void;
-  onClose?: () => void;
 }) {
-  const { isAdmin } = useAuth();
   const [newRating, setNewRating] = useState(0);
   const [hoverRating, setHoverRating] = useState(0);
   const [isSubmittingRating, setIsSubmittingRating] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [localRatings, setLocalRatings] = useState<number[]>(location.ratings || []);
 
   const averageRating = useMemo(() => {
@@ -161,21 +211,6 @@ function PanelContent({
       alert(`Note de ${newRating}/5 ajoutée localement.`);
     } finally {
       setIsSubmittingRating(false);
-    }
-  };
-
-  const handleDeletePoi = async () => {
-    setIsDeleting(true);
-    try {
-      await api.deletePoi(location.id);
-      alert('Spot supprimé avec succès');
-      onClose?.();
-    } catch (error) {
-      console.error('Erreur lors de la suppression:', error);
-      alert('Erreur lors de la suppression du spot');
-    } finally {
-      setIsDeleting(false);
-      setShowDeleteConfirm(false);
     }
   };
 
@@ -246,43 +281,43 @@ function PanelContent({
       </div>
 
       {/* Badges */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium ${getSeasonStyle(location.season)}`}>
+      <div className="flex flex-nowrap gap-1.5 mb-3 overflow-x-auto">
+        <div className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium flex-shrink-0 ${getSeasonStyle(location.season)}`}>
           {getSeasonIcon(location.season)}
           <span className="capitalize">{location.season}</span>
         </div>
 
         {location.waterProximity ? (
           <div
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium ${
+            className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium flex-shrink-0 ${
               location.waterProximity === 'proche'
                 ? 'bg-blue-50 text-blue-700'
                 : 'bg-sky-50 text-sky-700'
             }`}
           >
-            <Droplets className="w-4 h-4" />
+            <Droplets className="w-3.5 h-3.5" />
             <span>
               {location.waterProximity === 'proche'
-                ? 'Eau potable à moins de 100m'
-                : 'Eau potable à 100–200m'}
+                ? 'Eau très proche'
+                : 'Eau à proximité'}
             </span>
           </div>
         ) : (
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-100 text-gray-500 text-sm">
-            <Droplets className="w-4 h-4" />
-            <span>Pas d'eau potable connue</span>
+          <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-gray-100 text-gray-500 text-xs flex-shrink-0">
+            <Droplets className="w-3.5 h-3.5" />
+            <span>Pas de point d'eau</span>
           </div>
         )}
 
         {location.naturalWaterProximity === 'proche' ? (
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-teal-50 text-teal-700">
-            <Waves className="w-4 h-4" />
-            <span>Cours d'eau / lac à moins de 200m</span>
+          <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-teal-50 text-teal-700 flex-shrink-0">
+            <Waves className="w-3.5 h-3.5" />
+            <span>torrent/lac à proximité</span>
           </div>
         ) : (
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-100 text-gray-500 text-sm">
-            <Waves className="w-4 h-4" />
-            <span>Pas de cours d'eau connu</span>
+          <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-gray-100 text-gray-500 text-xs flex-shrink-0">
+            <Waves className="w-3.5 h-3.5" />
+            <span>pas de torrent/lac</span>
           </div>
         )}
       </div>
@@ -294,9 +329,9 @@ function PanelContent({
       </div>
 
       {/* Détails */}
-      <div className="mb-4 bg-gray-50 rounded-lg p-4 space-y-3">
+      <div className="mb-4 bg-gray-50 rounded-lg p-3">
         {location.altitude !== undefined && location.altitude !== null && (
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 mb-3">
             <Mountain className="w-4 h-4 text-gray-500 flex-shrink-0" />
             <div>
               <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Altitude</span>
@@ -304,50 +339,52 @@ function PanelContent({
             </div>
           </div>
         )}
-        {location.capacity && (
-          <div className="flex items-center gap-3">
-            <Tent className="w-4 h-4 text-gray-500 flex-shrink-0" />
-            <div>
-              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Capacité</span>
-              <p className="text-sm text-gray-700">
-                {location.capacity === '1' && '1 tente'}
-                {location.capacity === '2-3' && '2–3 tentes'}
-                {location.capacity === '4-5' && '4–5 tentes'}
-                {location.capacity === '5+' && 'Plus de 5 tentes'}
-              </p>
-            </div>
-          </div>
-        )}
-        {location.difficulty !== undefined && location.difficulty !== null && (
-          <div className="flex items-center gap-3">
-            <Mountain className="w-4 h-4 text-gray-500 flex-shrink-0" />
-            <div className="flex-1">
-              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Difficulté d'accès</span>
-              <div className="flex items-center gap-1 mt-1">
-                {[1, 2, 3, 4, 5].map((level) => {
-                  const color =
-                    level === 1 ? 'bg-green-500'
-                    : level === 2 ? 'bg-lime-500'
-                    : level === 3 ? 'bg-yellow-500'
-                    : level === 4 ? 'bg-orange-500'
-                    : 'bg-red-500';
-                  return (
-                    <div
-                      key={level}
-                      className={`w-6 h-6 rounded flex items-center justify-center text-xs font-bold ${
-                        location.difficulty && location.difficulty >= level
-                          ? `${color} text-white`
-                          : 'bg-gray-200 text-gray-400'
-                      }`}
-                    >
-                      {level === location.difficulty ? level : ''}
-                    </div>
-                  );
-                })}
+        <div className="grid grid-cols-2 gap-3">
+          {location.capacity && (
+            <div className="flex items-start gap-2">
+              <Tent className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
+              <div>
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Capacité</span>
+                <p className="text-sm text-gray-700">
+                  {location.capacity === '1' && '1 tente'}
+                  {location.capacity === '2-3' && '2–3 tentes'}
+                  {location.capacity === '4-5' && '4–5 tentes'}
+                  {location.capacity === '5+' && 'Plus de 5 tentes'}
+                </p>
               </div>
             </div>
-          </div>
-        )}
+          )}
+          {location.difficulty !== undefined && location.difficulty !== null && (
+            <div className="flex items-start gap-2">
+              <Mountain className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Difficulté</span>
+                <div className="flex items-center gap-0.5 mt-1">
+                  {[1, 2, 3, 4, 5].map((level) => {
+                    const color =
+                      level === 1 ? 'bg-green-500'
+                      : level === 2 ? 'bg-lime-500'
+                      : level === 3 ? 'bg-yellow-500'
+                      : level === 4 ? 'bg-orange-500'
+                      : 'bg-red-500';
+                    return (
+                      <div
+                        key={level}
+                        className={`w-5 h-5 rounded flex items-center justify-center text-xs font-bold ${
+                          location.difficulty && location.difficulty >= level
+                            ? `${color} text-white`
+                            : 'bg-gray-200 text-gray-400'
+                        }`}
+                      >
+                        {level === location.difficulty ? level : ''}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Zones protégées */}
@@ -503,46 +540,6 @@ function PanelContent({
         </div>
       </div>
 
-      {/* Admin: suppression */}
-      {isAdmin && (
-        <div className="pt-4 border-t border-gray-100">
-          {showDeleteConfirm ? (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <p className="text-sm text-red-800 font-medium mb-3">
-                Êtes-vous sûr de vouloir supprimer ce spot ? Cette action est irréversible.
-              </p>
-              <div className="flex gap-3">
-                <BivouacButton
-                  variant="destructive"
-                  icon={isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                  onClick={handleDeletePoi}
-                  disabled={isDeleting}
-                  className="flex-1"
-                >
-                  {isDeleting ? 'Suppression…' : 'Confirmer'}
-                </BivouacButton>
-                <BivouacButton
-                  variant="outline"
-                  onClick={() => setShowDeleteConfirm(false)}
-                  disabled={isDeleting}
-                  className="flex-1"
-                >
-                  Annuler
-                </BivouacButton>
-              </div>
-            </div>
-          ) : (
-            <BivouacButton
-              variant="destructive"
-              icon={<Trash2 className="w-4 h-4" />}
-              onClick={() => setShowDeleteConfirm(true)}
-              className="w-full bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 py-2.5"
-            >
-              Supprimer ce spot
-            </BivouacButton>
-          )}
-        </div>
-      )}
     </>
   );
 }

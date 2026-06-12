@@ -39,6 +39,8 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
   const [isGeolocating, setIsGeolocating] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const isFormValid = Boolean(selectedPosition && title.trim() && description.trim());
+
   const handleUseMyLocation = () => {
     if ('geolocation' in navigator) {
       setIsGeolocating(true);
@@ -401,9 +403,11 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
         </div>
 
         {/* Soumettre */}
-        <BivouacButton type="submit" variant="primary" className="w-full py-2.5 text-sm">
-          {isMobile ? 'Créer le spot' : 'Soumettre le point de bivouac'}
-        </BivouacButton>
+        <div className="sticky bottom-0 -mx-6 px-6 bg-white border-t border-gray-100 pt-3 pb-3">
+          <BivouacButton type="submit" variant="primary" className="w-full py-2.5 text-sm" disabled={!isFormValid}>
+            {isMobile ? 'Créer le spot' : 'Soumettre le point de bivouac'}
+          </BivouacButton>
+        </div>
       </form>
     </Panel>
   );

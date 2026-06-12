@@ -55,7 +55,7 @@ export function SearchBar({
     <>
       {/* Mobile: unified top bar */}
       <div className="md:hidden fixed top-0 left-0 right-0 z-[600] pointer-events-auto">
-        <div className="bg-white shadow-md">
+        <div className="bg-white">
 
           {/* Main bar */}
           <div className="flex items-center gap-2 px-4 py-2.5">
@@ -167,54 +167,51 @@ export function SearchBar({
         </div>
       </div>
 
-      {/* Desktop: unchanged */}
+      {/* Desktop: single-row header */}
       <div className="hidden md:block absolute top-6 left-6 z-[600] pointer-events-auto w-[480px]">
-        <div className={`bg-white shadow-xl p-4 ${isPanelOpen ? 'rounded-t-xl' : 'rounded-xl'}`}>
-          <div className="flex flex-col gap-3">
-            {/* Logo + search */}
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <div className="bg-emerald-600 p-2 rounded-lg shadow-md">
-                  <Tent className="w-5 h-5 text-white" />
-                </div>
-                <h1 className="text-lg font-bold text-gray-800 whitespace-nowrap">Bivouac Spots</h1>
-              </div>
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-700" />
-                <input
-                  type="text"
-                  placeholder="Rechercher un spot..."
-                  value={searchTerm}
-                  onChange={(e) => onSearchChange(e.target.value)}
-                  className="pl-10 pr-4 py-2 w-full bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 outline-none text-gray-800 placeholder-gray-500 transition-colors focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-                />
-              </div>
+        <div className={`bg-white ${isPanelOpen ? 'rounded-t-xl' : 'rounded-xl'} px-4 py-2.5`}>
+          <div className="flex items-center gap-2">
+            {/* Logo */}
+            <div className="bg-emerald-600 p-2 rounded-lg flex-shrink-0">
+              <Tent className="w-5 h-5 text-white" />
             </div>
 
-            {/* Filters + Add spot */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={onFilterClick}
-                className="relative flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-              >
-                <SlidersHorizontal className="w-5 h-5 text-gray-800" />
-                <span className="text-sm font-medium text-gray-800">Filtres</span>
-                {activeFiltersCount > 0 && (
-                  <div className="bg-emerald-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center shadow-md">
-                    {activeFiltersCount}
-                  </div>
-                )}
-              </button>
-              {!isAddingMode && !isRoutingMode && (
-                <button
-                  onClick={onAddSpotClick}
-                  className="flex items-center gap-2 px-3 py-2 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700 transition-colors shadow-md ml-auto"
-                >
-                  <Plus className="w-5 h-5" />
-                  <span className="text-sm">Ajouter un spot</span>
-                </button>
-              )}
+            {/* Search */}
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-[17px] h-[17px] text-gray-400" />
+              <input
+                type="text"
+                placeholder="Rechercher un spot..."
+                value={searchTerm}
+                onChange={(e) => onSearchChange(e.target.value)}
+                className="pl-9 pr-4 py-2 w-full bg-gray-100 hover:bg-gray-200 rounded-lg border-0 outline-none text-sm text-gray-800 placeholder-gray-500 transition-colors focus:ring-1 focus:ring-emerald-500 focus:bg-white"
+              />
             </div>
+
+            {/* Filters */}
+            <button
+              onClick={onFilterClick}
+              className="relative flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors flex-shrink-0"
+            >
+              <SlidersHorizontal className="w-[17px] h-[17px] text-gray-600" />
+              <span className="text-[15px] font-medium text-gray-600">Filtres</span>
+              {activeFiltersCount > 0 && (
+                <div className="absolute -top-1 -right-1 bg-emerald-600 text-white text-xs font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                  {activeFiltersCount}
+                </div>
+              )}
+            </button>
+
+            {/* Add spot */}
+            {!isAddingMode && !isRoutingMode && (
+              <button
+                onClick={onAddSpotClick}
+                className="flex items-center gap-2 px-3 py-2 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700 transition-colors flex-shrink-0"
+              >
+                <Plus className="w-[17px] h-[17px]" />
+                <span className="text-sm">Ajouter</span>
+              </button>
+            )}
           </div>
         </div>
       </div>

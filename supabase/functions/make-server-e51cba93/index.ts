@@ -91,7 +91,7 @@ app.get("/make-server-e51cba93/pois", safeHandler(async (c: any) => {
 app.post("/make-server-e51cba93/pois", safeHandler(async (c: any) => {
   try {
     const body = await c.req.json();
-    const { id, title, description, photos, season, waterProximity, regulations, position, altitude, capacity, difficulty, ratings } = body;
+    const { id, title, description, photos, season, waterProximity, naturalWaterProximity, regulations, position, altitude, capacity, difficulty, ratings } = body;
 
     if (!id || !title || !position) {
       return c.json({ success: false, error: "Missing required fields: id, title, position" }, 400);
@@ -104,6 +104,7 @@ app.post("/make-server-e51cba93/pois", safeHandler(async (c: any) => {
       photos,
       season,
       waterProximity, // proche | éloigné | null
+      naturalWaterProximity, // proche | null
       regulations,
       position,
       altitude, // Altitude en mètres
