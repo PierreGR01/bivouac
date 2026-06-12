@@ -58,14 +58,6 @@ export function usePois() {
         throw new Error('Coordonnées invalides. Cliquez sur la carte pour définir une position.');
       }
 
-      devLog.log('🏔️ Récupération de l\'altitude...');
-      const altitude = await api.fetchAltitude(newPoi.position.lat, newPoi.position.lng).catch(() => {
-        console.warn('⚠️ Impossible de récupérer l\'altitude');
-        return null;
-      });
-      if (altitude !== null) devLog.log(`✅ Altitude récupérée: ${altitude}m`);
-
-      let localWaterPoints = waterPoints;
       const radius = WATER_LOADING_RADIUS_DEG;
       const bounds = {
         south: newPoi.position.lat - radius,
@@ -74,22 +66,24 @@ export function usePois() {
         east: newPoi.position.lng + radius,
       };
 
-      if (waterPoints.length === 0) {
-        devLog.log('🔍 Chargement des points d\'eau autour du nouveau spot...');
-        localWaterPoints = await fetchWaterPoints(bounds, 15).catch((error: any) => {
-          console.warn('⚠️ Impossible de charger les points d\'eau:', error?.message || error);
-          return [];
-        });
-        devLog.log(`✅ ${localWaterPoints.length} points d'eau trouvés`);
-      }
+      devLog.log('🏔️ Récupération altitude, points d\'eau et cours d\'eau en parallèle...');
+      const [altitude, localWaterPoints, nearbyStreams] = await Promise.all([
+        api.fetchAltitude(newPoi.position.lat, newPoi.position.lng).catch(() => {
+          console.warn('⚠️ Impossible de récupérer l\'altitude');
+          return null;
+        }),
+        waterPoints.length > 0
+          ? Promise.resolve(waterPoints)
+          : fetchWaterPoints(bounds, 15).catch((error: any) => {
+              console.warn('⚠️ Impossible de charger les points d\'eau:', error?.message || error);
+              return [];
+            }),
+        fetchNearbyStreams(newPoi.position.lat, newPoi.position.lng, radius).catch(() => []),
+      ]);
 
-      // Ruisseaux/rivières dans un petit rayon — uniquement pour le calcul de proximité
-      const nearbyStreams = await fetchNearbyStreams(
-        newPoi.position.lat,
-        newPoi.position.lng,
-        radius
-      ).catch(() => []);
-      devLog.log(`🌊 ${nearbyStreams.length} cours d'eau trouvés`);
+      if (altitude !== null) devLog.log(`✅ Altitude récupérée: ${altitude}m`);
+      devLog.log(`✅ ${(localWaterPoints as any[]).length} points d'eau trouvés`);
+      devLog.log(`🌊 ${(nearbyStreams as any[]).length} cours d'eau trouvés`);
 
       const allWaterPoints = [...localWaterPoints, ...nearbyStreams];
 
