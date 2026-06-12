@@ -97,6 +97,13 @@ export function MapView({
   const [hasUserInteracted, setHasUserInteracted] = useState(false);
   const [showRefreshButton, setShowRefreshButton] = useState(false);
   const [isManualLoad, setIsManualLoad] = useState(false);
+
+  // Refs pour callbacks parents — évite que l'effect se ré-exécute à chaque render du parent
+  // tout en gardant un accès toujours frais aux dernières valeurs
+  const onMapMoveRef = useRef(onMapMove);
+  const onWaterStateChangeRef = useRef(onWaterStateChange);
+  useEffect(() => { onMapMoveRef.current = onMapMove; }, [onMapMove]);
+  useEffect(() => { onWaterStateChangeRef.current = onWaterStateChange; }, [onWaterStateChange]);
   
   // États pour l'outil de mesure
   const [measureStartPoint, setMeasureStartPoint] = useState<{ lat: number; lng: number } | null>(null);
@@ -797,11 +804,11 @@ export function MapView({
     } else if (!hasUserInteracted && !isZoneReasonable) {
       // Zone trop grande : afficher directement le bouton sans message
       setShowRefreshButton(true);
-      onWaterStateChange?.({ isLoading: false, showButton: true });
+      onWaterStateChangeRef.current?.({ isLoading: false, showButton: true });
     } else if (hasUserInteracted) {
-      // L'utilisateur a déjà interagi avec la carte : afficher le bouton immédiatement sans message
+      // L'utilisateur a déjà interagi — montrer le bouton seulement si le toggle vient d'être activé
       setShowRefreshButton(true);
-      onWaterStateChange?.({ isLoading: false, showButton: true });
+      onWaterStateChangeRef.current?.({ isLoading: false, showButton: true });
     }
 
     // Détecter les interactions utilisateur (moveend = move + zoom)
@@ -811,18 +818,16 @@ export function MapView({
       }
       // Afficher le bouton de refresh après interaction
       setShowRefreshButton(true);
-      onWaterStateChange?.({ isLoading: false, showButton: true });
-      
-      // Notifier le parent des nouveaux bounds
-      if (onMapMove) {
-        const bounds = map.getBounds();
-        onMapMove({
-          south: bounds.getSouth(),
-          north: bounds.getNorth(),
-          west: bounds.getWest(),
-          east: bounds.getEast()
-        });
-      }
+      onWaterStateChangeRef.current?.({ isLoading: false, showButton: true });
+
+      // Notifier le parent des nouveaux bounds (via ref → toujours la version à jour)
+      const currentBounds = map.getBounds();
+      onMapMoveRef.current?.({
+        south: currentBounds.getSouth(),
+        north: currentBounds.getNorth(),
+        west: currentBounds.getWest(),
+        east: currentBounds.getEast()
+      });
     };
 
     map.on('moveend', handleMoveEnd);
@@ -836,7 +841,9 @@ export function MapView({
       map.off('moveend', handleMoveEnd);
       delete (window as any).__loadWaterPointsManually;
     };
-  }, [showWaterPoints, hasUserInteracted, onMapMove, showProtectedAreas]);
+  // onMapMove et onWaterStateChange sont lus via refs → pas besoin dans les deps
+  // showProtectedAreas n'est pas utilisé dans cet effect → supprimé
+  }, [showWaterPoints, hasUserInteracted]);
 
   // Filtrer et limiter les points d'eau à afficher
   // 35 max pour le chargement automatique, illimité pour le chargement manuel

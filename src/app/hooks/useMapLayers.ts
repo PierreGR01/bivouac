@@ -100,13 +100,20 @@ export function useMapLayers() {
     });
   };
 
-  const toggleProtectedAreas = () => {
-    setShowProtectedAreas(prev => {
-      const next = !prev;
-      setShowProtectedAreasButton(next); // Affiche le bouton à l'activation, le cache à la désactivation
-      return next;
-    });
-  };
+  const toggleProtectedAreas = useCallback(() => {
+    const isCurrentlyOn = showProtectedAreasRef.current;
+    if (!isCurrentlyOn) {
+      // Activation : lancer le chargement immédiatement, sans afficher le bouton
+      setShowProtectedAreas(true);
+      setShowProtectedAreasButton(false);
+      // Appel direct sans attendre — la fonction lit mapBoundsRef.current
+      loadProtectedAreasForView();
+    } else {
+      // Désactivation : cacher les zones et le bouton
+      setShowProtectedAreas(false);
+      setShowProtectedAreasButton(false);
+    }
+  }, [loadProtectedAreasForView]);
 
   return {
     satelliteMode,

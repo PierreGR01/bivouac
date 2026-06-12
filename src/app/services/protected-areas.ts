@@ -41,7 +41,7 @@ const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes (viewport statiques en gén
 // Rate limiting simple
 let lastRequestTime = 0;
 const MIN_REQUEST_INTERVAL = 3000; // 3 secondes entre requêtes
-let pendingRequest: Promise<ProtectedArea[]> | null = null;
+let pendingAlpesRequest: Promise<ProtectedArea[]> | null = null;
 
 /**
  * Génère une clé de cache basée sur les bounds avec précision réduite
@@ -83,10 +83,10 @@ export async function fetchAlpesProtectedAreas(
     return cached.data;
   }
 
-  // Si une requête est déjà en cours, la retourner
-  if (pendingRequest) {
+  // Si une requête Alpes est déjà en cours, la réutiliser
+  if (pendingAlpesRequest) {
     devLog.log('🔄 Requête zones Alpes en cours, réutilisation...');
-    return pendingRequest;
+    return pendingAlpesRequest;
   }
 
   // Rate limiting
@@ -101,14 +101,13 @@ export async function fetchAlpesProtectedAreas(
 
   lastRequestTime = Date.now();
 
-  // Exécuter la requête
-  pendingRequest = executeProtectedAreasQuery(bounds, timeout, cacheKey);
+  pendingAlpesRequest = executeProtectedAreasQuery(bounds, timeout, cacheKey);
 
   try {
-    const result = await pendingRequest;
+    const result = await pendingAlpesRequest;
     return result;
   } finally {
-    pendingRequest = null;
+    pendingAlpesRequest = null;
   }
 }
 
@@ -130,12 +129,6 @@ export async function fetchProtectedAreas(
     return cached.data;
   }
 
-  // Si une requête est déjà en cours, la retourner
-  if (pendingRequest) {
-    devLog.log('🔄 Requête zones en cours, réutilisation...');
-    return pendingRequest;
-  }
-
   // Rate limiting
   const now = Date.now();
   const timeSinceLastRequest = now - lastRequestTime;
@@ -148,15 +141,7 @@ export async function fetchProtectedAreas(
 
   lastRequestTime = Date.now();
 
-  // Exécuter la requête
-  pendingRequest = executeProtectedAreasQuery(bounds, timeout, cacheKey);
-
-  try {
-    const result = await pendingRequest;
-    return result;
-  } finally {
-    pendingRequest = null;
-  }
+  return executeProtectedAreasQuery(bounds, timeout, cacheKey);
 }
 
 /**
