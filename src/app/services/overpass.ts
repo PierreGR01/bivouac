@@ -213,6 +213,7 @@ async function executeOverpassQuery(
 ): Promise<WaterPoint[]> {
   const { south, west, north, east } = bounds;
   
+  // Deux blocs séparés : nœuds (rapide) + plans d'eau ways/relations (plus lourds mais ciblés)
   const query = `
     [out:json][timeout:${timeout}][maxsize:536870912];
     (
@@ -220,10 +221,13 @@ async function executeOverpassQuery(
       node["amenity"="water_point"]["access"!="private"](${south},${west},${north},${east});
       node["natural"="spring"]["access"!="private"](${south},${west},${north},${east});
       node["man_made"="water_well"]["access"!="private"](${south},${west},${north},${east});
-      way["natural"="water"]["access"!="private"](${south},${west},${north},${east});
-      way["waterway"~"^(stream|river|creek)$"]["access"!="private"](${south},${west},${north},${east});
     );
-    out body center qt;
+    out body qt;
+    (
+      way["natural"="water"]["access"!="private"](${south},${west},${north},${east});
+      relation["natural"="water"]["access"!="private"](${south},${west},${north},${east});
+    );
+    out tags center qt;
   `;
 
   try {
@@ -485,7 +489,7 @@ function parseWaterPoints(data: any): WaterPoint[] {
     if (element.type === 'node') {
       lat = element.lat;
       lng = element.lon;
-    } else if (element.type === 'way' && element.center) {
+    } else if ((element.type === 'way' || element.type === 'relation') && element.center) {
       lat = element.center.lat;
       lng = element.center.lon;
     }
@@ -507,8 +511,6 @@ function parseWaterPoints(data: any): WaterPoint[] {
       waterType = 'waterfall';
     } else if (tags.natural === 'water') {
       waterType = 'uncontrolled_water';
-    } else if (tags.waterway) {
-      waterType = 'stream';
     }
 
     waterPoints.push({
