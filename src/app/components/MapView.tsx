@@ -105,23 +105,6 @@ export function MapView({
   useEffect(() => { onMapMoveRef.current = onMapMove; }, [onMapMove]);
   useEffect(() => { onWaterStateChangeRef.current = onWaterStateChange; }, [onWaterStateChange]);
 
-  // Effect PERMANENT : notifie les bounds à chaque moveend, toujours actif
-  // (indépendant de showWaterPoints pour que les bounds soient toujours à jour)
-  useEffect(() => {
-    if (!mapInstanceRef.current) return;
-    const map = mapInstanceRef.current;
-    const notifyBounds = () => {
-      const b = map.getBounds();
-      onMapMoveRef.current?.({
-        south: b.getSouth(),
-        north: b.getNorth(),
-        west: b.getWest(),
-        east: b.getEast(),
-      });
-    };
-    map.on('moveend', notifyBounds);
-    return () => { map.off('moveend', notifyBounds); };
-  }, []); // [] : une seule fois, refs toujours à jour
   
   // États pour l'outil de mesure
   const [measureStartPoint, setMeasureStartPoint] = useState<{ lat: number; lng: number } | null>(null);
@@ -145,7 +128,18 @@ export function MapView({
     
     tileLayerRef.current = tileLayer;
     mapInstanceRef.current = map;
-    
+
+    // Listener permanent — notifie les bounds à chaque moveend, indépendamment de showWaterPoints
+    map.on('moveend', () => {
+      const b = map.getBounds();
+      onMapMoveRef.current?.({
+        south: b.getSouth(),
+        north: b.getNorth(),
+        west: b.getWest(),
+        east: b.getEast(),
+      });
+    });
+
     // Exposer les fonctions de zoom pour les contrôles personnalisés
     (window as any).__mapZoomIn = () => map.zoomIn();
     (window as any).__mapZoomOut = () => map.zoomOut();
@@ -170,16 +164,14 @@ export function MapView({
       panToTop(lat, lng);
     };
 
-    // Notifier les bounds initiaux
-    if (onMapMove) {
-      const bounds = map.getBounds();
-      onMapMove({
-        south: bounds.getSouth(),
-        north: bounds.getNorth(),
-        west: bounds.getWest(),
-        east: bounds.getEast()
-      });
-    }
+    // Notifier les bounds initiaux via la ref
+    const initBounds = map.getBounds();
+    onMapMoveRef.current?.({
+      south: initBounds.getSouth(),
+      north: initBounds.getNorth(),
+      west: initBounds.getWest(),
+      east: initBounds.getEast(),
+    });
 
     return () => {
       map.remove();
