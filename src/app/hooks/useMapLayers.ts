@@ -74,6 +74,8 @@ export function useMapLayers() {
       queryClient.setQueryData(['protectedAreas'], filtered);
     } catch (err) {
       devLog.warn('⚠️ Erreur zones protégées:', err);
+      // Réafficher le bouton pour permettre un nouvel essai
+      if (showProtectedAreasRef.current) setShowProtectedAreasButton(true);
     } finally {
       setIsLoadingProtectedAreas(false);
     }

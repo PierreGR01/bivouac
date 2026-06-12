@@ -104,6 +104,24 @@ export function MapView({
   const onWaterStateChangeRef = useRef(onWaterStateChange);
   useEffect(() => { onMapMoveRef.current = onMapMove; }, [onMapMove]);
   useEffect(() => { onWaterStateChangeRef.current = onWaterStateChange; }, [onWaterStateChange]);
+
+  // Effect PERMANENT : notifie les bounds à chaque moveend, toujours actif
+  // (indépendant de showWaterPoints pour que les bounds soient toujours à jour)
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+    const map = mapInstanceRef.current;
+    const notifyBounds = () => {
+      const b = map.getBounds();
+      onMapMoveRef.current?.({
+        south: b.getSouth(),
+        north: b.getNorth(),
+        west: b.getWest(),
+        east: b.getEast(),
+      });
+    };
+    map.on('moveend', notifyBounds);
+    return () => { map.off('moveend', notifyBounds); };
+  }, []); // [] : une seule fois, refs toujours à jour
   
   // États pour l'outil de mesure
   const [measureStartPoint, setMeasureStartPoint] = useState<{ lat: number; lng: number } | null>(null);
@@ -724,7 +742,7 @@ export function MapView({
         // Zone trop grande : afficher message et bouton sans faire de requête
         setWaterError('🔍 Zoomez davantage sur la carte pour charger les points d\'eau.');
         setShowRefreshButton(true);
-        onWaterStateChange?.({ isLoading: false, showButton: true });
+        onWaterStateChangeRef.current?.({ isLoading: false, showButton: true });
         return; // Sortir sans faire la requête
       }
       
@@ -736,7 +754,7 @@ export function MapView({
       }
       
       // Notifier le parent du changement d'état
-      onWaterStateChange?.({ isLoading: true, showButton: false });
+      onWaterStateChangeRef.current?.({ isLoading: true, showButton: false });
       
       try {
         const points = await fetchWaterPoints({
@@ -783,7 +801,7 @@ export function MapView({
         // Réafficher le bouton en cas d'erreur pour permettre un nouvel essai
         if (isManual) {
           setShowRefreshButton(true);
-          onWaterStateChange?.({ isLoading: false, showButton: true });
+          onWaterStateChangeRef.current?.({ isLoading: false, showButton: true });
         }
       } finally {
         setIsLoadingWater(false);
@@ -819,15 +837,7 @@ export function MapView({
       // Afficher le bouton de refresh après interaction
       setShowRefreshButton(true);
       onWaterStateChangeRef.current?.({ isLoading: false, showButton: true });
-
-      // Notifier le parent des nouveaux bounds (via ref → toujours la version à jour)
-      const currentBounds = map.getBounds();
-      onMapMoveRef.current?.({
-        south: currentBounds.getSouth(),
-        north: currentBounds.getNorth(),
-        west: currentBounds.getWest(),
-        east: currentBounds.getEast()
-      });
+      // onMapMoveRef est appelé par l'effect permanent moveend séparé
     };
 
     map.on('moveend', handleMoveEnd);
