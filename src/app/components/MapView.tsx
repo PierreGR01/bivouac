@@ -147,11 +147,14 @@ export function MapView({
     (window as any).__mapZoomIn = () => map.zoomIn();
     (window as any).__mapZoomOut = () => map.zoomOut();
     
-    // Move the map so `lat/lng` appears at the center of the top third, no animation
+    // Move the map so `lat/lng` appears centered in the visible strip (between header and panel)
     const panToTop = (lat: number, lng: number) => {
       const zoom = map.getZoom();
       const mapHeight = map.getSize().y;
-      const targetY = mapHeight / 6;
+      const headerHeight = 64;
+      const panelHeight = mapHeight * (2 / 3);
+      const visibleHeight = mapHeight - panelHeight - headerHeight;
+      const targetY = headerHeight + visibleHeight / 2;
       const spotPoint = map.project([lat, lng], zoom);
       const centerPoint = L.point(spotPoint.x, spotPoint.y + (mapHeight / 2 - targetY));
       const center = map.unproject(centerPoint, zoom);

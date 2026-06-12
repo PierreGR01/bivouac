@@ -131,8 +131,8 @@ export default function App() {
   return (
     <div className="relative h-screen w-screen overflow-hidden">
 
-      {/* Search bar — hidden on mobile when a POI is selected */}
-      <div className={pois.selectedLocation ? 'hidden md:block' : 'block'}>
+      {/* Search bar */}
+      <div>
         <SearchBar
           searchTerm={filters.searchTerm}
           onSearchChange={filters.setSearchTerm}
