@@ -23,14 +23,19 @@ export function useMapLayers() {
   const [showProtectedAreasButton, setShowProtectedAreasButton] = useState(false);
   const [isLoadingProtectedAreas, setIsLoadingProtectedAreas] = useState(false);
 
-  // Refs = toujours la valeur courante, sans problème de closure stale
+  // mapBounds en state → changement déclenche le useEffect ci-dessous (fiable)
+  // mapBoundsRef → lecture synchrone dans loadProtectedAreasForView (bounds frais)
+  const [mapBounds, setMapBoundsState] = useState<MapBounds | null>(null);
   const mapBoundsRef = useRef<MapBounds | null>(null);
-  const showProtectedAreasRef = useRef(false);
-  const showWaterPointsRef = useRef(false);
 
-  // Synchroniser les refs avec les states
-  useEffect(() => { showProtectedAreasRef.current = showProtectedAreas; }, [showProtectedAreas]);
-  useEffect(() => { showWaterPointsRef.current = showWaterPoints; }, [showWaterPoints]);
+  // Quand la carte bouge : montrer les boutons si les toggles sont actifs
+  // useEffect garantit l'exécution après le render avec les vraies valeurs de state
+  useEffect(() => {
+    if (!mapBounds) return;
+    if (showProtectedAreas && !isLoadingProtectedAreas) setShowProtectedAreasButton(true);
+    if (showWaterPoints) setShowWaterPointsButton(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapBounds]);
 
   const customZonesQuery = useQuery({
     queryKey: ['customZones'],
@@ -51,15 +56,13 @@ export function useMapLayers() {
     staleTime: Infinity,
   });
 
-  // Appelé par App.tsx sur chaque moveend — utilise des refs pour éviter les closures stales
+  // Appelé à chaque moveend (via listener permanent dans MapView)
   const setMapBounds = useCallback((bounds: MapBounds) => {
     mapBoundsRef.current = bounds;
-    // Réafficher les boutons si les toggles sont actifs
-    if (showProtectedAreasRef.current) setShowProtectedAreasButton(true);
-    if (showWaterPointsRef.current) setShowWaterPointsButton(true);
+    setMapBoundsState(bounds); // déclenche le useEffect ci-dessus
   }, []);
 
-  // Charge les zones protégées pour le viewport courant (toujours les bounds frais via ref)
+  // Charge les zones protégées pour le viewport courant
   const loadProtectedAreasForView = useCallback(async () => {
     const bounds = mapBoundsRef.current;
     if (!bounds) return;
@@ -74,8 +77,7 @@ export function useMapLayers() {
       queryClient.setQueryData(['protectedAreas'], filtered);
     } catch (err) {
       devLog.warn('⚠️ Erreur zones protégées:', err);
-      // Réafficher le bouton pour permettre un nouvel essai
-      if (showProtectedAreasRef.current) setShowProtectedAreasButton(true);
+      setShowProtectedAreasButton(true); // afficher le bouton pour permettre un retry
     } finally {
       setIsLoadingProtectedAreas(false);
     }
@@ -103,19 +105,17 @@ export function useMapLayers() {
   };
 
   const toggleProtectedAreas = useCallback(() => {
-    const isCurrentlyOn = showProtectedAreasRef.current;
-    if (!isCurrentlyOn) {
+    if (!showProtectedAreas) {
       // Activation : lancer le chargement immédiatement, sans afficher le bouton
       setShowProtectedAreas(true);
       setShowProtectedAreasButton(false);
-      // Appel direct sans attendre — la fonction lit mapBoundsRef.current
       loadProtectedAreasForView();
     } else {
-      // Désactivation : cacher les zones et le bouton
+      // Désactivation
       setShowProtectedAreas(false);
       setShowProtectedAreasButton(false);
     }
-  }, [loadProtectedAreasForView]);
+  }, [showProtectedAreas, loadProtectedAreasForView]);
 
   return {
     satelliteMode,
