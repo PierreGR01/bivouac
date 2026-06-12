@@ -66,12 +66,13 @@ export function calculateWaterProximity(
 
 /**
  * Calcule la proximité aux eaux naturelles non contrôlées (cours d'eau, lacs).
+ * Seuil unique : 200m.
  */
 export function calculateNaturalWaterProximity(
   spotLat: number,
   spotLng: number,
   waterPoints: WaterPoint[]
-): 'proche' | 'éloigné' | null {
+): 'proche' | null {
   const natural = waterPoints.filter(wp => isNaturalWater(wp));
   if (natural.length === 0) {
     devLog.log('🌊 Proximité eau naturelle : aucun point disponible');
@@ -85,5 +86,5 @@ export function calculateNaturalWaterProximity(
   }
 
   devLog.log(`🌊 Eau naturelle — distance min : ${minDistance.toFixed(2)}m`);
-  return proximityFromMinDistance(minDistance);
+  return minDistance < WATER_PROXIMITY_FAR_M ? 'proche' : null;
 }
