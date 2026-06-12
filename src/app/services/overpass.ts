@@ -89,7 +89,7 @@ function isAreaTooLarge(bounds: { south: number; west: number; north: number; ea
  */
 export async function fetchWaterPoints(
   bounds: { south: number; west: number; north: number; east: number },
-  timeout: number = 60
+  timeout: number = 20
 ): Promise<WaterPoint[]> {
   // Vérifier la taille de la zone
   if (isAreaTooLarge(bounds)) {
@@ -235,8 +235,8 @@ async function executeOverpassQuery(
         const proxyResp = await fetch(`${EDGE_URL}/water-points`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON_KEY}` },
-          body: JSON.stringify({ south: bounds.south, west: bounds.west, north: bounds.north, east: bounds.east, timeout }),
-          signal: AbortSignal.timeout(45000),
+          body: JSON.stringify({ south: bounds.south, west: bounds.west, north: bounds.north, east: bounds.east, timeout: 25 }),
+          signal: AbortSignal.timeout(35000),
         });
         if (proxyResp.ok) {
           const json = await proxyResp.json();
@@ -252,49 +252,37 @@ async function executeOverpassQuery(
 
     // Fallback direct si le proxy a échoué
     if (!data) {
-      const controller = new AbortController();
-      const clientTimeout = setTimeout(() => controller.abort(), (timeout + 20) * 1000);
-
       const OVERPASS_ENDPOINTS = [
         'https://overpass.kumi.systems/api/interpreter',
         'https://overpass-api.de/api/interpreter',
         'https://overpass.openstreetmap.ru/api/interpreter',
       ];
 
-      let response: Response | null = null;
-      let lastError: Error | null = null;
-      for (const endpoint of OVERPASS_ENDPOINTS) {
-        const perEndpointController = new AbortController();
-        const perEndpointTimeout = setTimeout(() => perEndpointController.abort(), 20000);
+      const tryEndpoint = async (endpoint: string): Promise<any> => {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 25000);
         try {
-          response = await fetch(endpoint, {
+          const response = await fetch(endpoint, {
             method: 'POST',
             body: `data=${encodeURIComponent(query)}`,
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            signal: perEndpointController.signal,
+            signal: ctrl.signal,
           });
-          clearTimeout(perEndpointTimeout);
-          if (response.ok || response.status === 429 || response.status === 504 || response.status === 503) break;
-          lastError = new Error(`HTTP ${response.status}`);
+          clearTimeout(timer);
+          if (response.status === 429) {
+            const retryAfter = response.headers.get('Retry-After');
+            const waitSeconds = retryAfter ? parseInt(retryAfter) : 60;
+            throw new RateLimitError(`Trop de requêtes. Veuillez patienter ${waitSeconds} secondes avant de réessayer.`);
+          }
+          if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
+          return await response.json();
         } catch (err: any) {
-          clearTimeout(perEndpointTimeout);
-          if (err.name === 'AbortError' && controller.signal.aborted) throw err;
-          lastError = err;
+          clearTimeout(timer);
+          throw err;
         }
-      }
-      clearTimeout(clientTimeout);
-      if (!response) throw lastError ?? new Error('Overpass API inaccessible');
+      };
 
-      if (response.status === 429) {
-        const retryAfter = response.headers.get('Retry-After');
-        const waitSeconds = retryAfter ? parseInt(retryAfter) : 60;
-        throw new RateLimitError(`Trop de requêtes. Veuillez patienter ${waitSeconds} secondes avant de réessayer.`);
-      }
-      if (response.status === 504) throw new Error('Timeout serveur (504)');
-      if (response.status === 503) throw new Error('Service indisponible (503)');
-      if (!response.ok) throw new Error(`Erreur Overpass API: ${response.status} ${response.statusText}`);
-
-      data = await response.json();
+      data = await Promise.any(OVERPASS_ENDPOINTS.map(tryEndpoint));
     }
 
     const waterPoints = parseWaterPoints(data);

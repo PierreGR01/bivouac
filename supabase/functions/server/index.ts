@@ -218,11 +218,11 @@ app.post("/make-server-e51cba93/water-points", safeHandler(async (c: any) => {
       'https://overpass.kumi.systems/api/interpreter',
       'https://overpass.openstreetmap.ru/api/interpreter',
     ];
+    const HTTP_TIMEOUT = 30000;
 
-    let lastError: string = 'No endpoint succeeded';
-    for (const endpoint of ENDPOINTS) {
+    const tryEndpoint = async (endpoint: string): Promise<any> => {
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 35000);
+      const timer = setTimeout(() => ctrl.abort(), HTTP_TIMEOUT);
       try {
         const resp = await fetch(endpoint, {
           method: 'POST',
@@ -231,21 +231,24 @@ app.post("/make-server-e51cba93/water-points", safeHandler(async (c: any) => {
           signal: ctrl.signal,
         });
         clearTimeout(timer);
-        if (resp.ok) {
-          const data = await resp.json();
-          console.log(`✅ Overpass proxy: ${(data.elements || []).length} éléments depuis ${endpoint}`);
-          return c.json({ success: true, data });
-        }
-        lastError = `HTTP ${resp.status} from ${endpoint}`;
-        console.warn(`⚠️ Overpass ${endpoint}: ${resp.status}`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status} from ${endpoint}`);
+        const data = await resp.json();
+        console.log(`✅ Overpass proxy: ${(data.elements || []).length} éléments depuis ${endpoint}`);
+        return data;
       } catch (err: any) {
         clearTimeout(timer);
-        lastError = err?.message || String(err);
-        console.warn(`⚠️ Overpass ${endpoint} erreur: ${lastError}`);
+        throw err;
       }
-    }
+    };
 
-    return c.json({ success: false, error: lastError }, 502);
+    try {
+      const data = await Promise.any(ENDPOINTS.map(tryEndpoint));
+      return c.json({ success: true, data });
+    } catch (err: any) {
+      const lastError = err?.errors?.map((e: any) => e?.message).join(', ') ?? String(err);
+      console.warn(`⚠️ Tous les endpoints Overpass ont échoué: ${lastError}`);
+      return c.json({ success: false, error: lastError }, 502);
+    }
   } catch (error) {
     console.error("Error proxying Overpass:", error);
     return c.json({ success: false, error: String(error) }, 500);
