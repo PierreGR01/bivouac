@@ -261,7 +261,7 @@ app.post("/make-server-e51cba93/stream-points", safeHandler(async (c: any) => {
     if (south === undefined || west === undefined || north === undefined || east === undefined) {
       return c.json({ success: false, error: "Missing bounds" }, 400);
     }
-    const query = `[out:json][timeout:10];(way["waterway"~"^(stream|river|canal|ditch|drain|creek)$"]["access"!="private"](${south},${west},${north},${east}););out tags center qt;`;
+    const query = `[out:json][timeout:10];(way["waterway"~"^(stream|river|canal|ditch|drain|creek)$"]["access"!="private"](${south},${west},${north},${east}););out geom qt;`;
     const HEADERS = {
       'Content-Type': 'application/x-www-form-urlencoded',
       'Accept': 'application/json',

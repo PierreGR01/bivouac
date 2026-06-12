@@ -653,7 +653,9 @@ export async function fetchNearbyStreams(
   const s = lat - radiusDeg, n = lat + radiusDeg;
   const w = lng - radiusDeg, e = lng + radiusDeg;
 
-  const query = `[out:json][timeout:10];(way["waterway"~"^(stream|river|canal|ditch|drain|creek)$"]["access"!="private"](${s},${w},${n},${e}););out tags center qt;`;
+  // out geom pour récupérer TOUS les nœuds du chemin — essentiel pour la précision
+  // (out center donne le centre géométrique du way entier, potentiellement à plusieurs km)
+  const query = `[out:json][timeout:10];(way["waterway"~"^(stream|river|canal|ditch|drain|creek)$"]["access"!="private"](${s},${w},${n},${e}););out geom qt;`;
 
   const EDGE_URL = (import.meta as any).env?.VITE_EDGE_FUNCTION_URL;
   const ANON_KEY = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY;
@@ -695,7 +697,35 @@ export async function fetchNearbyStreams(
 
   if (!data) return [];
 
-  const points = parseWaterPoints(data);
+  const points = parseStreamGeometry(data);
   streamCache.set(key, { data: points, timestamp: Date.now() });
+  return points;
+}
+
+/**
+ * Parse les ways de cours d'eau avec géométrie complète.
+ * Crée un WaterPoint par nœud du chemin pour une mesure de proximité précise.
+ */
+function parseStreamGeometry(data: any): WaterPoint[] {
+  const points: WaterPoint[] = [];
+  for (const element of data.elements || []) {
+    if (element.type !== 'way') continue;
+    const tags = element.tags || {};
+    if (tags.access === 'private') continue;
+    if (!tags.waterway) continue;
+
+    const nodes: Array<{ lat: number; lon: number }> = element.geometry || [];
+    nodes.forEach((node, i) => {
+      if (!node.lat || !node.lon) return;
+      points.push({
+        id: `osm-way-${element.id}-${i}`,
+        type: 'way',
+        lat: node.lat,
+        lng: node.lon,
+        tags,
+        waterType: 'stream',
+      });
+    });
+  }
   return points;
 }
