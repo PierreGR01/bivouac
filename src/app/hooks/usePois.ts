@@ -5,7 +5,7 @@ import { PoiLocation } from '../types';
 import { mockLocations } from '../data';
 import { migratePois } from '../utils/poi-migration';
 import { calculateWaterProximity, calculateNaturalWaterProximity } from '../utils/water-proximity';
-import { fetchWaterPoints } from '../services/overpass';
+import { fetchWaterPoints, fetchNearbyStreams } from '../services/overpass';
 import { devLog } from '../utils/logger';
 import { WATER_LOADING_RADIUS_DEG } from '../constants';
 import * as api from '../../utils/supabase/api';
@@ -66,15 +66,16 @@ export function usePois() {
       if (altitude !== null) devLog.log(`✅ Altitude récupérée: ${altitude}m`);
 
       let localWaterPoints = waterPoints;
+      const radius = WATER_LOADING_RADIUS_DEG;
+      const bounds = {
+        south: newPoi.position.lat - radius,
+        west: newPoi.position.lng - radius,
+        north: newPoi.position.lat + radius,
+        east: newPoi.position.lng + radius,
+      };
+
       if (waterPoints.length === 0) {
         devLog.log('🔍 Chargement des points d\'eau autour du nouveau spot...');
-        const radius = WATER_LOADING_RADIUS_DEG;
-        const bounds = {
-          south: newPoi.position.lat - radius,
-          west: newPoi.position.lng - radius,
-          north: newPoi.position.lat + radius,
-          east: newPoi.position.lng + radius,
-        };
         localWaterPoints = await fetchWaterPoints(bounds, 15).catch((error: any) => {
           console.warn('⚠️ Impossible de charger les points d\'eau:', error?.message || error);
           return [];
@@ -82,16 +83,26 @@ export function usePois() {
         devLog.log(`✅ ${localWaterPoints.length} points d'eau trouvés`);
       }
 
+      // Ruisseaux/rivières dans un petit rayon — uniquement pour le calcul de proximité
+      const nearbyStreams = await fetchNearbyStreams(
+        newPoi.position.lat,
+        newPoi.position.lng,
+        radius
+      ).catch(() => []);
+      devLog.log(`🌊 ${nearbyStreams.length} cours d'eau trouvés`);
+
+      const allWaterPoints = [...localWaterPoints, ...nearbyStreams];
+
       const waterProximity = calculateWaterProximity(
         newPoi.position.lat,
         newPoi.position.lng,
-        localWaterPoints
+        allWaterPoints
       );
 
       const naturalWaterProximity = calculateNaturalWaterProximity(
         newPoi.position.lat,
         newPoi.position.lng,
-        localWaterPoints
+        allWaterPoints
       );
 
       const poiWithId: PoiLocation = {

@@ -511,6 +511,8 @@ function parseWaterPoints(data: any): WaterPoint[] {
       waterType = 'waterfall';
     } else if (tags.natural === 'water') {
       waterType = 'uncontrolled_water';
+    } else if (tags.waterway === 'stream' || tags.waterway === 'river') {
+      waterType = 'stream';
     }
 
     waterPoints.push({
@@ -628,4 +630,72 @@ export function getWaterPointInfo(waterPoint: WaterPoint): string[] {
   }
   
   return info;
+}
+
+// Cache léger pour les requêtes de ruisseaux (par spot)
+const streamCache = new Map<string, { data: WaterPoint[]; timestamp: number }>();
+const STREAM_CACHE_DURATION = 15 * 60 * 1000;
+
+/**
+ * Récupère les ruisseaux/rivières dans un rayon autour d'un point.
+ * Utilisé uniquement pour le calcul de naturalWaterProximity lors de la création d'un spot.
+ * Ne sont jamais affichés sur la carte.
+ */
+export async function fetchNearbyStreams(
+  lat: number,
+  lng: number,
+  radiusDeg: number
+): Promise<WaterPoint[]> {
+  const key = `${Math.round(lat * 1000)},${Math.round(lng * 1000)}`;
+  const cached = streamCache.get(key);
+  if (cached && Date.now() - cached.timestamp < STREAM_CACHE_DURATION) return cached.data;
+
+  const s = lat - radiusDeg, n = lat + radiusDeg;
+  const w = lng - radiusDeg, e = lng + radiusDeg;
+
+  const query = `[out:json][timeout:10];(way["waterway"="stream"]["access"!="private"](${s},${w},${n},${e});way["waterway"="river"]["access"!="private"](${s},${w},${n},${e}););out tags center qt;`;
+
+  const EDGE_URL = (import.meta as any).env?.VITE_EDGE_FUNCTION_URL;
+  const ANON_KEY = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY;
+
+  let data: any = null;
+
+  if (EDGE_URL && ANON_KEY) {
+    try {
+      const resp = await fetch(`${EDGE_URL}/stream-points`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON_KEY}` },
+        body: JSON.stringify({ south: s, west: w, north: n, east: e }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (resp.ok) {
+        const json = await resp.json();
+        if (json.success && json.data) data = json.data;
+      }
+    } catch { /* fallback direct */ }
+  }
+
+  if (!data) {
+    const endpoints = [
+      'https://overpass.kumi.systems/api/interpreter',
+      'https://overpass-api.de/api/interpreter',
+    ];
+    for (const ep of endpoints) {
+      try {
+        const resp = await fetch(ep, {
+          method: 'POST',
+          body: `data=${encodeURIComponent(query)}`,
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          signal: AbortSignal.timeout(12000),
+        });
+        if (resp.ok) { data = await resp.json(); break; }
+      } catch { /* try next */ }
+    }
+  }
+
+  if (!data) return [];
+
+  const points = parseWaterPoints(data);
+  streamCache.set(key, { data: points, timestamp: Date.now() });
+  return points;
 }

@@ -253,6 +253,42 @@ app.post("/make-server-e51cba93/water-points", safeHandler(async (c: any) => {
   }
 }));
 
+// Proxy Overpass API — ruisseaux/rivières pour le calcul de proximité (petit rayon autour d'un spot)
+app.post("/make-server-e51cba93/stream-points", safeHandler(async (c: any) => {
+  try {
+    const body = await c.req.json();
+    const { south, west, north, east } = body;
+    if (south === undefined || west === undefined || north === undefined || east === undefined) {
+      return c.json({ success: false, error: "Missing bounds" }, 400);
+    }
+    const query = `[out:json][timeout:10];(way["waterway"="stream"]["access"!="private"](${south},${west},${north},${east});way["waterway"="river"]["access"!="private"](${south},${west},${north},${east}););out tags center qt;`;
+    const HEADERS = {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Accept': 'application/json',
+      'User-Agent': 'bivouac-app/1.0 (contact: github.com/PierreGR01/bivouac)',
+    };
+    const ENDPOINTS = [
+      'https://overpass-api.de/api/interpreter',
+      'https://overpass.kumi.systems/api/interpreter',
+    ];
+    for (const endpoint of ENDPOINTS) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 12000);
+      try {
+        const resp = await fetch(endpoint, { method: 'POST', body: `data=${encodeURIComponent(query)}`, headers: HEADERS, signal: ctrl.signal });
+        clearTimeout(timer);
+        if (resp.ok) {
+          const data = await resp.json();
+          return c.json({ success: true, data });
+        }
+      } catch (err: any) { clearTimeout(timer); }
+    }
+    return c.json({ success: false, error: 'All endpoints failed' }, 503);
+  } catch (error) {
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+}));
+
 // Proxy Overpass API — zones protégées (parcs, réserves, arrêtés)
 app.post("/make-server-e51cba93/protected-areas", safeHandler(async (c: any) => {
   try {
