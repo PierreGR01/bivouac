@@ -133,23 +133,21 @@ export default function App() {
 
       {/* Search bar — hidden on mobile when a POI is selected */}
       <div className={pois.selectedLocation ? 'hidden md:block' : 'block'}>
-        {!isAddingMode && (
-          <SearchBar
-            searchTerm={filters.searchTerm}
-            onSearchChange={filters.setSearchTerm}
-            onFilterClick={() => filters.setShowFilters(!filters.showFilters)}
-            onAddSpotClick={handleOpenAddPanel}
-            activeFiltersCount={filters.activeFiltersCount}
-            isAddingMode={isAddingMode}
-            isRoutingMode={filters.isRoutingMode}
-            isPanelOpen={isPanelOpen}
-            isAdmin={isAdmin}
-            currentUser={currentUser}
-            onLoginClick={() => setShowLoginPanel(!showLoginPanel)}
-            onToggleZones={handleToggleCustomZones}
-            showCustomZonesEditor={showCustomZonesEditor}
-          />
-        )}
+        <SearchBar
+          searchTerm={filters.searchTerm}
+          onSearchChange={filters.setSearchTerm}
+          onFilterClick={() => filters.setShowFilters(!filters.showFilters)}
+          onAddSpotClick={handleOpenAddPanel}
+          activeFiltersCount={filters.activeFiltersCount}
+          isAddingMode={isAddingMode}
+          isRoutingMode={filters.isRoutingMode}
+          isPanelOpen={isPanelOpen}
+          isAdmin={isAdmin}
+          currentUser={currentUser}
+          onLoginClick={() => setShowLoginPanel(!showLoginPanel)}
+          onToggleZones={handleToggleCustomZones}
+          showCustomZonesEditor={showCustomZonesEditor}
+        />
       </div>
 
       {/* Top-right buttons — desktop only */}
