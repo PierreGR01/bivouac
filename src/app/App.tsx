@@ -7,7 +7,7 @@ import { FilterOptions } from './components/FilterPanel';
 import { NewPoi } from './components/AddPoiPanel';
 import { MOBILE_BREAKPOINT_PX } from './constants';
 import { useAuth } from './contexts/AuthContext';
-import { Tent, Plus, Loader2, AlertCircle, Settings, Search, SlidersHorizontal, BanIcon, Droplet, ChevronUp, ChevronDown, Snowflake, Locate, Lock } from 'lucide-react';
+import { Tent, Plus, Loader2, AlertCircle, Settings, Search, BanIcon, Droplet, ChevronUp, ChevronDown, Snowflake, Locate, Lock } from 'lucide-react';
 import { usePois } from './hooks/usePois';
 import { useMapLayers } from './hooks/useMapLayers';
 import { useFilters } from './hooks/useFilters';
@@ -43,6 +43,7 @@ export default function App() {
   const [editingZone, setEditingZone] = useState<CustomZone | null>(null);
   const [editingOsmZone, setEditingOsmZone] = useState<ProtectedArea | null>(null);
   const [showMobileOptions, setShowMobileOptions] = useState(false);
+  const [userPosition, setUserPosition] = useState<{ lat: number; lng: number } | null>(null);
 
   // --- Composed handlers ---
 
@@ -275,6 +276,7 @@ export default function App() {
           onProtectedAreasToggle={map.toggleProtectedAreas}
           onRouteClick={handleOpenRoutePanel}
           onMeasureClick={handleToggleMeasureMode}
+          userPosition={userPosition}
         />
       </div>
 
@@ -414,7 +416,7 @@ export default function App() {
             <div className="bg-white rounded-2xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-2 duration-200">
               <button
                 onClick={map.toggleProtectedAreas}
-                className={`w-11 h-11 flex items-center justify-center transition-colors ${
+                className={`w-12 h-12 flex items-center justify-center transition-colors ${
                   map.showProtectedAreas ? 'bg-red-50' : 'hover:bg-gray-50'
                 }`}
                 title="Zones réglementées"
@@ -424,7 +426,7 @@ export default function App() {
 
               <button
                 onClick={map.toggleWaterPoints}
-                className={`w-11 h-11 flex items-center justify-center transition-colors ${
+                className={`w-12 h-12 flex items-center justify-center transition-colors ${
                   map.showWaterPoints ? 'bg-sky-50' : 'hover:bg-gray-50'
                 }`}
                 title="Points d'eau"
@@ -434,7 +436,7 @@ export default function App() {
 
               <button
                 onClick={map.toggleSatellite}
-                className={`w-11 h-11 flex items-center justify-center transition-colors ${
+                className={`w-12 h-12 flex items-center justify-center transition-colors ${
                   map.satelliteMode ? 'bg-emerald-50' : 'hover:bg-gray-50'
                 }`}
                 title={map.satelliteMode ? 'Vue topographique' : 'Vue satellite'}
@@ -446,7 +448,7 @@ export default function App() {
 
               <button
                 onClick={map.toggleWinter}
-                className={`w-11 h-11 flex items-center justify-center transition-colors ${
+                className={`w-12 h-12 flex items-center justify-center transition-colors ${
                   map.winterMode ? 'bg-blue-50' : 'hover:bg-gray-50'
                 }`}
                 title={map.winterMode ? 'Désactiver le mode hiver' : 'Activer le mode hiver'}
@@ -457,7 +459,7 @@ export default function App() {
               {isAdmin && (
                 <button
                   onClick={() => { handleToggleCustomZones(); setShowMobileOptions(false); }}
-                  className={`w-11 h-11 flex items-center justify-center transition-colors ${
+                  className={`w-12 h-12 flex items-center justify-center transition-colors ${
                     showCustomZonesEditor ? 'bg-purple-50' : 'hover:bg-gray-50'
                   }`}
                   title="Zones custom"
@@ -472,30 +474,20 @@ export default function App() {
                     setShowMobileOptions(false);
                     if ('geolocation' in navigator) {
                       navigator.geolocation.getCurrentPosition(
-                        ({ coords }) => (window as any).__mapCenterTo?.(coords.latitude, coords.longitude),
+                        ({ coords }) => {
+                          setUserPosition({ lat: coords.latitude, lng: coords.longitude });
+                          (window as any).__mapCenterTo?.(coords.latitude, coords.longitude);
+                        },
                         () => toast.error('Impossible d\'accéder à votre position.')
                       );
                     } else {
                       toast.error('La géolocalisation n\'est pas supportée.');
                     }
                   }}
-                  className="w-11 h-11 flex items-center justify-center hover:bg-gray-50 transition-colors"
+                  className="w-12 h-12 flex items-center justify-center hover:bg-gray-50 transition-colors"
                   title="Ma position"
                 >
                   <Locate className="w-5 h-5 text-gray-600" />
-                </button>
-
-                <button
-                  onClick={() => { filters.setShowFilters(!filters.showFilters); setShowMobileOptions(false); }}
-                  className="relative w-11 h-11 flex items-center justify-center hover:bg-gray-50 transition-colors"
-                  title="Filtres"
-                >
-                  <SlidersHorizontal className="w-5 h-5 text-gray-600" />
-                  {filters.activeFiltersCount > 0 && (
-                    <div className="absolute top-1 right-1 bg-emerald-600 text-white text-xs font-bold rounded-full w-4 h-4 flex items-center justify-center">
-                      {filters.activeFiltersCount}
-                    </div>
-                  )}
                 </button>
               </div>
             </div>
@@ -504,7 +496,7 @@ export default function App() {
           {/* Toggle button — rounded square, desktop-panel style */}
           <button
             onClick={() => setShowMobileOptions(!showMobileOptions)}
-            className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-colors shadow-lg ${
+            className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors shadow-lg ${
               showMobileOptions
                 ? 'bg-gray-200 text-gray-700'
                 : 'bg-white text-gray-600 hover:bg-gray-50'
@@ -521,10 +513,10 @@ export default function App() {
         <div className="md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-[600] pointer-events-auto">
           <button
             onClick={handleOpenAddPanel}
-            className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 transition-colors shadow-lg"
+            className="flex items-center gap-2 px-5 py-3 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 transition-colors shadow-lg"
           >
             <Plus className="w-5 h-5" />
-            <span className="text-sm">Ajouter un spot</span>
+            <span className="text-[15px]">Ajouter un spot</span>
           </button>
         </div>
       )}

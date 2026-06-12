@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, SlidersHorizontal, Tent, Plus, Lock, Settings, ChevronDown, X } from 'lucide-react';
+import { Search, SlidersHorizontal, Tent, Plus, Lock, Settings, X } from 'lucide-react';
 
 interface SearchBarProps {
   searchTerm: string;
@@ -58,32 +58,32 @@ export function SearchBar({
         <div className="bg-white shadow-md">
 
           {/* Main bar */}
-          <div className="flex items-center gap-2 px-3 py-2">
+          <div className="flex items-center gap-2 px-4 py-2.5">
             {/* Logo — icon only, no circle */}
-            <div className="bg-emerald-600 p-1.5 rounded-lg flex-shrink-0">
-              <Tent className="w-4 h-4 text-white" />
+            <div className="bg-emerald-600 p-2 rounded-lg flex-shrink-0">
+              <Tent className="w-5 h-5 text-white" />
             </div>
 
-            {/* Search trigger */}
+            {/* Search trigger — same style as Filters */}
             <button
               onClick={() => setShowSearchInput(!showSearchInput)}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-colors flex-1 min-w-0 ${
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors flex-1 min-w-0 ${
                 showSearchInput ? 'bg-emerald-50' : 'bg-gray-100 hover:bg-gray-200'
               }`}
             >
-              <Search className={`w-4 h-4 flex-shrink-0 ${showSearchInput ? 'text-emerald-600' : 'text-gray-500'}`} />
-              <span className={`text-sm truncate ${searchTerm ? 'text-gray-800 font-medium' : 'text-gray-400'}`}>
-                {searchTerm || 'Rechercher un spot...'}
+              <Search className={`w-[17px] h-[17px] flex-shrink-0 ${showSearchInput ? 'text-emerald-600' : 'text-gray-600'}`} />
+              <span className={`text-[15px] font-medium truncate ${searchTerm ? 'text-gray-800' : 'text-gray-500'}`}>
+                {searchTerm || 'Rechercher...'}
               </span>
             </button>
 
-            {/* Filters */}
+            {/* Filters — same style as Search */}
             <button
               onClick={onFilterClick}
-              className="relative flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors flex-shrink-0"
+              className="relative flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors flex-shrink-0"
             >
-              <SlidersHorizontal className="w-4 h-4 text-gray-700" />
-              <span className="text-sm font-medium text-gray-700">Filtres</span>
+              <SlidersHorizontal className="w-[17px] h-[17px] text-gray-600" />
+              <span className="text-[15px] font-medium text-gray-600">Filtres</span>
               {activeFiltersCount > 0 && (
                 <div className="absolute -top-1 -right-1 bg-emerald-600 text-white text-xs font-bold rounded-full w-4 h-4 flex items-center justify-center shadow">
                   {activeFiltersCount}
@@ -91,19 +91,18 @@ export function SearchBar({
               )}
             </button>
 
-            {/* Account button + dropdown */}
+            {/* Account button — icon only */}
             <div className="relative flex-shrink-0" ref={dropdownRef}>
               <button
                 onClick={() => setShowAccountDropdown(!showAccountDropdown)}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-colors ${
+                title={currentUser ? 'Mon compte' : 'Connexion'}
+                className={`p-2.5 rounded-lg transition-colors ${
                   currentUser
                     ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
-                <Lock className="w-4 h-4" />
-                <span className="text-sm font-medium">{currentUser ? 'Compte' : 'Connexion'}</span>
-                <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${showAccountDropdown ? 'rotate-180' : ''}`} />
+                <Lock className="w-5 h-5" />
               </button>
 
               {showAccountDropdown && (
@@ -143,23 +142,23 @@ export function SearchBar({
 
           {/* Expandable search input */}
           {showSearchInput && (
-            <div className="px-3 pb-3">
+            <div className="px-4 pb-3">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-[17px] h-[17px] text-gray-400" />
                 <input
                   type="text"
                   placeholder="Rechercher un spot..."
                   value={searchTerm}
                   onChange={(e) => onSearchChange(e.target.value)}
                   autoFocus
-                  className="pl-9 pr-9 py-2 w-full bg-gray-50 rounded-lg border border-gray-200 outline-none text-sm text-gray-800 placeholder-gray-400 transition-colors focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                  className="pl-9 pr-9 py-2.5 w-full bg-gray-50 rounded-lg border border-gray-200 outline-none text-[15px] text-gray-800 placeholder-gray-400 transition-colors focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
                 />
                 {searchTerm && (
                   <button
                     onClick={() => onSearchChange('')}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                   >
-                    <X className="w-4 h-4" />
+                    <X className="w-[17px] h-[17px]" />
                   </button>
                 )}
               </div>

@@ -41,6 +41,7 @@ interface MapViewProps {
   onSatelliteModeToggle?: () => void;
   winterMode?: boolean;
   onWinterModeToggle?: () => void;
+  userPosition?: { lat: number; lng: number } | null;
 }
 
 export function MapView({
@@ -73,7 +74,8 @@ export function MapView({
   satelliteMode = false,
   onSatelliteModeToggle,
   winterMode = false,
-  onWinterModeToggle
+  onWinterModeToggle,
+  userPosition = null,
 }: MapViewProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -90,6 +92,7 @@ export function MapView({
   const slopesLayerRef = useRef<L.TileLayer | null>(null);
   const drawControlRef = useRef<any>(null);
   const drawLayerRef = useRef<L.FeatureGroup | null>(null);
+  const userMarkerRef = useRef<L.CircleMarker | null>(null);
   
   const [waterPoints, setWaterPoints] = useState<WaterPoint[]>([]);
   const [isLoadingWater, setIsLoadingWater] = useState(false);
@@ -1105,6 +1108,32 @@ export function MapView({
       customZonesLayersRef.current.push(polygon);
     });
   }, [customZones, showProtectedAreas]);
+
+  // Marqueur de position GPS utilisateur
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+    const map = mapInstanceRef.current;
+
+    if (userPosition) {
+      if (userMarkerRef.current) {
+        userMarkerRef.current.setLatLng([userPosition.lat, userPosition.lng]);
+      } else {
+        userMarkerRef.current = L.circleMarker([userPosition.lat, userPosition.lng], {
+          radius: 9,
+          fillColor: '#2563eb',
+          color: 'white',
+          weight: 3,
+          opacity: 1,
+          fillOpacity: 1,
+        }).addTo(map);
+      }
+    } else {
+      if (userMarkerRef.current) {
+        map.removeLayer(userMarkerRef.current);
+        userMarkerRef.current = null;
+      }
+    }
+  }, [userPosition]);
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
