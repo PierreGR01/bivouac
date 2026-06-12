@@ -1,19 +1,15 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchProtectedAreas, ProtectedArea } from '../services/protected-areas';
-import { fetchCustomZones, CustomZone } from '../../utils/supabase/custom-zones-api';
+import { fetchCustomZones } from '../../utils/supabase/custom-zones-api';
 import { fetchHiddenOsmZoneIds } from '../../utils/supabase/hidden-osm-zones-api';
 import { devLog } from '../utils/logger';
 
 type MapBounds = { south: number; west: number; north: number; east: number };
 
-// Arrondit les bounds à 1 décimale (~10km) pour éviter trop de requêtes
-function roundBoundsKey(b: MapBounds): string {
-  const r = (v: number) => Math.round(v * 10) / 10;
-  return `${r(b.south)},${r(b.west)},${r(b.north)},${r(b.east)}`;
-}
-
 export function useMapLayers() {
+  const queryClient = useQueryClient();
+
   const [satelliteMode, setSatelliteMode] = useState(false);
   const [winterMode, setWinterMode] = useState(false);
 
@@ -24,7 +20,9 @@ export function useMapLayers() {
   const [waterPoints, setWaterPoints] = useState<any[]>([]);
 
   const [showProtectedAreas, setShowProtectedAreas] = useState(false);
-  const [mapBounds, setMapBounds] = useState<MapBounds | null>(null);
+  const [showProtectedAreasButton, setShowProtectedAreasButton] = useState(false);
+  const [isLoadingProtectedAreas, setIsLoadingProtectedAreas] = useState(false);
+  const [mapBounds, setMapBoundsState] = useState<MapBounds | null>(null);
 
   const customZonesQuery = useQuery({
     queryKey: ['customZones'],
@@ -38,21 +36,11 @@ export function useMapLayers() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const boundsKey = mapBounds ? roundBoundsKey(mapBounds) : null;
-
   const protectedAreasQuery = useQuery({
-    queryKey: ['protectedAreas', boundsKey],
-    queryFn: async () => {
-      if (!mapBounds) return [];
-      devLog.log('🗻 Chargement zones protégées (viewport)...');
-      const areas = await fetchProtectedAreas(mapBounds);
-      const hiddenIds = new Set(hiddenOsmQuery.data ?? []);
-      const filtered = areas.filter(a => !hiddenIds.has(a.id));
-      devLog.log(`✅ ${filtered.length} zones protégées (${areas.length - filtered.length} masquées)`);
-      return filtered;
-    },
-    enabled: showProtectedAreas && !!mapBounds,
-    staleTime: 30 * 60 * 1000,
+    queryKey: ['protectedAreas'],
+    queryFn: () => [] as ProtectedArea[],
+    enabled: false,
+    staleTime: Infinity,
   });
 
   const toggleSatellite = () => {
@@ -77,8 +65,42 @@ export function useMapLayers() {
   };
 
   const toggleProtectedAreas = () => {
-    setShowProtectedAreas(prev => !prev);
+    setShowProtectedAreas(prev => {
+      const next = !prev;
+      if (next) setShowProtectedAreasButton(true);
+      else setShowProtectedAreasButton(false);
+      return next;
+    });
   };
+
+  // Appelé par App.tsx sur chaque mouvement de carte
+  const setMapBounds = useCallback((bounds: MapBounds) => {
+    setMapBoundsState(bounds);
+    // Si les zones protégées sont actives → proposer de recharger
+    setShowProtectedAreas(current => {
+      if (current) setShowProtectedAreasButton(true);
+      return current;
+    });
+  }, []);
+
+  // Charge les zones protégées pour le viewport courant
+  const loadProtectedAreasForView = useCallback(async () => {
+    if (!mapBounds) return;
+    setShowProtectedAreasButton(false);
+    setIsLoadingProtectedAreas(true);
+    try {
+      devLog.log('🗻 Chargement zones protégées (viewport)...');
+      const areas = await fetchProtectedAreas(mapBounds);
+      const hiddenIds = new Set(hiddenOsmQuery.data ?? []);
+      const filtered = areas.filter(a => !hiddenIds.has(a.id));
+      devLog.log(`✅ ${filtered.length} zones protégées`);
+      queryClient.setQueryData(['protectedAreas'], filtered);
+    } catch (err) {
+      devLog.warn('⚠️ Erreur chargement zones protégées:', err);
+    } finally {
+      setIsLoadingProtectedAreas(false);
+    }
+  }, [mapBounds, hiddenOsmQuery.data, queryClient]);
 
   return {
     satelliteMode,
@@ -98,10 +120,13 @@ export function useMapLayers() {
     showProtectedAreas,
     setShowProtectedAreas,
     setMapBounds,
+    showProtectedAreasButton,
+    setShowProtectedAreasButton,
+    isLoadingProtectedAreas,
+    loadProtectedAreasForView,
     allProtectedAreas: protectedAreasQuery.data ?? [],
-    isLoadingProtectedAreas: protectedAreasQuery.isFetching,
     customZones: customZonesQuery.data ?? [],
-    loadProtectedAreas: protectedAreasQuery.refetch,
+    loadProtectedAreas: loadProtectedAreasForView,
     toggleProtectedAreas,
   };
 }
