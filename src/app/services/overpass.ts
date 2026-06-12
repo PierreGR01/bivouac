@@ -17,12 +17,14 @@ export interface WaterPoint {
     amenity?: string;
     natural?: string;
     man_made?: string;
+    waterway?: string;
+    water?: string;
     drinking_water?: string;
     seasonal?: string;
     access?: string;
     description?: string;
   };
-  waterType: 'drinking_water' | 'spring' | 'water_well' | 'water_point' | 'stream' | 'waterfall';
+  waterType: 'drinking_water' | 'spring' | 'water_well' | 'water_point' | 'stream' | 'waterfall' | 'uncontrolled_water';
 }
 
 // Cache des résultats pour éviter les requêtes répétées
@@ -211,17 +213,17 @@ async function executeOverpassQuery(
 ): Promise<WaterPoint[]> {
   const { south, west, north, east } = bounds;
   
-  // Requête OverpassQL optimisée - simplifiée pour réduire le timeout
-  // On se concentre sur les points d'eau essentiels
   const query = `
     [out:json][timeout:${timeout}][maxsize:536870912];
     (
-      node["amenity"="drinking_water"](${south},${west},${north},${east});
-      node["amenity"="water_point"](${south},${west},${north},${east});
-      node["natural"="spring"](${south},${west},${north},${east});
-      node["man_made"="water_well"](${south},${west},${north},${east});
+      node["amenity"="drinking_water"]["access"!="private"](${south},${west},${north},${east});
+      node["amenity"="water_point"]["access"!="private"](${south},${west},${north},${east});
+      node["natural"="spring"]["access"!="private"](${south},${west},${north},${east});
+      node["man_made"="water_well"]["access"!="private"](${south},${west},${north},${east});
+      way["natural"="water"]["access"!="private"](${south},${west},${north},${east});
+      way["waterway"~"^(stream|river|creek)$"]["access"!="private"](${south},${west},${north},${east});
     );
-    out body qt;
+    out body center qt;
   `;
 
   try {
@@ -471,15 +473,28 @@ function parseWaterPoints(data: any): WaterPoint[] {
   }
 
   for (const element of data.elements) {
-    if (element.type !== 'node' || !element.lat || !element.lon) {
-      continue;
+    const tags = element.tags || {};
+
+    // Ignorer les points privés
+    if (tags.access === 'private') continue;
+
+    // Résoudre lat/lng selon le type d'élément
+    let lat: number | undefined;
+    let lng: number | undefined;
+
+    if (element.type === 'node') {
+      lat = element.lat;
+      lng = element.lon;
+    } else if (element.type === 'way' && element.center) {
+      lat = element.center.lat;
+      lng = element.center.lon;
     }
 
-    const tags = element.tags || {};
-    
+    if (!lat || !lng) continue;
+
     // Déterminer le type de point d'eau
     let waterType: WaterPoint['waterType'] = 'water_point';
-    
+
     if (tags.amenity === 'drinking_water') {
       waterType = 'drinking_water';
     } else if (tags.natural === 'spring') {
@@ -490,13 +505,17 @@ function parseWaterPoints(data: any): WaterPoint[] {
       waterType = 'water_point';
     } else if (tags.waterway === 'waterfall') {
       waterType = 'waterfall';
+    } else if (tags.natural === 'water') {
+      waterType = 'uncontrolled_water';
+    } else if (tags.waterway) {
+      waterType = 'stream';
     }
 
     waterPoints.push({
       id: `osm-${element.type}-${element.id}`,
       type: element.type,
-      lat: element.lat,
-      lng: element.lon,
+      lat,
+      lng,
       tags,
       waterType,
     });
@@ -531,12 +550,19 @@ export function isDrinkable(waterPoint: WaterPoint): boolean {
     return true;
   }
   
-  // Cascade : généralement non potable
-  if (waterType === 'waterfall') {
+  // Cascade, cours d'eau, eau non contrôlée : non potable
+  if (waterType === 'waterfall' || waterType === 'stream' || waterType === 'uncontrolled_water') {
     return false;
   }
-  
+
   return false;
+}
+
+/**
+ * Indique si un point d'eau est de type naturel non contrôlé (cours d'eau ou lac)
+ */
+export function isNaturalWater(waterPoint: WaterPoint): boolean {
+  return waterPoint.waterType === 'stream' || waterPoint.waterType === 'uncontrolled_water';
 }
 
 /**
@@ -556,8 +582,9 @@ export function getWaterPointLabel(waterPoint: WaterPoint): string {
     spring: 'Source',
     water_well: 'Puits',
     water_point: 'Point d\'eau',
-    stream: 'Ruisseau',
+    stream: 'Cours d\'eau',
     waterfall: 'Cascade',
+    uncontrolled_water: 'Lac / Plan d\'eau',
   };
   
   return labels[waterType] || 'Point d\'eau';
@@ -571,7 +598,11 @@ export function getWaterPointInfo(waterPoint: WaterPoint): string[] {
   const info: string[] = [];
   
   // Potabilité
-  if (isDrinkable(waterPoint)) {
+  if (waterPoint.waterType === 'uncontrolled_water') {
+    info.push('⚠️ Eau non traitée — à filtrer avant consommation');
+  } else if (waterPoint.waterType === 'stream') {
+    info.push('⚠️ Eau courante — à filtrer avant consommation');
+  } else if (isDrinkable(waterPoint)) {
     info.push('✓ Eau potable');
   } else if (tags.drinking_water === 'no') {
     info.push('✗ Eau non potable');

@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { PoiLocation } from '../types';
 import { mockLocations } from '../data';
 import { migratePois } from '../utils/poi-migration';
-import { calculateWaterProximity } from '../utils/water-proximity';
+import { calculateWaterProximity, calculateNaturalWaterProximity } from '../utils/water-proximity';
 import { fetchWaterPoints } from '../services/overpass';
 import { devLog } from '../utils/logger';
 import { WATER_LOADING_RADIUS_DEG } from '../constants';
@@ -88,10 +88,17 @@ export function usePois() {
         localWaterPoints
       );
 
+      const naturalWaterProximity = calculateNaturalWaterProximity(
+        newPoi.position.lat,
+        newPoi.position.lng,
+        localWaterPoints
+      );
+
       const poiWithId: PoiLocation = {
         id: `poi-${Date.now()}`,
         ...newPoi,
         waterProximity,
+        naturalWaterProximity,
         altitude,
       };
 

@@ -202,7 +202,7 @@ app.post("/make-server-e51cba93/water-points", safeHandler(async (c: any) => {
       return c.json({ success: false, error: "Missing bounds: south, west, north, east" }, 400);
     }
 
-    const query = `[out:json][timeout:${timeout}];(node["amenity"="drinking_water"](${south},${west},${north},${east});node["amenity"="water_point"](${south},${west},${north},${east});node["natural"="spring"](${south},${west},${north},${east});node["man_made"="water_well"](${south},${west},${north},${east}););out body qt;`;
+    const query = `[out:json][timeout:${timeout}];(node["amenity"="drinking_water"]["access"!="private"](${south},${west},${north},${east});node["amenity"="water_point"]["access"!="private"](${south},${west},${north},${east});node["natural"="spring"]["access"!="private"](${south},${west},${north},${east});node["man_made"="water_well"]["access"!="private"](${south},${west},${north},${east});way["natural"="water"]["access"!="private"](${south},${west},${north},${east});way["waterway"~"^(stream|river|creek)$"]["access"!="private"](${south},${west},${north},${east}););out body center qt;`;
 
     const ENDPOINTS = [
       'https://overpass-api.de/api/interpreter',

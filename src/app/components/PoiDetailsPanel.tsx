@@ -3,6 +3,7 @@ import { PoiLocation } from '../types';
 import {
   X,
   Droplets,
+  Waves,
   Snowflake,
   Sun,
   AlertCircle,
@@ -262,14 +263,36 @@ function PanelContent({
             <Droplets className="w-4 h-4" />
             <span>
               {location.waterProximity === 'proche'
-                ? 'Eau à moins de 100m'
-                : 'Eau à 100–200m'}
+                ? 'Eau potable à moins de 100m'
+                : 'Eau potable à 100–200m'}
             </span>
           </div>
         ) : (
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-100 text-gray-500 text-sm">
             <Droplets className="w-4 h-4" />
-            <span>Pas d'eau connue</span>
+            <span>Pas d'eau potable connue</span>
+          </div>
+        )}
+
+        {location.naturalWaterProximity ? (
+          <div
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium ${
+              location.naturalWaterProximity === 'proche'
+                ? 'bg-teal-50 text-teal-700'
+                : 'bg-teal-50 text-teal-600'
+            }`}
+          >
+            <Waves className="w-4 h-4" />
+            <span>
+              {location.naturalWaterProximity === 'proche'
+                ? 'Cours d\'eau / lac à moins de 100m'
+                : 'Cours d\'eau / lac à 100–200m'}
+            </span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-100 text-gray-500 text-sm">
+            <Waves className="w-4 h-4" />
+            <span>Pas de cours d'eau connu</span>
           </div>
         )}
       </div>

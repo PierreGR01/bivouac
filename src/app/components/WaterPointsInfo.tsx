@@ -27,8 +27,9 @@ export function WaterPointsInfo({ onClose }: WaterPointsInfoProps) {
             <ul className="text-xs text-blue-800 space-y-1">
               <li>• Maximum 35 points d'eau affichés simultanément</li>
               <li>• Priorité aux points proches des spots de bivouac</li>
-              <li>• Bleu clair = eau potable</li>
-              <li>• Bleu foncé = eau non potable</li>
+              <li>• Bleu = fontaine / source / puits</li>
+              <li>• Teal (bleu-vert) = lac / plan d'eau naturel</li>
+              <li>• Les cours d'eau ne sont pas affichés (pris en compte dans la fiche spot)</li>
               <li>• Cliquez sur un point pour voir les détails</li>
             </ul>
           </div>

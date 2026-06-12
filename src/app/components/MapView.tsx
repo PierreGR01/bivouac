@@ -4,7 +4,7 @@ import 'leaflet-draw';
 import 'leaflet-draw/dist/leaflet.draw.css';
 import { Trash2 } from 'lucide-react';
 import { PoiLocation } from '../types';
-import { fetchWaterPoints, WaterPoint, isDrinkable, getWaterPointLabel, getWaterPointInfo, RateLimitError, filterAndSortWaterPoints } from '../services/overpass';
+import { fetchWaterPoints, WaterPoint, getWaterPointLabel, getWaterPointInfo, RateLimitError, filterAndSortWaterPoints } from '../services/overpass';
 import { ProtectedArea, getProtectedAreaLabel, getProtectedAreaInfo, shouldDisplayOnMap } from '../services/protected-areas';
 import { CustomZone } from '../../utils/supabase/custom-zones-api';
 import { MapControls } from './MapControls';
@@ -893,15 +893,20 @@ export function MapView({
 
     // Ajouter les nouveaux marqueurs (limités et triés)
     filteredWaterPoints.forEach((waterPoint) => {
-      const drinkable = isDrinkable(waterPoint);
+      // Les cours d'eau ne sont pas affichés (utilisés uniquement pour la proximité)
+      if (waterPoint.waterType === 'stream') return;
+
       const label = getWaterPointLabel(waterPoint);
       const info = getWaterPointInfo(waterPoint);
 
-      // Icône personnalisée pour les points d'eau
+      const isNatural = waterPoint.waterType === 'uncontrolled_water';
+      const color = isNatural ? '#0d9488' : '#0ea5e9';
+      const shadowColor = isNatural ? 'rgba(13, 148, 136, 0.4)' : 'rgba(14, 165, 233, 0.4)';
+
       const customIcon = L.divIcon({
-        className: drinkable ? 'water-marker-drinkable' : 'water-marker',
+        className: isNatural ? 'water-marker-natural' : 'water-marker',
         html: `<div style="
-          background-color: ${drinkable ? '#0ea5e9' : '#0284c7'};
+          background-color: ${color};
           border: 3px solid white;
           border-radius: 50%;
           width: 20px;
@@ -909,7 +914,7 @@ export function MapView({
           display: flex;
           align-items: center;
           justify-content: center;
-          box-shadow: 0 2px 8px rgba(14, 165, 233, 0.4);
+          box-shadow: 0 2px 8px ${shadowColor};
           position: relative;
         ">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">

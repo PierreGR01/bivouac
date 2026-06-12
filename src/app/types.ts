@@ -9,6 +9,7 @@ export interface PoiLocation {
   photos: string[];
   season: 'hiver' | 'été' | 'toute-annee';
   waterProximity: 'proche' | 'éloigné' | null; // proche: <100m, éloigné: 100-200m, null: >200m
+  naturalWaterProximity?: 'proche' | 'éloigné' | null; // proximité cours d'eau / lac naturel
   regulations: string;
   altitude?: number; // Altitude en mètres (récupérée automatiquement)
   capacity?: '1' | '2-3' | '4-5' | '5+'; // Capacité d'accueil en nombre de tentes

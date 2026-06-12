@@ -1,4 +1,4 @@
-import { WaterPoint } from '../services/overpass';
+import { WaterPoint, isNaturalWater } from '../services/overpass';
 import { devLog } from './logger';
 import { WATER_PROXIMITY_NEAR_M, WATER_PROXIMITY_FAR_M } from '../constants';
 
@@ -33,52 +33,57 @@ function toRad(degrees: number): number {
   return degrees * (Math.PI / 180);
 }
 
+function proximityFromMinDistance(minDistance: number): 'proche' | 'éloigné' | null {
+  if (minDistance < WATER_PROXIMITY_NEAR_M) return 'proche';
+  if (minDistance < WATER_PROXIMITY_FAR_M) return 'éloigné';
+  return null;
+}
+
 /**
- * Calcule la proximité de l'eau en fonction des points d'eau disponibles
- * @param spotLat Latitude du spot
- * @param spotLng Longitude du spot
- * @param waterPoints Points d'eau disponibles
- * @returns 'proche' si <100m, 'éloigné' si 100-200m, null si >200m ou pas de points d'eau
+ * Calcule la proximité aux points d'eau contrôlés (fontaines, sources, puits).
+ * Exclut les cours d'eau et lacs naturels.
  */
 export function calculateWaterProximity(
   spotLat: number,
   spotLng: number,
   waterPoints: WaterPoint[]
 ): 'proche' | 'éloigné' | null {
-  if (!waterPoints || waterPoints.length === 0) {
-    devLog.log('💧 Calcul de proximité : aucun point d\'eau disponible');
+  const controlled = waterPoints.filter(wp => !isNaturalWater(wp));
+  if (controlled.length === 0) {
+    devLog.log('💧 Proximité eau contrôlée : aucun point disponible');
     return null;
   }
 
-  devLog.log(`💧 Calcul de proximité pour le spot (${spotLat.toFixed(5)}, ${spotLng.toFixed(5)}) avec ${waterPoints.length} points d'eau`);
-
-  // Trouver le point d'eau le plus proche
   let minDistance = Infinity;
-  
-  for (const waterPoint of waterPoints) {
-    const distance = calculateDistance(
-      spotLat,
-      spotLng,
-      waterPoint.lat,
-      waterPoint.lng
-    );
-    
-    if (distance < minDistance) {
-      minDistance = distance;
-    }
+  for (const wp of controlled) {
+    const d = calculateDistance(spotLat, spotLng, wp.lat, wp.lng);
+    if (d < minDistance) minDistance = d;
   }
 
-  devLog.log(`💧 Distance minimale trouvée : ${minDistance.toFixed(2)}m`);
+  devLog.log(`💧 Eau contrôlée — distance min : ${minDistance.toFixed(2)}m`);
+  return proximityFromMinDistance(minDistance);
+}
 
-  // Déterminer la proximité selon les seuils
-  if (minDistance < WATER_PROXIMITY_NEAR_M) {
-    devLog.log(`💧 Résultat : proche (<${WATER_PROXIMITY_NEAR_M}m)`);
-    return 'proche';
-  } else if (minDistance < WATER_PROXIMITY_FAR_M) {
-    devLog.log(`💧 Résultat : éloigné (${WATER_PROXIMITY_NEAR_M}-${WATER_PROXIMITY_FAR_M}m)`);
-    return 'éloigné';
-  } else {
-    devLog.log(`💧 Résultat : trop loin (>${WATER_PROXIMITY_FAR_M}m)`);
+/**
+ * Calcule la proximité aux eaux naturelles non contrôlées (cours d'eau, lacs).
+ */
+export function calculateNaturalWaterProximity(
+  spotLat: number,
+  spotLng: number,
+  waterPoints: WaterPoint[]
+): 'proche' | 'éloigné' | null {
+  const natural = waterPoints.filter(wp => isNaturalWater(wp));
+  if (natural.length === 0) {
+    devLog.log('🌊 Proximité eau naturelle : aucun point disponible');
     return null;
   }
+
+  let minDistance = Infinity;
+  for (const wp of natural) {
+    const d = calculateDistance(spotLat, spotLng, wp.lat, wp.lng);
+    if (d < minDistance) minDistance = d;
+  }
+
+  devLog.log(`🌊 Eau naturelle — distance min : ${minDistance.toFixed(2)}m`);
+  return proximityFromMinDistance(minDistance);
 }
