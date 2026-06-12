@@ -357,6 +357,7 @@ export default function App() {
             location={pois.selectedLocation}
             onClose={handleClosePanel}
             protectedAreas={map.allProtectedAreas}
+            customZones={map.customZones}
           />
         </Suspense>
       )}
@@ -378,6 +379,7 @@ export default function App() {
             onSubmit={handleSubmitPoi}
             selectedPosition={temporaryPosition}
             onSetPosition={setTemporaryPosition}
+            customZones={map.customZones}
           />
         </Suspense>
       )}

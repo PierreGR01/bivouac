@@ -17,6 +17,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { ProtectedArea, findAreasContainingPoint, getProtectedAreaInfo } from '../services/protected-areas';
+import { CustomZone, getZoneRestrictionStatus, formatZoneConstraints } from '/utils/supabase/custom-zones-api';
 import { useAuth } from '../contexts/AuthContext';
 import * as api from '/utils/supabase/api';
 import { Panel } from './ui/bivouac-panel';
@@ -26,12 +27,14 @@ interface PoiDetailsPanelProps {
   location: PoiLocation | null;
   onClose: () => void;
   protectedAreas?: ProtectedArea[];
+  customZones?: CustomZone[];
 }
 
 export function PoiDetailsPanel({
   location,
   onClose,
   protectedAreas = [],
+  customZones = [],
 }: PoiDetailsPanelProps) {
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
@@ -48,6 +51,14 @@ export function PoiDetailsPanel({
       protectedAreas
     );
   }, [location, protectedAreas]);
+
+  const customZoneStatus = useMemo(() => {
+    if (!location) return { blocked: [], warnings: [] };
+    return getZoneRestrictionStatus(
+      { lat: location.position.lat, lng: location.position.lng },
+      customZones
+    );
+  }, [location, customZones]);
 
   const handleDeletePoi = async () => {
     setIsDeleting(true);
@@ -149,6 +160,7 @@ export function PoiDetailsPanel({
           currentPhotoIndex={currentPhotoIndex}
           setCurrentPhotoIndex={setCurrentPhotoIndex}
           areasContainingPoi={areasContainingPoi}
+          customZoneStatus={customZoneStatus}
           onPhotoClick={() => setIsPhotoModalOpen(true)}
         />
       </Panel>
@@ -172,12 +184,14 @@ function PanelContent({
   currentPhotoIndex,
   setCurrentPhotoIndex,
   areasContainingPoi = [],
+  customZoneStatus = { blocked: [], warnings: [] },
   onPhotoClick,
 }: {
   location: PoiLocation;
   currentPhotoIndex: number;
   setCurrentPhotoIndex: (index: number) => void;
   areasContainingPoi?: ProtectedArea[];
+  customZoneStatus?: { blocked: CustomZone[]; warnings: CustomZone[] };
   onPhotoClick?: () => void;
 }) {
   const [newRating, setNewRating] = useState(0);
@@ -386,6 +400,53 @@ function PanelContent({
           )}
         </div>
       </div>
+
+      {/* Zones custom réglementées */}
+      {(customZoneStatus.blocked.length > 0 || customZoneStatus.warnings.length > 0) && (
+        <div className="mb-4 space-y-3">
+          {customZoneStatus.blocked.map(zone => (
+            <div key={zone.id} className="border-l-4 border-red-500 bg-red-50 p-4 rounded-r-lg">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="font-bold text-sm text-red-900 mb-1">Bivouac interdit</h3>
+                  <p className="text-sm text-red-800">{zone.name}</p>
+                  {zone.description && (
+                    <p className="text-sm text-red-700 mt-1">{zone.description}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+          {customZoneStatus.warnings.map(zone => (
+            <div key={zone.id} className="border-l-4 border-orange-400 bg-orange-50 p-4 rounded-r-lg">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="font-bold text-sm text-orange-900 mb-1">Zone réglementée</h3>
+                  <p className="text-sm font-medium text-orange-800">{zone.name}</p>
+                  <p className="text-sm text-orange-700 mt-1">
+                    Bivouac interdit {formatZoneConstraints(zone)}
+                  </p>
+                  {zone.description && (
+                    <p className="text-sm text-orange-700 mt-1">{zone.description}</p>
+                  )}
+                  {zone.source_url && (
+                    <a
+                      href={zone.source_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-block mt-2 text-sm font-medium underline text-orange-700 hover:text-orange-900"
+                    >
+                      Plus d'informations →
+                    </a>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Zones protégées */}
       {areasContainingPoi.length > 0 && (
