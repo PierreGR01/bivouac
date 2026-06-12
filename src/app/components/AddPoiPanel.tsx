@@ -3,7 +3,7 @@ import { MapPin, Upload, Snowflake, Sun, AlertCircle, AlertTriangle, Camera, Mou
 import { Panel } from './ui/bivouac-panel';
 import { BivouacButton } from './ui/bivouac-button';
 import { useIsMobile } from './ui/use-mobile';
-import { CustomZone, getZoneRestrictionStatus, formatZoneConstraints } from '/utils/supabase/custom-zones-api';
+import { CustomZone, getZoneRestrictionStatus, formatZoneConstraints } from '../../utils/supabase/custom-zones-api';
 
 interface AddPoiPanelProps {
   onClose: () => void;

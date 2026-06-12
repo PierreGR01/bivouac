@@ -17,7 +17,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { ProtectedArea, findAreasContainingPoint, getProtectedAreaInfo } from '../services/protected-areas';
-import { CustomZone, getZoneRestrictionStatus, formatZoneConstraints } from '/utils/supabase/custom-zones-api';
+import { CustomZone, getZoneRestrictionStatus, formatZoneConstraints } from '../../utils/supabase/custom-zones-api';
 import { useAuth } from '../contexts/AuthContext';
 import * as api from '/utils/supabase/api';
 import { Panel } from './ui/bivouac-panel';
