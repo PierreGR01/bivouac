@@ -143,7 +143,7 @@ export function PoiDetailsPanel({
         </div>
       )}
 
-      <Panel onClose={onClose} title={location.title} mobileMaxHeight="66.67vh" stickyFooter={adminFooter}>
+      <Panel onClose={onClose} title={location.title} mobileMaxHeight="min(66.67dvh, calc(100dvh - 220px))" stickyFooter={adminFooter}>
         <PanelContent
           location={location}
           currentPhotoIndex={currentPhotoIndex}
