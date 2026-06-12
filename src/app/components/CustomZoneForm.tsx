@@ -137,6 +137,14 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone }: CustomZon
         </button>
       </div>
 
+      {/* Erreur — en haut pour toujours être visible */}
+      {error && (
+        <div className="mb-3 bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm flex items-center gap-2">
+          <AlertCircle size={15} className="flex-shrink-0" />
+          {error}
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Nom */}
         <div>
@@ -257,14 +265,6 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone }: CustomZon
             disabled={isLoading}
           />
         </div>
-
-        {/* Erreur */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm flex items-center gap-2">
-            <AlertCircle size={15} />
-            {error}
-          </div>
-        )}
 
         {/* Actions principales */}
         <div className="flex gap-2 pt-2 border-t border-gray-100">
