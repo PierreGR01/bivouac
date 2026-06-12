@@ -380,6 +380,7 @@ export default function App() {
             selectedPosition={temporaryPosition}
             onSetPosition={setTemporaryPosition}
             customZones={map.customZones}
+            protectedAreas={map.allProtectedAreas}
           />
         </Suspense>
       )}

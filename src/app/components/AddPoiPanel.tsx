@@ -4,6 +4,7 @@ import { Panel } from './ui/bivouac-panel';
 import { BivouacButton } from './ui/bivouac-button';
 import { useIsMobile } from './ui/use-mobile';
 import { CustomZone, getZoneRestrictionStatus, formatZoneConstraints } from '../../utils/supabase/custom-zones-api';
+import { ProtectedArea, findAreasContainingPoint, getProtectedAreaInfo } from '../services/protected-areas';
 
 interface AddPoiPanelProps {
   onClose: () => void;
@@ -11,6 +12,7 @@ interface AddPoiPanelProps {
   selectedPosition: { lat: number; lng: number } | null;
   onSetPosition: (position: { lat: number; lng: number } | null) => void;
   customZones?: CustomZone[];
+  protectedAreas?: ProtectedArea[];
 }
 
 export interface NewPoi {
@@ -25,13 +27,26 @@ export interface NewPoi {
   altitude?: number;
 }
 
-export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition, customZones = [] }: AddPoiPanelProps) {
+export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition, customZones = [], protectedAreas = [] }: AddPoiPanelProps) {
   const isMobile = useIsMobile();
 
   const zoneStatus = useMemo(() => {
     if (!selectedPosition) return { blocked: [], warnings: [] };
     return getZoneRestrictionStatus(selectedPosition, customZones);
   }, [selectedPosition, customZones]);
+
+  const osmZoneStatus = useMemo(() => {
+    if (!selectedPosition || protectedAreas.length === 0) return { blocked: [], warnings: [] };
+    const areas = findAreasContainingPoint(selectedPosition, protectedAreas);
+    const blocked: ProtectedArea[] = [];
+    const warnings: ProtectedArea[] = [];
+    areas.forEach(area => {
+      const info = getProtectedAreaInfo(area);
+      if (info.isCampingForbidden) blocked.push(area);
+      else warnings.push(area);
+    });
+    return { blocked, warnings };
+  }, [selectedPosition, protectedAreas]);
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -46,7 +61,7 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
   const [isGeolocating, setIsGeolocating] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const isBlocked = zoneStatus.blocked.length > 0;
+  const isBlocked = zoneStatus.blocked.length > 0 || osmZoneStatus.blocked.length > 0;
   const isFormValid = Boolean(selectedPosition && title.trim() && description.trim() && !isBlocked);
 
   const handleUseMyLocation = () => {
@@ -204,6 +219,45 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
                     {z.name} — interdit {formatZoneConstraints(z)}
                   </p>
                 ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {osmZoneStatus.blocked.length > 0 && (
+          <div className="mb-3 bg-red-50 border-l-4 border-red-500 p-3 rounded-r-lg">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-red-900">Création impossible</p>
+                {osmZoneStatus.blocked.map(area => {
+                  const info = getProtectedAreaInfo(area);
+                  return (
+                    <p key={area.id} className="text-sm text-red-800 mt-0.5">
+                      {info.title} — bivouac/camping interdit
+                    </p>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!isBlocked && osmZoneStatus.warnings.length > 0 && (
+          <div className="mb-3 bg-orange-50 border-l-4 border-orange-400 p-3 rounded-r-lg">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-orange-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-orange-900">Zone réglementée</p>
+                {osmZoneStatus.warnings.map(area => {
+                  const info = getProtectedAreaInfo(area);
+                  return (
+                    <p key={area.id} className="text-sm text-orange-800 mt-0.5">
+                      {info.title}
+                      {info.restrictions.length > 0 && ` — ${info.restrictions[0]}`}
+                    </p>
+                  );
+                })}
               </div>
             </div>
           </div>

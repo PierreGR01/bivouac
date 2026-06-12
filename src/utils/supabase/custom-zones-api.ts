@@ -152,12 +152,6 @@ export function getZoneRestrictionStatus(
     )
   );
   const matching = relevant.filter(z => isPointInCustomZone(point, z));
-  relevant.forEach(z => {
-    console.log(`[ZoneCheck] zone "${z.name}" geometry:`, JSON.stringify(z.geometry).substring(0, 600));
-    console.log(`[ZoneCheck] point:`, point.lat, point.lng);
-    console.log(`[ZoneCheck] inZone:`, isPointInCustomZone(point, z));
-  });
-  console.log('[ZoneCheck]', { totalZones: customZones.length, relevantZones: relevant.length, matchingZones: matching.length });
   const hasSchedule = (z: CustomZone) =>
     !!(z.time_range_start || z.time_range_end || z.period_start || z.period_end);
   return {
