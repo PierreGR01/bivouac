@@ -167,6 +167,17 @@ export function MapView({
       panToTop(lat, lng);
     };
 
+    // Géolocalisation en mode ajout : zoom 14 + point au centre de la zone visible (hors overlay 50vh)
+    (window as any).__mapPanToAddMode = (lat: number, lng: number) => {
+      const targetZoom = 14;
+      const mapHeight = map.getSize().y;
+      const targetY = mapHeight * 0.25;
+      const spotPoint = map.project([lat, lng], targetZoom);
+      const centerPoint = L.point(spotPoint.x, spotPoint.y + (mapHeight / 2 - targetY));
+      const center = map.unproject(centerPoint, targetZoom);
+      map.setView(center, targetZoom, { animate: false });
+    };
+
     // Notifier les bounds initiaux via la ref
     const initBounds = map.getBounds();
     onMapMoveRef.current?.({
@@ -184,6 +195,7 @@ export function MapView({
       delete (window as any).__mapZoomOut;
       delete (window as any).__mapCenterTo;
       delete (window as any).__mapPanToSpot;
+      delete (window as any).__mapPanToAddMode;
     };
   }, []);
 
