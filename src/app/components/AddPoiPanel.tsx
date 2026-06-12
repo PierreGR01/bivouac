@@ -46,7 +46,7 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
         (position) => {
           const { latitude, longitude } = position.coords;
           onSetPosition({ lat: latitude, lng: longitude });
-          (window as any).__mapCenterTo?.(latitude, longitude);
+          (window as any).__mapPanToSpot?.(latitude, longitude);
           setIsGeolocating(false);
         },
         (error) => {
