@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, Loader2, AlertCircle } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { createCustomZone, updateCustomZone, deleteCustomZone, CustomZone } from '../../utils/supabase/custom-zones-api';
 import { BivouacButton } from './ui/bivouac-button';
@@ -36,6 +37,7 @@ function Toggle({ enabled, onChange, disabled }: { enabled: boolean; onChange: (
 
 export function CustomZoneForm({ geometry, onClose, onSuccess, zone }: CustomZoneFormProps) {
   const { currentUser } = useAuth();
+  const queryClient = useQueryClient();
   const isEditing = !!zone;
 
   const [name, setName] = useState(zone?.name ?? '');
@@ -99,6 +101,7 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone }: CustomZon
       } else {
         await createCustomZone(payload);
       }
+      await queryClient.invalidateQueries({ queryKey: ['customZones'] });
       onSuccess();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur lors de la sauvegarde');
@@ -112,6 +115,7 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone }: CustomZon
     setIsLoading(true);
     try {
       await deleteCustomZone(zone.id);
+      await queryClient.invalidateQueries({ queryKey: ['customZones'] });
       onSuccess();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur lors de la suppression');

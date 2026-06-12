@@ -253,6 +253,66 @@ app.post("/make-server-e51cba93/water-points", safeHandler(async (c: any) => {
   }
 }));
 
+// Proxy Overpass API — zones protégées (parcs, réserves, arrêtés)
+app.post("/make-server-e51cba93/protected-areas", safeHandler(async (c: any) => {
+  try {
+    const body = await c.req.json();
+    const { south, west, north, east, timeout = 60 } = body;
+
+    if (south === undefined || west === undefined || north === undefined || east === undefined) {
+      return c.json({ success: false, error: "Missing bounds: south, west, north, east" }, 400);
+    }
+
+    const query = `[out:json][timeout:${timeout}][bbox:${south},${west},${north},${east}];(relation["boundary"="national_park"];relation["boundary"="protected_area"];relation["leisure"="nature_reserve"];way["leisure"="nature_reserve"];relation["designation"~"parc|réserve|arrêté|protected|park|reserve"];way["designation"~"parc|réserve|arrêté|protected|park|reserve"];relation["camping"~"no|forbidden|prohibited"];way["camping"~"no|forbidden|prohibited"];relation["bivouac"~"no|forbidden|prohibited"];way["bivouac"~"no|forbidden|prohibited"];);out geom;`;
+
+    const ENDPOINTS = [
+      'https://overpass-api.de/api/interpreter',
+      'https://overpass.kumi.systems/api/interpreter',
+      'https://overpass.openstreetmap.ru/api/interpreter',
+      'https://overpass.nchc.org.tw/api/interpreter',
+    ];
+
+    const HEADERS = {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Accept': 'application/json',
+      'User-Agent': 'bivouac-app/1.0 (contact: github.com/PierreGR01/bivouac)',
+    };
+
+    let lastError = 'No endpoint succeeded';
+    for (const endpoint of ENDPOINTS) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), (timeout + 5) * 1000);
+      try {
+        console.log(`🔍 Zones protégées: ${endpoint}`);
+        const resp = await fetch(endpoint, {
+          method: 'POST',
+          body: `data=${encodeURIComponent(query)}`,
+          headers: HEADERS,
+          signal: ctrl.signal,
+        });
+        clearTimeout(timer);
+        console.log(`📡 ${endpoint} → ${resp.status}`);
+        if (resp.ok) {
+          const data = await resp.json();
+          console.log(`✅ Zones protégées proxy: ${(data.elements || []).length} éléments depuis ${endpoint}`);
+          return c.json({ success: true, data });
+        }
+        lastError = `HTTP ${resp.status} from ${endpoint}`;
+      } catch (err: any) {
+        clearTimeout(timer);
+        lastError = `${endpoint}: ${err?.message || String(err)}`;
+        console.warn(`⚠️ ${lastError}`);
+      }
+    }
+
+    console.error(`❌ Tous les endpoints Overpass ont échoué: ${lastError}`);
+    return c.json({ success: false, error: lastError }, 503);
+  } catch (error) {
+    console.error("Error proxying protected areas:", error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+}));
+
 // Gestionnaire d'erreurs global pour attraper toutes les erreurs non gérées
 app.onError((error: any, c: any) => {
   // Ignorer silencieusement les erreurs de connexion fermée

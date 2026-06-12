@@ -193,29 +193,52 @@ async function executeProtectedAreasQuery(
     const controller = new AbortController();
     const clientTimeout = setTimeout(() => controller.abort(), (timeout + 5) * 1000);
 
-    devLog.log('🔍 Requête zones protégées (viewport)...');
+    devLog.log('🔍 Requête zones protégées...');
 
-    const response = await fetch('https://overpass-api.de/api/interpreter', {
-      method: 'POST',
-      body: query,
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      signal: controller.signal,
-    });
+    const edgeFunctionUrl = import.meta.env.VITE_EDGE_FUNCTION_URL;
+    let data: any = null;
 
-    clearTimeout(clientTimeout);
-
-    if (!response.ok) {
-      if (response.status === 504) {
-        throw new Error('Overpass timeout - zone trop complexe');
-      } else if (response.status === 429) {
-        throw new Error('Overpass rate limit - trop de requêtes');
+    // Priorité : proxy Edge Function (évite CORS en production)
+    if (edgeFunctionUrl) {
+      try {
+        const proxyResp = await fetch(`${edgeFunctionUrl}/protected-areas`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ south, west, north, east, timeout }),
+          signal: controller.signal,
+        });
+        if (proxyResp.ok) {
+          const result = await proxyResp.json();
+          if (result.success) {
+            data = result.data;
+            devLog.log('✅ Zones protégées via proxy Edge Function');
+          }
+        }
+      } catch (proxyErr) {
+        devLog.warn('⚠️ Proxy zones protégées échoué, fallback direct', proxyErr);
       }
-      throw new Error(`Overpass erreur ${response.status}`);
     }
 
-    const data = await response.json();
+    // Fallback : appel direct Overpass
+    if (!data) {
+      const response = await fetch('https://overpass-api.de/api/interpreter', {
+        method: 'POST',
+        body: query,
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        signal: controller.signal,
+      });
+
+      clearTimeout(clientTimeout);
+
+      if (!response.ok) {
+        if (response.status === 504) throw new Error('Overpass timeout - zone trop complexe');
+        if (response.status === 429) throw new Error('Overpass rate limit - trop de requêtes');
+        throw new Error(`Overpass erreur ${response.status}`);
+      }
+      data = await response.json();
+    }
+
+    clearTimeout(clientTimeout);
     const areas = parseProtectedAreas(data);
 
     // Mettre en cache
