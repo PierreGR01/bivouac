@@ -101,6 +101,7 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
       alert('Veuillez cliquer sur la carte pour définir la position du point de bivouac');
       return;
     }
+    if (isBlocked) return;
     if (!title.trim() || !description.trim()) {
       alert('Veuillez remplir tous les champs obligatoires');
       return;
