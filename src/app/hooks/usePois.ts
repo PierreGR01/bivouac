@@ -58,53 +58,13 @@ export function usePois() {
         throw new Error('Coordonnées invalides. Cliquez sur la carte pour définir une position.');
       }
 
-      const radius = WATER_LOADING_RADIUS_DEG;
-      const bounds = {
-        south: newPoi.position.lat - radius,
-        west: newPoi.position.lng - radius,
-        north: newPoi.position.lat + radius,
-        east: newPoi.position.lng + radius,
-      };
-
-      devLog.log('🏔️ Récupération altitude, points d\'eau et cours d\'eau en parallèle...');
-      const [altitude, localWaterPoints, nearbyStreams] = await Promise.all([
-        api.fetchAltitude(newPoi.position.lat, newPoi.position.lng).catch(() => {
-          console.warn('⚠️ Impossible de récupérer l\'altitude');
-          return null;
-        }),
-        waterPoints.length > 0
-          ? Promise.resolve(waterPoints)
-          : fetchWaterPoints(bounds, 15).catch((error: any) => {
-              console.warn('⚠️ Impossible de charger les points d\'eau:', error?.message || error);
-              return [];
-            }),
-        fetchNearbyStreams(newPoi.position.lat, newPoi.position.lng, radius).catch(() => []),
-      ]);
-
-      if (altitude !== null) devLog.log(`✅ Altitude récupérée: ${altitude}m`);
-      devLog.log(`✅ ${(localWaterPoints as any[]).length} points d'eau trouvés`);
-      devLog.log(`🌊 ${(nearbyStreams as any[]).length} cours d'eau trouvés`);
-
-      const allWaterPoints = [...localWaterPoints, ...nearbyStreams];
-
-      const waterProximity = calculateWaterProximity(
-        newPoi.position.lat,
-        newPoi.position.lng,
-        allWaterPoints
-      );
-
-      const naturalWaterProximity = calculateNaturalWaterProximity(
-        newPoi.position.lat,
-        newPoi.position.lng,
-        allWaterPoints
-      );
-
+      // Sauvegarde immédiate sans attendre les données eau/altitude
       const poiWithId: PoiLocation = {
         id: `poi-${Date.now()}`,
         ...newPoi,
-        waterProximity,
-        naturalWaterProximity,
-        altitude,
+        waterProximity: null,
+        naturalWaterProximity: null,
+        altitude: null,
       };
 
       const success = await api.createPoi(poiWithId);
@@ -115,6 +75,45 @@ export function usePois() {
       } else {
         toast.warning('Point ajouté localement. Le serveur n\'est pas disponible.');
       }
+
+      // Enrichissement eau/altitude en arrière-plan (ne bloque pas l'UX)
+      const radius = WATER_LOADING_RADIUS_DEG;
+      const bounds = {
+        south: newPoi.position.lat - radius,
+        west: newPoi.position.lng - radius,
+        north: newPoi.position.lat + radius,
+        east: newPoi.position.lng + radius,
+      };
+
+      Promise.all([
+        api.fetchAltitude(newPoi.position.lat, newPoi.position.lng).catch(() => null),
+        waterPoints.length > 0
+          ? Promise.resolve(waterPoints)
+          : fetchWaterPoints(bounds, 15).catch(() => []),
+        fetchNearbyStreams(newPoi.position.lat, newPoi.position.lng, radius).catch(() => []),
+      ]).then(([altitude, localWaterPoints, nearbyStreams]) => {
+        const allWaterPoints = [...(localWaterPoints as any[]), ...(nearbyStreams as any[])];
+        const enriched: Partial<PoiLocation> = {
+          altitude,
+          waterProximity: calculateWaterProximity(newPoi.position!.lat, newPoi.position!.lng, allWaterPoints),
+          naturalWaterProximity: calculateNaturalWaterProximity(newPoi.position!.lat, newPoi.position!.lng, allWaterPoints),
+        };
+        devLog.log(`🏔️ Enrichissement: altitude=${altitude}m, eau=${enriched.waterProximity}, naturelle=${enriched.naturalWaterProximity}`);
+
+        // Mise à jour silencieuse du cache local
+        queryClient.setQueryData<PoiLocation[]>(['pois'], (old = []) =>
+          old.map(p => p.id === poiWithId.id ? { ...p, ...enriched } : p)
+        );
+
+        // Mise à jour persistante sur le serveur (fire-and-forget)
+        if (success) {
+          api.updatePoi(poiWithId.id, enriched).catch(() => {
+            devLog.log('⚠️ Mise à jour enrichissement échouée (ignorée)');
+          });
+        }
+      }).catch(() => {
+        devLog.log('⚠️ Enrichissement eau/altitude échoué (ignoré)');
+      });
 
       return poiWithId;
     },

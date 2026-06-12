@@ -123,6 +123,27 @@ app.post("/make-server-e51cba93/pois", safeHandler(async (c: any) => {
   }
 }));
 
+// Update (patch) a POI — used for async enrichment (water proximity, altitude)
+app.put("/make-server-e51cba93/pois/:id", safeHandler(async (c: any) => {
+  try {
+    const id = c.req.param("id");
+    const updates = await c.req.json();
+
+    const existing = await kv.get(`poi:${id}`);
+    if (!existing) {
+      return c.json({ success: false, error: "POI not found" }, 404);
+    }
+
+    const updated = { ...existing, ...updates };
+    await kv.set(`poi:${id}`, updated);
+    console.log(`✅ POI ${id} mis à jour (altitude: ${updated.altitude ?? 'N/A'}m, eau: ${updated.waterProximity ?? 'N/A'})`);
+    return c.json({ success: true, data: updated });
+  } catch (error) {
+    console.error("Error updating POI:", error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+}));
+
 // Add a rating to a POI
 app.post("/make-server-e51cba93/pois/:id/rate", safeHandler(async (c: any) => {
   try {

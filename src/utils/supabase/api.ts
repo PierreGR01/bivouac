@@ -56,6 +56,30 @@ export async function createPoi(poi: Partial<PoiLocation>): Promise<boolean> {
   }
 }
 
+export async function updatePoi(poiId: string, updates: Partial<PoiLocation>): Promise<boolean> {
+  try {
+    const authHeader = await getAuthHeader();
+    const response = await fetch(`${EDGE_FUNCTION_URL}/pois/${poiId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': authHeader,
+      },
+      body: JSON.stringify(updates),
+      signal: AbortSignal.timeout(30_000),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to update POI: ${response.statusText}`);
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error updating POI:', error);
+    return false;
+  }
+}
+
 export async function deletePoi(poiId: string): Promise<void> {
   try {
     const authHeader = await getAuthHeader();
