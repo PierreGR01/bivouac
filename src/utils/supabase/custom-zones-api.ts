@@ -152,24 +152,12 @@ export function getZoneRestrictionStatus(
     )
   );
   const matching = relevant.filter(z => isPointInCustomZone(point, z));
-  console.log('[ZoneCheck]', {
-    totalZones: customZones.length,
-    relevantZones: relevant.length,
-    matchingZones: matching.length,
-    point,
-    zones: relevant.map(z => {
-      const raw = z.geometry as unknown as Record<string, unknown>;
-      const inner = raw?.type === 'Feature'
-        ? (raw as GeoJSON.Feature).geometry as GeoJSON.Geometry | null
-        : raw as GeoJSON.Geometry;
-      const coords = inner?.type === 'Polygon'
-        ? (inner as GeoJSON.Polygon).coordinates[0].slice(0, 3)
-        : inner?.type === 'MultiPolygon'
-        ? (inner as GeoJSON.MultiPolygon).coordinates[0][0].slice(0, 3)
-        : null;
-      return { name: z.name, innerType: inner?.type, firstCoords: coords };
-    }),
+  relevant.forEach(z => {
+    console.log(`[ZoneCheck] zone "${z.name}" geometry:`, JSON.stringify(z.geometry).substring(0, 600));
+    console.log(`[ZoneCheck] point:`, point.lat, point.lng);
+    console.log(`[ZoneCheck] inZone:`, isPointInCustomZone(point, z));
   });
+  console.log('[ZoneCheck]', { totalZones: customZones.length, relevantZones: relevant.length, matchingZones: matching.length });
   const hasSchedule = (z: CustomZone) =>
     !!(z.time_range_start || z.time_range_end || z.period_start || z.period_end);
   return {
