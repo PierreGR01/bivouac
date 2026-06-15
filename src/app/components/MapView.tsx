@@ -10,6 +10,23 @@ import { CustomZone } from '../../utils/supabase/custom-zones-api';
 import { MapControls } from './MapControls';
 import { MAP_CENTER, MAP_DEFAULT_ZOOM } from '../constants';
 
+function makeCrosshairIcon(color: string, size: number): L.DivIcon {
+  const h = size / 2;
+  const gap = Math.round(size * 0.18);
+  return L.divIcon({
+    html: `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg">
+      <line x1="${h}" y1="2" x2="${h}" y2="${h - gap}" stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>
+      <line x1="${h}" y1="${h + gap}" x2="${h}" y2="${size - 2}" stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>
+      <line x1="2" y1="${h}" x2="${h - gap}" y2="${h}" stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>
+      <line x1="${h + gap}" y1="${h}" x2="${size - 2}" y2="${h}" stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>
+      <circle cx="${h}" cy="${h}" r="3" fill="${color}" stroke="white" stroke-width="1.5"/>
+    </svg>`,
+    className: '',
+    iconSize: [size, size],
+    iconAnchor: [h, h],
+  });
+}
+
 interface MapViewProps {
   locations: PoiLocation[];
   onLocationClick: (location: PoiLocation) => void;
@@ -92,7 +109,9 @@ export function MapView({
   const slopesLayerRef = useRef<L.TileLayer | null>(null);
   const drawControlRef = useRef<any>(null);
   const drawLayerRef = useRef<L.FeatureGroup | null>(null);
-  const userMarkerRef = useRef<L.CircleMarker | null>(null);
+  const userMarkerRef = useRef<L.Marker | null>(null);
+  const searchMarkerRef = useRef<L.Marker | null>(null);
+  const searchMarkerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   const [waterPoints, setWaterPoints] = useState<WaterPoint[]>([]);
   const [isLoadingWater, setIsLoadingWater] = useState(false);
@@ -161,9 +180,9 @@ export function MapView({
       map.setView(center, zoom, { animate: false });
     };
 
-    // Expose for geolocation button (zoom to 14, center normally)
+    // Expose for geolocation button — zoom max (17 = détail max OpenTopoMap)
     (window as any).__mapCenterTo = (lat: number, lng: number) => {
-      map.setView([lat, lng], 14, { animate: false });
+      map.setView([lat, lng], 17, { animate: true });
     };
 
     (window as any).__mapPanToSpot = (lat: number, lng: number) => {
@@ -181,6 +200,102 @@ export function MapView({
       map.setView(center, targetZoom, { animate: false });
     };
 
+    // Helpers pour le marqueur de résultat de recherche
+    const placeSearchMarker = (targetLat: number, targetLng: number) => {
+      if (searchMarkerTimeoutRef.current) clearTimeout(searchMarkerTimeoutRef.current);
+      if (searchMarkerRef.current) map.removeLayer(searchMarkerRef.current);
+      searchMarkerRef.current = L.marker([targetLat, targetLng], {
+        icon: makeCrosshairIcon('#ea580c', 40),
+        zIndexOffset: 900,
+      }).addTo(map);
+      searchMarkerTimeoutRef.current = setTimeout(() => {
+        if (searchMarkerRef.current) {
+          map.removeLayer(searchMarkerRef.current);
+          searchMarkerRef.current = null;
+        }
+      }, 8000);
+    };
+
+    (window as any).__mapClearSearchMarker = () => {
+      if (searchMarkerTimeoutRef.current) clearTimeout(searchMarkerTimeoutRef.current);
+      if (searchMarkerRef.current) {
+        map.removeLayer(searchMarkerRef.current);
+        searchMarkerRef.current = null;
+      }
+    };
+
+    // Navigation géocodage : fitBounds sur le bbox Nominatim, fallback flyTo
+    (window as any).__mapFitBounds = (bbox: [string, string, string, string], lat?: number, lng?: number) => {
+      const targetLat = lat !== undefined ? lat : undefined;
+      const targetLng = lng !== undefined ? lng : undefined;
+      try {
+        const [south, north, west, east] = bbox.map(parseFloat);
+        const latSpan = north - south;
+        const lngSpan = east - west;
+        const centerLat = targetLat ?? (south + north) / 2;
+        const centerLng = targetLng ?? (west + east) / 2;
+        // Pour les petits bbox (sommet, col, village) → zoom 14 sur le point exact
+        if (latSpan < 0.05 && lngSpan < 0.05) {
+          map.flyTo([centerLat, centerLng], 14, { animate: true, duration: 1.2 });
+        } else {
+          map.flyToBounds([[south, west], [north, east]], { animate: true, duration: 1.2, maxZoom: 13, padding: [40, 40] });
+        }
+        if (targetLat !== undefined && targetLng !== undefined) {
+          placeSearchMarker(targetLat, targetLng);
+        }
+      } catch {
+        if (targetLat !== undefined && targetLng !== undefined) {
+          map.flyTo([targetLat, targetLng], 14, { animate: true, duration: 1.2 });
+          placeSearchMarker(targetLat, targetLng);
+        }
+      }
+    };
+
+    // Geste double-tap + drag pour zoom/dézoom (style Google Maps)
+    const doubleTap = { lastTapEnd: 0, active: false, startY: 0, startZoom: 0, moved: false };
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return;
+      const now = Date.now();
+      if (now - doubleTap.lastTapEnd < 300) {
+        doubleTap.active = true;
+        doubleTap.startY = e.touches[0].clientY;
+        doubleTap.startZoom = map.getZoom();
+        doubleTap.moved = false;
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (!doubleTap.active || e.touches.length !== 1) return;
+      const dy = e.touches[0].clientY - doubleTap.startY;
+      const newZoom = Math.max(2, Math.min(18, doubleTap.startZoom - dy / 50));
+      map.setZoom(newZoom, { animate: false });
+      doubleTap.moved = true;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (!doubleTap.active) {
+        doubleTap.lastTapEnd = Date.now();
+        return;
+      }
+      if (!doubleTap.moved) {
+        map.zoomIn(1, { animate: true });
+      }
+      doubleTap.active = false;
+      doubleTap.moved = false;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    const container = mapRef.current!;
+    container.addEventListener('touchstart', onTouchStart, { passive: false, capture: true });
+    container.addEventListener('touchmove', onTouchMove, { passive: false, capture: true });
+    container.addEventListener('touchend', onTouchEnd, { passive: false, capture: true });
+
     // Notifier les bounds initiaux via la ref
     const initBounds = map.getBounds();
     onMapMoveRef.current?.({
@@ -191,6 +306,9 @@ export function MapView({
     });
 
     return () => {
+      container.removeEventListener('touchstart', onTouchStart, { capture: true });
+      container.removeEventListener('touchmove', onTouchMove, { capture: true });
+      container.removeEventListener('touchend', onTouchEnd, { capture: true });
       map.remove();
       mapInstanceRef.current = null;
       tileLayerRef.current = null;
@@ -199,6 +317,9 @@ export function MapView({
       delete (window as any).__mapCenterTo;
       delete (window as any).__mapPanToSpot;
       delete (window as any).__mapPanToAddMode;
+      delete (window as any).__mapFitBounds;
+      delete (window as any).__mapClearSearchMarker;
+      if (searchMarkerTimeoutRef.current) clearTimeout(searchMarkerTimeoutRef.current);
     };
   }, []);
 
@@ -1076,13 +1197,9 @@ export function MapView({
       if (userMarkerRef.current) {
         userMarkerRef.current.setLatLng([userPosition.lat, userPosition.lng]);
       } else {
-        userMarkerRef.current = L.circleMarker([userPosition.lat, userPosition.lng], {
-          radius: 9,
-          fillColor: '#2563eb',
-          color: 'white',
-          weight: 3,
-          opacity: 1,
-          fillOpacity: 1,
+        userMarkerRef.current = L.marker([userPosition.lat, userPosition.lng], {
+          icon: makeCrosshairIcon('#2563eb', 28),
+          zIndexOffset: 1000,
         }).addTo(map);
       }
     } else {

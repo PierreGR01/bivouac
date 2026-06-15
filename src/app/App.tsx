@@ -167,6 +167,14 @@ export default function App() {
           onLoginClick={() => setShowLoginPanel(!showLoginPanel)}
           onToggleZones={handleToggleCustomZones}
           showCustomZonesEditor={showCustomZonesEditor}
+          allLocations={pois.locations}
+          onGeoSelect={(lat, lng, bbox) => {
+            (window as any).__mapFitBounds?.(bbox, lat, lng);
+          }}
+          onSpotSelect={(spot) => {
+            handleLocationClick(spot);
+            (window as any).__mapPanToSpot?.(spot.position.lat, spot.position.lng);
+          }}
         />
       </div>
 
