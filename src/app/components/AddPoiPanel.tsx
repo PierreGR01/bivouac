@@ -95,6 +95,11 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && file.type.startsWith('image/')) {
+      if (file.size > 2 * 1024 * 1024) {
+        alert('Photo trop volumineuse (maximum 2 Mo). Veuillez choisir une image plus petite.');
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return;
+      }
       const reader = new FileReader();
       reader.onload = (event) => {
         const dataUrl = event.target?.result as string;

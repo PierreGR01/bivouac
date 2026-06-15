@@ -23,5 +23,8 @@ Thumbs.db
 # Vercel
 .vercel/
 
+# Supabase CLI temp files (contain project metadata)
+supabase/.temp/
+
 # Claude
 .claude/

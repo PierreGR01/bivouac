@@ -74,31 +74,6 @@ export async function isUserAdmin(userId: string): Promise<boolean> {
   return true;
 }
 
-export async function makeUserAdmin(userId: string) {
-  const { data, error } = await supabaseClient
-    .from('admin_users')
-    .insert([{ user_id: userId, is_admin: true }])
-    .select()
-    .single();
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return data;
-}
-
-export async function removeAdminRole(userId: string) {
-  const { error } = await supabaseClient
-    .from('admin_users')
-    .delete()
-    .eq('user_id', userId);
-
-  if (error) {
-    throw new Error(error.message);
-  }
-}
-
 export function getAuthToken() {
   return localStorage.getItem('supabase_token');
 }

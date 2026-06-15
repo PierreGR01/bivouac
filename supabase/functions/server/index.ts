@@ -1,69 +1,116 @@
 import { Hono } from "npm:hono";
 import { cors } from "npm:hono/cors";
+import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 
-// Gestionnaire global pour les erreurs non capturées de Deno
 globalThis.addEventListener("error", (event) => {
   const error = event.error;
-  // Ignorer silencieusement les erreurs de connexion fermée
   if (
-    error?.code === 'EPIPE' || 
-    error?.name === 'Http' || 
+    error?.code === 'EPIPE' ||
+    error?.name === 'Http' ||
     error?.message?.includes('connection closed') ||
     error?.message?.includes('broken pipe')
   ) {
-    event.preventDefault(); // Empêcher l'affichage de l'erreur
+    event.preventDefault();
     return;
   }
-  // Les autres erreurs seront affichées normalement
 });
 
-// Gestionnaire global pour les promesses rejetées non capturées
 globalThis.addEventListener("unhandledrejection", (event) => {
   const error = event.reason;
-  // Ignorer silencieusement les erreurs de connexion fermée
   if (
-    error?.code === 'EPIPE' || 
-    error?.name === 'Http' || 
+    error?.code === 'EPIPE' ||
+    error?.name === 'Http' ||
     error?.message?.includes('connection closed') ||
     error?.message?.includes('broken pipe')
   ) {
-    event.preventDefault(); // Empêcher l'affichage de l'erreur
+    event.preventDefault();
     return;
   }
-  // Les autres erreurs seront affichées normalement
 });
 
 const app = new Hono();
 
-// Wrapper pour gérer les erreurs de connexion fermée (broken pipe)
 const safeHandler = (handler: any) => async (c: any) => {
   try {
     return await handler(c);
   } catch (error: any) {
-    // Ignorer les erreurs de connexion fermée/annulée
     if (
-      error?.code === 'EPIPE' || 
-      error?.name === 'Http' || 
+      error?.code === 'EPIPE' ||
+      error?.name === 'Http' ||
       error?.message?.includes('connection closed') ||
       error?.message?.includes('broken pipe')
     ) {
       console.log('ℹ️ Client a fermé la connexion (ignoré)');
-      // Ne pas essayer de répondre, la connexion est déjà fermée
-      return new Response(null, { status: 499 }); // Client Closed Request
+      return new Response(null, { status: 499 });
     }
-    
-    // Pour les autres erreurs, les loguer et renvoyer une réponse d'erreur
     console.error('❌ Erreur serveur:', error);
-    return c.json({ success: false, error: String(error) }, 500);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
   }
 };
 
-// Enable CORS for all routes and methods
+// --- Security helpers ---
+
+async function requireAdmin(c: any): Promise<boolean> {
+  const authHeader = c.req.header("Authorization") as string | undefined;
+  if (!authHeader?.startsWith("Bearer ")) return false;
+  const token = authHeader.slice(7);
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_ANON_KEY")!,
+  );
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  if (error || !user) return false;
+  const adminClient = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  );
+  const { data } = await adminClient
+    .from("admin_users")
+    .select("id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  return !!data;
+}
+
+function validateBounds(body: any): { south: number; west: number; north: number; east: number } {
+  const clamp = (v: unknown, min: number, max: number, name: string): number => {
+    const n = Number(v);
+    if (!isFinite(n) || n < min || n > max) throw new Error(`Invalid ${name}: ${v}`);
+    return n;
+  };
+  return {
+    south: clamp(body.south, -90, 90, "south"),
+    west:  clamp(body.west,  -180, 180, "west"),
+    north: clamp(body.north, -90, 90, "north"),
+    east:  clamp(body.east,  -180, 180, "east"),
+  };
+}
+
+function validateTimeout(val: unknown, maxSec = 60): number {
+  const n = Math.floor(Number(val));
+  return isFinite(n) && n >= 5 && n <= maxSec ? n : 30;
+}
+
+const _rateWindows = new Map<string, { count: number; resetAt: number }>();
+
+function checkRateLimit(key: string, maxPerWindow: number, windowMs = 3_600_000): boolean {
+  const now = Date.now();
+  const w = _rateWindows.get(key);
+  if (!w || now > w.resetAt) {
+    _rateWindows.set(key, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  if (w.count >= maxPerWindow) return false;
+  w.count++;
+  return true;
+}
+
+// --- CORS ---
 app.use(
   "/*",
   cors({
-    origin: "*",
+    origin: Deno.env.get("ALLOWED_ORIGIN") || "*",
     allowHeaders: ["Content-Type", "Authorization"],
     allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     exposeHeaders: ["Content-Length"],
@@ -71,24 +118,28 @@ app.use(
   }),
 );
 
-// Health check endpoint
 app.get("/make-server-e51cba93/health", safeHandler((c: any) => {
   return c.json({ status: "ok" });
 }));
 
-// Get all POI locations
+// Get all POIs — public read
 app.get("/make-server-e51cba93/pois", safeHandler(async (c: any) => {
   try {
     const pois = await kv.getByPrefix("poi:");
     return c.json({ success: true, data: pois });
   } catch (error) {
     console.error("Error fetching POIs:", error);
-    return c.json({ success: false, error: String(error) }, 500);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
   }
 }));
 
-// Create a new POI location
+// Create a new POI — rate-limited
 app.post("/make-server-e51cba93/pois", safeHandler(async (c: any) => {
+  const ip = c.req.header("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
+  if (!checkRateLimit(`create:${ip}`, 20)) {
+    return c.json({ success: false, error: "Too many requests" }, 429);
+  }
+
   try {
     const body = await c.req.json();
     const { id, title, description, photos, season, waterProximity, regulations, position, altitude, capacity, difficulty, ratings } = body;
@@ -103,13 +154,13 @@ app.post("/make-server-e51cba93/pois", safeHandler(async (c: any) => {
       description,
       photos,
       season,
-      waterProximity, // proche | éloigné | null
+      waterProximity,
       regulations,
       position,
-      altitude, // Altitude en mètres
-      capacity, // '1' | '2-3' | '4-5' | '5+'
-      difficulty, // 0-5
-      ratings: ratings || [], // Array de notes 0-5
+      altitude,
+      capacity,
+      difficulty,
+      ratings: ratings || [],
       createdAt: new Date().toISOString(),
     };
 
@@ -118,12 +169,17 @@ app.post("/make-server-e51cba93/pois", safeHandler(async (c: any) => {
     return c.json({ success: true, data: poi });
   } catch (error) {
     console.error("Error creating POI:", error);
-    return c.json({ success: false, error: String(error) }, 500);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
   }
 }));
 
-// Add a rating to a POI
+// Add a rating — rate-limited
 app.post("/make-server-e51cba93/pois/:id/rate", safeHandler(async (c: any) => {
+  const ip = c.req.header("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
+  if (!checkRateLimit(`rate:${ip}`, 30)) {
+    return c.json({ success: false, error: "Too many requests" }, 429);
+  }
+
   try {
     const id = c.req.param("id");
     const body = await c.req.json();
@@ -133,54 +189,50 @@ app.post("/make-server-e51cba93/pois/:id/rate", safeHandler(async (c: any) => {
       return c.json({ success: false, error: "Rating must be a number between 0 and 5" }, 400);
     }
 
-    // Récupérer le POI existant
     const poi = await kv.get(`poi:${id}`);
-    
     if (!poi) {
       return c.json({ success: false, error: "POI not found" }, 404);
     }
 
-    // Ajouter la note
-    const updatedPoi = {
-      ...poi,
-      ratings: [...(poi.ratings || []), rating]
-    };
-
+    const updatedPoi = { ...poi, ratings: [...(poi.ratings || []), rating] };
     await kv.set(`poi:${id}`, updatedPoi);
     console.log(`✅ Note ajoutée au POI ${id}: ${rating}/5`);
     return c.json({ success: true, data: updatedPoi });
   } catch (error) {
     console.error("Error adding rating:", error);
-    return c.json({ success: false, error: String(error) }, 500);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
   }
 }));
 
-// Reset all POIs (delete all POIs from the database)
-// IMPORTANT: Cette route doit être définie AVANT la route avec paramètre :id
+// Reset ALL POIs — admin only (defined BEFORE :id route)
 app.delete("/make-server-e51cba93/pois", safeHandler(async (c: any) => {
+  if (!(await requireAdmin(c))) {
+    return c.json({ success: false, error: "Unauthorized" }, 401);
+  }
+
   try {
     console.log("🗑️ Reset endpoint called - fetching all POIs...");
     const pois = await kv.getByPrefix("poi:");
     const keys = pois.map((poi: any) => `poi:${poi.id}`);
-    
+
     console.log(`📊 Found ${keys.length} POIs to delete`);
-    
     if (keys.length > 0) {
       await kv.mdel(...keys);
       console.log(`✅ Successfully deleted ${keys.length} POIs`);
-    } else {
-      console.log("ℹ️ No POIs to delete");
     }
-    
     return c.json({ success: true, deletedCount: keys.length });
   } catch (error) {
     console.error("❌ Error resetting POIs:", error);
-    return c.json({ success: false, error: String(error) }, 500);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
   }
 }));
 
-// Delete a POI location (optional for future use)
+// Delete a single POI — admin only
 app.delete("/make-server-e51cba93/pois/:id", safeHandler(async (c: any) => {
+  if (!(await requireAdmin(c))) {
+    return c.json({ success: false, error: "Unauthorized" }, 401);
+  }
+
   try {
     const id = c.req.param("id");
     console.log(`🗑️ Deleting POI with id: ${id}`);
@@ -188,19 +240,22 @@ app.delete("/make-server-e51cba93/pois/:id", safeHandler(async (c: any) => {
     return c.json({ success: true });
   } catch (error) {
     console.error("Error deleting POI:", error);
-    return c.json({ success: false, error: String(error) }, 500);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
   }
 }));
 
-// Proxy Overpass API — évite les erreurs CORS depuis le navigateur
+// Overpass proxy — drinking water points
 app.post("/make-server-e51cba93/water-points", safeHandler(async (c: any) => {
   try {
     const body = await c.req.json();
-    const { south, west, north, east, timeout = 30 } = body;
 
-    if (south === undefined || west === undefined || north === undefined || east === undefined) {
-      return c.json({ success: false, error: "Missing bounds: south, west, north, east" }, 400);
+    let south: number, west: number, north: number, east: number;
+    try {
+      ({ south, west, north, east } = validateBounds(body));
+    } catch (err: any) {
+      return c.json({ success: false, error: err.message }, 400);
     }
+    const timeout = validateTimeout(body.timeout);
 
     const query = `
       [out:json][timeout:${timeout}][maxsize:536870912];
@@ -245,53 +300,44 @@ app.post("/make-server-e51cba93/water-points", safeHandler(async (c: any) => {
       const data = await Promise.any(ENDPOINTS.map(tryEndpoint));
       return c.json({ success: true, data });
     } catch (err: any) {
-      const lastError = err?.errors?.map((e: any) => e?.message).join(', ') ?? String(err);
-      console.warn(`⚠️ Tous les endpoints Overpass ont échoué: ${lastError}`);
-      return c.json({ success: false, error: lastError }, 502);
+      console.warn(`⚠️ Tous les endpoints Overpass ont échoué`);
+      return c.json({ success: false, error: 'All Overpass endpoints failed' }, 502);
     }
   } catch (error) {
     console.error("Error proxying Overpass:", error);
-    return c.json({ success: false, error: String(error) }, 500);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
   }
 }));
 
-// Gestionnaire d'erreurs global pour attraper toutes les erreurs non gérées
 app.onError((error: any, c: any) => {
-  // Ignorer silencieusement les erreurs de connexion fermée
   if (
-    error?.code === 'EPIPE' || 
-    error?.name === 'Http' || 
+    error?.code === 'EPIPE' ||
+    error?.name === 'Http' ||
     error?.message?.includes('connection closed') ||
     error?.message?.includes('broken pipe')
   ) {
     console.log('ℹ️ Client a fermé la connexion (ignoré dans onError)');
     return new Response(null, { status: 499 });
   }
-  
   console.error('❌ Erreur non gérée:', error);
-  return c.json({ success: false, error: 'Internal Server Error' }, 500);
+  return c.json({ success: false, error: 'Internal server error' }, 500);
 });
 
-// Wrapper pour Deno.serve qui gère les erreurs de broken pipe
 const serveSafe = async (request: Request) => {
   try {
     return await app.fetch(request);
   } catch (error: any) {
-    // Ignorer les erreurs de connexion fermée au niveau le plus haut
     if (
-      error?.code === 'EPIPE' || 
-      error?.name === 'Http' || 
+      error?.code === 'EPIPE' ||
+      error?.name === 'Http' ||
       error?.message?.includes('connection closed') ||
       error?.message?.includes('broken pipe')
     ) {
       console.log('ℹ️ Client a fermé la connexion avant la réponse (ignoré au niveau serve)');
-      // Retourner une réponse vide - de toute façon le client ne la recevra pas
       return new Response(null, { status: 499 });
     }
-    
-    // Pour les autres erreurs, les loguer et retourner 500
     console.error('❌ Erreur fatale dans Deno.serve:', error);
-    return new Response(JSON.stringify({ success: false, error: 'Internal Server Error' }), {
+    return new Response(JSON.stringify({ success: false, error: 'Internal server error' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
     });

@@ -31,6 +31,16 @@ interface PoiDetailsPanelProps {
   customZones?: CustomZone[];
 }
 
+function safeHref(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  try {
+    const { protocol } = new URL(url);
+    return protocol === 'https:' || protocol === 'http:' ? url : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function PoiDetailsPanel({
   location,
   onClose,
@@ -455,7 +465,7 @@ function PanelContent({
                   )}
                   {zone.source_url && (
                     <a
-                      href={zone.source_url}
+                      href={safeHref(zone.source_url)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-block mt-2 text-sm font-medium underline text-orange-700 hover:text-orange-900"
@@ -529,9 +539,9 @@ function PanelContent({
                         ))}
                       </ul>
                     )}
-                    {area.tags.website && (
+                    {safeHref(area.tags.website) && (
                       <a
-                        href={area.tags.website}
+                        href={safeHref(area.tags.website)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className={`inline-block mt-2 text-sm font-medium underline ${
