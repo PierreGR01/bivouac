@@ -125,9 +125,9 @@ export function usePois() {
     },
 
     onError: (error: any) => {
-      const message = error?.message?.includes('Coordonnées')
-        ? error.message
-        : 'Impossible d\'enregistrer le point. Réessayez.';
+      const msg = error?.message || '';
+      const isUserFacing = msg.includes('Coordonnées') || msg.includes('Création impossible');
+      const message = isUserFacing ? msg : 'Impossible d\'enregistrer le point. Réessayez.';
       toast.error(message);
       setServerAvailable(false);
     },

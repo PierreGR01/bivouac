@@ -92,6 +92,68 @@ function validateTimeout(val: unknown, maxSec = 60): number {
   return isFinite(n) && n >= 5 && n <= maxSec ? n : 30;
 }
 
+function isPointInRing(lat: number, lng: number, ring: number[][]): boolean {
+  const n = ring.length;
+  if (n < 3) return false;
+  let inside = false;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1];
+    const xj = ring[j][0], yj = ring[j][1];
+    const intersect = ((yi > lat) !== (yj > lat))
+      && (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function isPointInZoneGeometry(lat: number, lng: number, geometry: any): boolean {
+  if (!geometry) return false;
+  let geom = geometry;
+  if (geom.type === 'Feature') geom = geom.geometry;
+  if (!geom) return false;
+  if (geom.type === 'Polygon') return isPointInRing(lat, lng, geom.coordinates[0]);
+  if (geom.type === 'MultiPolygon') {
+    return geom.coordinates.some((poly: number[][][]) => isPointInRing(lat, lng, poly[0]));
+  }
+  return false;
+}
+
+async function findForbiddenZone(supabase: any, lat: number, lng: number): Promise<string | null> {
+  const [customResult, osmResult] = await Promise.all([
+    supabase
+      .from('custom_regulated_zones')
+      .select('name, restriction_types, geometry, time_range_start, time_range_end, period_start, period_end'),
+    supabase
+      .from('osm_protected_areas')
+      .select('name, area_type, protection_level, geometry')
+      .eq('protection_level', 'strict'),
+  ]);
+
+  // Zones custom sans horaire
+  if (!customResult.error && customResult.data) {
+    const hasSchedule = (z: any) =>
+      !!(z.time_range_start || z.time_range_end || z.period_start || z.period_end);
+
+    const blocked = customResult.data.find((z: any) =>
+      Array.isArray(z.restriction_types)
+      && (z.restriction_types.includes('bivouac_forbidden') || z.restriction_types.includes('camping_forbidden'))
+      && !hasSchedule(z)
+      && isPointInZoneGeometry(lat, lng, z.geometry)
+    );
+    if (blocked) return blocked.name;
+  }
+
+  // Zones OSM strictes (parcs nationaux, réserves naturelles, interdictions explicites)
+  if (!osmResult.error && osmResult.data) {
+    const blocked = osmResult.data.find((z: any) =>
+      isPointInZoneGeometry(lat, lng, z.geometry)
+    );
+    if (blocked) return blocked.name || blocked.area_type;
+  }
+
+  return null;
+}
+
 const _rateWindows = new Map<string, { count: number; resetAt: number }>();
 
 function checkRateLimit(key: string, maxPerWindow: number, windowMs = 3_600_000): boolean {
@@ -146,6 +208,18 @@ app.post("/make-server-e51cba93/pois", safeHandler(async (c: any) => {
 
     if (!id || !title || !position) {
       return c.json({ success: false, error: "Missing required fields: id, title, position" }, 400);
+    }
+
+    if (typeof position.lat === 'number' && typeof position.lng === 'number') {
+      const serviceClient = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      );
+      const forbiddenZone = await findForbiddenZone(serviceClient, position.lat, position.lng);
+      if (forbiddenZone) {
+        console.warn(`🚫 Création refusée : zone interdite "${forbiddenZone}" (${position.lat}, ${position.lng})`);
+        return c.json({ success: false, error: `Création impossible : ce lieu est dans une zone interdite (${forbiddenZone})` }, 403);
+      }
     }
 
     const poi = {

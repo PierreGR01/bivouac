@@ -46,7 +46,9 @@ export async function createPoi(poi: Partial<PoiLocation>): Promise<boolean> {
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to create POI: ${response.statusText}`);
+      const body = await response.json().catch(() => null);
+      const message = body?.error || `Failed to create POI: ${response.statusText}`;
+      throw new Error(message);
     }
 
     return true;
