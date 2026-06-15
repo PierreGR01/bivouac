@@ -251,50 +251,8 @@ export function MapView({
       }
     };
 
-    // Geste double-tap + drag pour zoom/dézoom (style Google Maps)
-    const doubleTap = { lastTapEnd: 0, active: false, startY: 0, startZoom: 0, moved: false };
-
-    const onTouchStart = (e: TouchEvent) => {
-      if (e.touches.length !== 1) return;
-      const now = Date.now();
-      if (now - doubleTap.lastTapEnd < 300) {
-        doubleTap.active = true;
-        doubleTap.startY = e.touches[0].clientY;
-        doubleTap.startZoom = map.getZoom();
-        doubleTap.moved = false;
-        e.preventDefault();
-        e.stopPropagation();
-      }
-    };
-
-    const onTouchMove = (e: TouchEvent) => {
-      if (!doubleTap.active || e.touches.length !== 1) return;
-      const dy = e.touches[0].clientY - doubleTap.startY;
-      const newZoom = Math.max(2, Math.min(18, doubleTap.startZoom - dy / 50));
-      map.setZoom(newZoom, { animate: false });
-      doubleTap.moved = true;
-      e.preventDefault();
-      e.stopPropagation();
-    };
-
-    const onTouchEnd = (e: TouchEvent) => {
-      if (!doubleTap.active) {
-        doubleTap.lastTapEnd = Date.now();
-        return;
-      }
-      if (!doubleTap.moved) {
-        map.zoomIn(1, { animate: true });
-      }
-      doubleTap.active = false;
-      doubleTap.moved = false;
-      e.preventDefault();
-      e.stopPropagation();
-    };
-
-    const container = mapRef.current!;
-    container.addEventListener('touchstart', onTouchStart, { passive: false, capture: true });
-    container.addEventListener('touchmove', onTouchMove, { passive: false, capture: true });
-    container.addEventListener('touchend', onTouchEnd, { passive: false, capture: true });
+    // TODO: geste double-tap + drag pour zoom/dézoom (désactivé — à reprendre)
+    // Voir historique git pour l'implémentation précédente.
 
     // Notifier les bounds initiaux via la ref
     const initBounds = map.getBounds();
@@ -306,9 +264,6 @@ export function MapView({
     });
 
     return () => {
-      container.removeEventListener('touchstart', onTouchStart, { capture: true });
-      container.removeEventListener('touchmove', onTouchMove, { capture: true });
-      container.removeEventListener('touchend', onTouchEnd, { capture: true });
       map.remove();
       mapInstanceRef.current = null;
       tileLayerRef.current = null;
