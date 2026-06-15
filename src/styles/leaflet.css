@@ -24,18 +24,18 @@
   cursor: pointer;
 }
 
-/* Winter marker - bleu gris */
+/* Winter marker - bleu foncé */
 .custom-marker-winter {
-  background-color: #64748b;
+  background-color: #2563eb;
   border: 3px solid white;
   border-radius: 50%;
   width: 24px;
   height: 24px;
-  box-shadow: 0 2px 8px rgba(100, 116, 139, 0.4);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.45);
 }
 
 .custom-marker-winter:hover {
-  background-color: #475569;
+  background-color: #1d4ed8;
   transform: scale(1.1);
   cursor: pointer;
 }

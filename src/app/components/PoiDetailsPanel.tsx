@@ -5,7 +5,8 @@ import {
   Droplets,
   Waves,
   Snowflake,
-  Sun,
+  CalendarDays,
+  Check,
   AlertCircle,
   MapPin,
   Shield,
@@ -169,14 +170,18 @@ export function PoiDetailsPanel({
 }
 
 function getSeasonIcon(season: string) {
-  if (season === 'hiver') return <Snowflake className="w-4 h-4" />;
-  return <Sun className="w-4 h-4" />;
+  if (season === 'hiver') return <Snowflake className="w-3.5 h-3.5" />;
+  return <CalendarDays className="w-3.5 h-3.5" />;
+}
+
+function getSeasonLabel(season: string) {
+  if (season === 'hiver') return 'hiver';
+  return 'toute saison';
 }
 
 function getSeasonStyle(season: string) {
-  if (season === 'hiver') return 'bg-slate-100 text-slate-700';
-  if (season === 'été') return 'bg-orange-100 text-orange-700';
-  return 'bg-amber-50 text-amber-700';
+  if (season === 'hiver') return 'bg-blue-100 text-blue-900';
+  return 'bg-amber-100 text-amber-800';
 }
 
 function PanelContent({
@@ -198,6 +203,15 @@ function PanelContent({
   const [hoverRating, setHoverRating] = useState(0);
   const [isSubmittingRating, setIsSubmittingRating] = useState(false);
   const [localRatings, setLocalRatings] = useState<number[]>(location.ratings || []);
+  const [copiedGps, setCopiedGps] = useState(false);
+
+  const handleCopyGps = () => {
+    const coords = `${location.position.lat.toFixed(4)}, ${location.position.lng.toFixed(4)}`;
+    navigator.clipboard.writeText(coords).then(() => {
+      setCopiedGps(true);
+      setTimeout(() => setCopiedGps(false), 2000);
+    });
+  };
 
   const averageRating = useMemo(() => {
     if (!localRatings || localRatings.length === 0) return 0;
@@ -286,21 +300,36 @@ function PanelContent({
         </div>
       )}
 
-      {/* Localisation */}
-      <div className="flex items-center gap-2 text-gray-500 mb-3">
-        <MapPin className="w-4 h-4 flex-shrink-0" />
-        <span className="text-xs break-all">
-          {location.position.lat.toFixed(4)}°N, {location.position.lng.toFixed(4)}°E
-        </span>
-      </div>
+      {/* Tags GPS + Altitude + Saison */}
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        <button
+          onClick={handleCopyGps}
+          className="flex items-center gap-1 px-2 py-1 rounded-lg bg-gray-100 text-gray-600 text-xs font-medium flex-shrink-0 hover:bg-gray-200 transition-colors cursor-pointer"
+          title="Copier les coordonnées"
+        >
+          {copiedGps ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <MapPin className="w-3.5 h-3.5" />}
+          <span>
+            {copiedGps
+              ? 'Copié !'
+              : `${location.position.lat.toFixed(4)}°N, ${location.position.lng.toFixed(4)}°E`}
+          </span>
+        </button>
 
-      {/* Badges */}
-      <div className="flex flex-nowrap gap-1.5 mb-3 overflow-x-auto">
+        {location.altitude !== undefined && location.altitude !== null && (
+          <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-gray-100 text-gray-600 text-xs font-medium flex-shrink-0">
+            <Mountain className="w-3.5 h-3.5" />
+            <span>{location.altitude} m</span>
+          </div>
+        )}
+
         <div className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium flex-shrink-0 ${getSeasonStyle(location.season)}`}>
           {getSeasonIcon(location.season)}
-          <span className="capitalize">{location.season}</span>
+          <span>{getSeasonLabel(location.season)}</span>
         </div>
+      </div>
 
+      {/* Tags eau */}
+      <div className="flex flex-nowrap gap-1.5 mb-3 overflow-x-auto">
         {location.waterProximity ? (
           <div
             className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium flex-shrink-0 ${
@@ -343,16 +372,8 @@ function PanelContent({
       </div>
 
       {/* Détails */}
+      {(location.capacity || (location.difficulty !== undefined && location.difficulty !== null)) && (
       <div className="mb-4 bg-gray-50 rounded-lg p-3">
-        {location.altitude !== undefined && location.altitude !== null && (
-          <div className="flex items-center gap-3 mb-3">
-            <Mountain className="w-4 h-4 text-gray-500 flex-shrink-0" />
-            <div>
-              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Altitude</span>
-              <p className="text-sm text-gray-700">{location.altitude}m</p>
-            </div>
-          </div>
-        )}
         <div className="grid grid-cols-2 gap-3">
           {location.capacity && (
             <div className="flex items-start gap-2">
@@ -400,6 +421,7 @@ function PanelContent({
           )}
         </div>
       </div>
+      )}
 
       {/* Zones custom réglementées */}
       {(customZoneStatus.blocked.length > 0 || customZoneStatus.warnings.length > 0) && (

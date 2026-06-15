@@ -214,6 +214,40 @@ app.delete("/make-server-e51cba93/pois/:id", safeHandler(async (c: any) => {
   }
 }));
 
+// Altitude endpoint — Open-Meteo (gratuit, sans clé API)
+app.get("/make-server-e51cba93/altitude", safeHandler(async (c: any) => {
+  try {
+    const lat = c.req.query("lat");
+    const lng = c.req.query("lng");
+
+    if (!lat || !lng) {
+      return c.json({ success: false, error: "Missing lat/lng parameters" }, 400);
+    }
+
+    const response = await fetch(
+      `https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lng}`,
+      { headers: { 'User-Agent': 'bivouac-app/1.0' } }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Open-Meteo elevation error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const altitude = data.elevation?.[0];
+
+    if (altitude === undefined || altitude === null) {
+      return c.json({ success: false, error: "No elevation data" }, 404);
+    }
+
+    console.log(`✅ Altitude: ${Math.round(altitude)}m pour (${lat}, ${lng})`);
+    return c.json({ success: true, altitude: Math.round(altitude) });
+  } catch (error) {
+    console.error("Error fetching altitude:", error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+}));
+
 // Proxy Overpass API — évite les erreurs CORS depuis le navigateur
 app.post("/make-server-e51cba93/water-points", safeHandler(async (c: any) => {
   try {

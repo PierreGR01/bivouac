@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { PoiLocation } from '../types';
@@ -45,6 +45,7 @@ export function usePois() {
     queryKey: ['pois'],
     queryFn: fetchPois,
   });
+
 
   const mutation = useMutation({
     mutationFn: async ({ newPoi, waterPoints }: SubmitPoiArgs): Promise<PoiLocation> => {
@@ -132,10 +133,24 @@ export function usePois() {
     },
   });
 
+  const selectLocation = useCallback((loc: PoiLocation | null) => {
+    setSelectedLocation(loc);
+    if (!loc || (loc.altitude !== null && loc.altitude !== undefined)) return;
+    api.fetchAltitude(loc.position.lat, loc.position.lng)
+      .then(altitude => {
+        if (altitude == null) return;
+        setSelectedLocation(prev => prev?.id === loc.id ? { ...prev, altitude } : prev);
+        queryClient.setQueryData<PoiLocation[]>(['pois'], (old = []) =>
+          old.map(p => p.id === loc.id ? { ...p, altitude } : p)
+        );
+        api.updatePoi(loc.id, { altitude }).catch(() => {});
+      });
+  }, [queryClient]);
+
   return {
     locations: query.data ?? [],
     selectedLocation,
-    setSelectedLocation,
+    setSelectedLocation: selectLocation,
     isLoading: query.isLoading,
     isSaving: mutation.isPending,
     serverAvailable,
