@@ -14,5 +14,12 @@ export interface PoiLocation {
   altitude?: number; // Altitude en mètres (récupérée automatiquement)
   capacity?: '1' | '2-3' | '4-5' | '5+'; // Capacité d'accueil en nombre de tentes
   difficulty?: number; // Difficulté d'accès (0-5)
-  ratings?: number[]; // Notes des utilisateurs (0-5)
+  ratings?: number[]; // Notes des utilisateurs (0-5) — legacy
+  reviews?: Review[]; // Avis complets (note + commentaire)
+}
+
+export interface Review {
+  rating: number;
+  comment: string;
+  createdAt: string; // ISO 8601
 }

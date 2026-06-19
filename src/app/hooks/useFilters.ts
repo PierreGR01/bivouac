@@ -4,10 +4,23 @@ import { FilterOptions } from '../components/FilterPanel';
 import { DEFAULT_ROUTE_DISTANCE_KM } from '../constants';
 import { distanceToRoute } from '../utils/route-distance';
 
+const EMPTY_FILTERS: FilterOptions = {
+  seasons: [],
+  waterSource: false,
+  naturalWater: false,
+  capacities: [],
+  difficulties: [],
+};
+
+// 'été' et 'toute-annee' sont tous deux "toute saison" dans l'UI
+function normalizeSeason(season: string): string {
+  return season === 'été' || season === 'toute-annee' ? 'toute-saison' : season;
+}
+
 export function useFilters(locations: PoiLocation[], winterMode: boolean) {
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
-  const [filters, setFilters] = useState<FilterOptions>({ seasons: [], waterProximity: [] });
+  const [filters, setFilters] = useState<FilterOptions>(EMPTY_FILTERS);
 
   const [isRoutingMode, setIsRoutingMode] = useState(false);
   const [routePoints, setRoutePoints] = useState<Array<{ lat: number; lng: number }>>([]);
@@ -36,29 +49,37 @@ export function useFilters(locations: PoiLocation[], winterMode: boolean) {
       const matchesSeason =
         filters.seasons.length === 0 ||
         filters.seasons.length === 2 ||
-        filters.seasons.includes(location.season);
+        filters.seasons.includes(normalizeSeason(location.season));
 
-      let matchesWater = true;
-      if (filters.waterProximity.length > 0 && filters.waterProximity.length < 2) {
-        if (filters.waterProximity.includes('close')) {
-          matchesWater = location.waterProximity === 'proche';
-        } else if (filters.waterProximity.includes('distant')) {
-          matchesWater = location.waterProximity === 'éloigné';
-        }
-      }
+      const matchesWaterSource = !filters.waterSource ||
+        location.waterProximity === 'proche' ||
+        location.waterProximity === 'éloigné';
+
+      const matchesNaturalWater = !filters.naturalWater ||
+        location.naturalWaterProximity === 'proche';
+
+      const matchesCapacity = filters.capacities.length === 0 ||
+        (location.capacity != null && filters.capacities.includes(location.capacity));
+
+      const matchesDifficulty = filters.difficulties.length === 0 ||
+        (location.difficulty != null && filters.difficulties.includes(location.difficulty));
 
       let matchesRoute = true;
       if (routePoints.length >= 2) {
         matchesRoute = distanceToRoute(location.position, routePoints) <= maxDistanceFromRoute;
       }
 
-      return matchesSearch && matchesSeason && matchesWater && matchesRoute;
+      return matchesSearch && matchesSeason && matchesWaterSource && matchesNaturalWater &&
+        matchesCapacity && matchesDifficulty && matchesRoute;
     });
   }, [locations, searchTerm, filters, routePoints, maxDistanceFromRoute]);
 
   const activeFiltersCount =
     (filters.seasons.length > 0 && filters.seasons.length < 2 ? 1 : 0) +
-    (filters.waterProximity.length > 0 && filters.waterProximity.length < 2 ? 1 : 0) +
+    (filters.waterSource ? 1 : 0) +
+    (filters.naturalWater ? 1 : 0) +
+    (filters.capacities.length > 0 ? 1 : 0) +
+    (filters.difficulties.length > 0 ? 1 : 0) +
     (routePoints.length >= 2 ? 1 : 0);
 
   const nearbyPoisCount = useMemo(() => {
@@ -80,7 +101,7 @@ export function useFilters(locations: PoiLocation[], winterMode: boolean) {
 
   const resetFilters = () => {
     setSearchTerm('');
-    setFilters({ seasons: [], waterProximity: [] });
+    setFilters(EMPTY_FILTERS);
     setRoutePoints([]);
   };
 

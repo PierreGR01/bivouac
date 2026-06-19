@@ -59,6 +59,8 @@ interface MapViewProps {
   winterMode?: boolean;
   onWinterModeToggle?: () => void;
   userPosition?: { lat: number; lng: number } | null;
+  selectedZone?: CustomZone | null;
+  selectedProtectedArea?: ProtectedArea | null;
 }
 
 export function MapView({
@@ -93,6 +95,8 @@ export function MapView({
   winterMode = false,
   onWinterModeToggle,
   userPosition = null,
+  selectedZone = null,
+  selectedProtectedArea = null,
 }: MapViewProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -619,12 +623,13 @@ export function MapView({
         return;
       }
 
-      // Déterminer la classe CSS selon la saison
-      const markerClass = location.season === 'hiver' 
-        ? 'custom-marker-winter' 
-        : location.season === 'été'
-        ? 'custom-marker-summer'
-        : 'custom-marker';
+      // Déterminer la classe CSS selon la saison et l'état sélectionné
+      const isSelected = selectedLocation?.id === location.id;
+      const markerClass = isSelected
+        ? (location.season === 'hiver' ? 'custom-marker-winter-selected' : 'custom-marker-selected')
+        : location.season === 'hiver'
+        ? 'custom-marker-winter'
+        : 'custom-marker-summer';
 
       const customIcon = L.divIcon({
         className: markerClass,
@@ -648,7 +653,7 @@ export function MapView({
       marker.addTo(mapInstanceRef.current!);
       markersRef.current.push(marker);
     });
-  }, [locations, onLocationClick, isAddingMode]);
+  }, [locations, selectedLocation, onLocationClick, isAddingMode]);
 
   // Gérer le marqueur temporaire
   useEffect(() => {
@@ -982,24 +987,33 @@ export function MapView({
       const color = isNatural ? '#0d9488' : '#0ea5e9';
       const shadowColor = isNatural ? 'rgba(13, 148, 136, 0.4)' : 'rgba(14, 165, 233, 0.4)';
 
-      const customIcon = L.divIcon({
-        className: isNatural ? 'water-marker-natural' : 'water-marker',
-        html: `<div style="
-          background-color: ${color};
-          border: 3px solid white;
+      const waterIconHtml = (bgColor: string, borderColor: string, shadow: string) => `<div style="
+          background-color: ${bgColor};
+          border: 3px solid ${borderColor};
           border-radius: 50%;
           width: 20px;
           height: 20px;
           display: flex;
           align-items: center;
           justify-content: center;
-          box-shadow: 0 2px 8px ${shadowColor};
+          box-shadow: 0 2px 8px ${shadow};
           position: relative;
         ">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
             <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/>
           </svg>
-        </div>`,
+        </div>`;
+
+      const customIcon = L.divIcon({
+        className: isNatural ? 'water-marker-natural' : 'water-marker',
+        html: waterIconHtml(color, 'white', shadowColor),
+        iconSize: [20, 20],
+        iconAnchor: [10, 10],
+      });
+
+      const selectedWaterIcon = L.divIcon({
+        className: isNatural ? 'water-marker-natural' : 'water-marker',
+        html: waterIconHtml('#10b981', '#10b981', 'rgba(16, 185, 129, 0.5)'),
         iconSize: [20, 20],
         iconAnchor: [10, 10],
       });
@@ -1023,6 +1037,8 @@ export function MapView({
       `;
 
       marker.bindPopup(popupContent);
+      marker.on('popupopen', () => marker.setIcon(selectedWaterIcon));
+      marker.on('popupclose', () => marker.setIcon(customIcon));
       marker.addTo(map);
       waterMarkersRef.current.push(marker);
     });
@@ -1058,14 +1074,18 @@ export function MapView({
       const areaSize = (bounds.maxLat - bounds.minLat) * (bounds.maxLng - bounds.minLng);
       const zIndex = Math.round(1000 - areaSize * 10000); // Petites zones = z-index plus haut
 
+      const isAreaSelected = selectedProtectedArea?.id === area.id;
+      const areaColor = isAreaSelected ? '#7f1d1d' : info.color;
+      const areaFillOpacity = isAreaSelected ? 0.05 : 0.15;
+
       const polygon = L.polygon(
         geometry.map(point => [point.lat, point.lng]),
         {
-          color: info.color,
-          weight: 2,
+          color: areaColor,
+          weight: isAreaSelected ? 3 : 2,
           opacity: 0.8,
-          fillColor: info.color,
-          fillOpacity: 0.15,
+          fillColor: areaColor,
+          fillOpacity: areaFillOpacity,
           interactive: true,
         }
       );
@@ -1076,7 +1096,7 @@ export function MapView({
         this.setStyle({ weight: 3, opacity: 1 });
       });
       polygon.on('mouseleave', function() {
-        this.setStyle({ weight: 2, opacity: 0.8 });
+        this.setStyle({ weight: isAreaSelected ? 3 : 2, opacity: 0.8 });
       });
 
       polygon.on('click', () => onProtectedAreaClick?.(area));
@@ -1085,7 +1105,7 @@ export function MapView({
       (polygon as any)._zIndex = zIndex;
       protectedAreasLayersRef.current.push(polygon);
     });
-  }, [protectedAreas, showProtectedAreas, onProtectedAreaClick]);
+  }, [protectedAreas, showProtectedAreas, onProtectedAreaClick, selectedProtectedArea]);
 
   // Afficher les zones réglementées personnalisées sur la carte
   useEffect(() => {
@@ -1107,8 +1127,10 @@ export function MapView({
       if (geom.type !== 'Polygon' && geom.type !== 'MultiPolygon') return;
 
       // Couleur selon le type de restriction le plus sévère
+      const isZoneSelected = selectedZone?.id === zone.id;
       const types = zone.restriction_types ?? [];
-      const color = types.includes('bivouac_forbidden') ? '#ef4444'
+      const color = isZoneSelected ? '#7f1d1d'
+        : types.includes('bivouac_forbidden') ? '#ef4444'
         : types.includes('camping_forbidden') ? '#f97316'
         : types.includes('fire_forbidden') ? '#eab308'
         : '#8b5cf6';
@@ -1119,21 +1141,23 @@ export function MapView({
 
       if (coordinates.length === 0) return;
 
+      const zoneFillOpacity = isZoneSelected ? 0.15 : 0.25;
+
       const polygon = L.polygon(coordinates, {
         color,
-        weight: 2,
+        weight: isZoneSelected ? 3 : 2,
         opacity: 0.9,
         fillColor: color,
-        fillOpacity: 0.25,
+        fillOpacity: zoneFillOpacity,
         interactive: true,
       });
 
       polygon.on('mouseenter', function() {
         this.bringToFront();
-        this.setStyle({ weight: 3, opacity: 1, fillOpacity: 0.35 });
+        this.setStyle({ weight: 3, opacity: 1, fillOpacity: isZoneSelected ? 0.25 : 0.35 });
       });
       polygon.on('mouseleave', function() {
-        this.setStyle({ weight: 2, opacity: 0.9, fillOpacity: 0.25 });
+        this.setStyle({ weight: isZoneSelected ? 3 : 2, opacity: 0.9, fillOpacity: zoneFillOpacity });
       });
 
       polygon.on('click', () => onZoneClick?.(zone));
@@ -1141,7 +1165,7 @@ export function MapView({
       polygon.addTo(map);
       customZonesLayersRef.current.push(polygon);
     });
-  }, [customZones, showProtectedAreas, onZoneClick]);
+  }, [customZones, showProtectedAreas, onZoneClick, selectedZone]);
 
   // Marqueur de position GPS utilisateur
   useEffect(() => {

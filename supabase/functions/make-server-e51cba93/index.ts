@@ -226,10 +226,13 @@ app.post("/make-server-e51cba93/pois/:id/rate", safeHandler(async (c: any) => {
   try {
     const id = c.req.param("id");
     const body = await c.req.json();
-    const { rating } = body;
+    const { rating, comment } = body;
 
     if (typeof rating !== 'number' || rating < 0 || rating > 5) {
       return c.json({ success: false, error: "Rating must be a number between 0 and 5" }, 400);
+    }
+    if (typeof comment !== 'string' || comment.trim().split(/\s+/).filter(Boolean).length < 3) {
+      return c.json({ success: false, error: "Comment must be at least 3 words" }, 400);
     }
 
     const poi = await kv.get(`poi:${id}`);
@@ -237,12 +240,36 @@ app.post("/make-server-e51cba93/pois/:id/rate", safeHandler(async (c: any) => {
       return c.json({ success: false, error: "POI not found" }, 404);
     }
 
-    const updatedPoi = { ...poi, ratings: [...(poi.ratings || []), rating] };
+    const review = { rating, comment: comment.trim(), createdAt: new Date().toISOString() };
+    const updatedPoi = {
+      ...poi,
+      ratings: [...(poi.ratings || []), rating],
+      reviews: [...(poi.reviews || []), review],
+    };
     await kv.set(`poi:${id}`, updatedPoi);
-    console.log(`✅ Note ajoutée au POI ${id}: ${rating}/5`);
+    console.log(`✅ Note ajoutée au POI ${id}: ${rating}/5 — "${comment.trim()}"`);
     return c.json({ success: true, data: updatedPoi });
   } catch (error) {
     console.error("Error adding rating:", error);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+}));
+
+// Delete a specific review — admin only
+app.delete("/make-server-e51cba93/pois/:id/reviews/:createdAt", safeHandler(async (c: any) => {
+  if (!(await requireAdmin(c))) {
+    return c.json({ success: false, error: "Unauthorized" }, 401);
+  }
+  try {
+    const id = c.req.param("id");
+    const createdAt = decodeURIComponent(c.req.param("createdAt"));
+    const poi = await kv.get(`poi:${id}`);
+    if (!poi) return c.json({ success: false, error: "POI not found" }, 404);
+    const updatedReviews = (poi.reviews || []).filter((r: any) => r.createdAt !== createdAt);
+    const updatedPoi = { ...poi, reviews: updatedReviews, ratings: updatedReviews.map((r: any) => r.rating) };
+    await kv.set(`poi:${id}`, updatedPoi);
+    return c.json({ success: true, data: updatedPoi });
+  } catch (error) {
     return c.json({ success: false, error: 'Internal server error' }, 500);
   }
 }));
@@ -266,6 +293,40 @@ app.delete("/make-server-e51cba93/pois", safeHandler(async (c: any) => {
     return c.json({ success: true, deletedCount: keys.length });
   } catch (error) {
     console.error("❌ Error resetting POIs:", error);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+}));
+
+// Enrich a POI (altitude, water proximity) — rate-limited, no admin required
+app.patch("/make-server-e51cba93/pois/:id/enrich", safeHandler(async (c: any) => {
+  const ip = c.req.header("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
+  if (!checkRateLimit(`enrich:${ip}`, 60)) {
+    return c.json({ success: false, error: "Too many requests" }, 429);
+  }
+
+  try {
+    const id = c.req.param("id");
+    const raw = await c.req.json();
+
+    const ALLOWED = new Set(["altitude", "waterProximity", "naturalWaterProximity"]);
+    const updates = Object.fromEntries(
+      Object.entries(raw).filter(([k]) => ALLOWED.has(k))
+    );
+    if (Object.keys(updates).length === 0) {
+      return c.json({ success: false, error: "No valid enrichment fields" }, 400);
+    }
+
+    const existing = await kv.get(`poi:${id}`);
+    if (!existing) {
+      return c.json({ success: false, error: "POI not found" }, 404);
+    }
+
+    const updated = { ...existing, ...updates };
+    await kv.set(`poi:${id}`, updated);
+    console.log(`✅ POI ${id} enrichi (altitude: ${updated.altitude ?? 'N/A'}m, eau: ${updated.waterProximity ?? 'N/A'}, naturelle: ${updated.naturalWaterProximity ?? 'N/A'})`);
+    return c.json({ success: true, data: updated });
+  } catch (error) {
+    console.error("Error enriching POI:", error);
     return c.json({ success: false, error: 'Internal server error' }, 500);
   }
 }));

@@ -101,17 +101,18 @@ export function usePois() {
         };
         devLog.log(`🏔️ Enrichissement: altitude=${altitude}m, eau=${enriched.waterProximity}, naturelle=${enriched.naturalWaterProximity}`);
 
-        // Mise à jour silencieuse du cache local
+        // Mise à jour du cache local + selectedLocation si le spot est ouvert
         queryClient.setQueryData<PoiLocation[]>(['pois'], (old = []) =>
           old.map(p => p.id === poiWithId.id ? { ...p, ...enriched } : p)
         );
+        setSelectedLocation(prev =>
+          prev?.id === poiWithId.id ? { ...prev, ...enriched } : prev
+        );
 
-        // Mise à jour persistante sur le serveur (fire-and-forget)
-        if (success) {
-          api.updatePoi(poiWithId.id, enriched).catch(() => {
-            devLog.log('⚠️ Mise à jour enrichissement échouée (ignorée)');
-          });
-        }
+        // Mise à jour persistante sur le serveur (fire-and-forget, sans auth admin)
+        api.enrichPoi(poiWithId.id, enriched).catch(() => {
+          devLog.log('⚠️ Mise à jour enrichissement échouée (ignorée)');
+        });
       }).catch(() => {
         devLog.log('⚠️ Enrichissement eau/altitude échoué (ignoré)');
       });

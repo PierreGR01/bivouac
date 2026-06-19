@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo } from 'react';
-import { MapPin, Upload, Snowflake, Sun, AlertCircle, AlertTriangle, Camera, Mountain, Tent, Locate, Loader2, X } from 'lucide-react';
+import { MapPin, Upload, Snowflake, SunSnow, AlertCircle, AlertTriangle, Camera, Mountain, Tent, Locate, Loader2, X } from 'lucide-react';
 import { Panel } from './ui/bivouac-panel';
 import { BivouacButton } from './ui/bivouac-button';
 import { useIsMobile } from './ui/use-mobile';
@@ -19,7 +19,7 @@ export interface NewPoi {
   title: string;
   description: string;
   photos: string[];
-  season: 'hiver' | 'été';
+  season: 'hiver' | 'toute-annee';
   regulations: string;
   position: { lat: number; lng: number };
   capacity: '1' | '2-3' | '4-5' | '5+';
@@ -52,7 +52,7 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
   const [description, setDescription] = useState('');
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
   const [newPhotoUrl, setNewPhotoUrl] = useState('');
-  const [season, setSeason] = useState<'hiver' | 'été'>('été');
+  const [season, setSeason] = useState<'hiver' | 'toute-annee'>('toute-annee');
   const [hasRegulations, setHasRegulations] = useState(false);
   const [regulationDetails, setRegulationDetails] = useState('');
   const [isNationalPark, setIsNationalPark] = useState(false);
@@ -387,15 +387,15 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => setSeason('été')}
+              onClick={() => setSeason('toute-annee')}
               className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg border-2 transition-all text-sm font-medium ${
-                season === 'été'
+                season === 'toute-annee'
                   ? 'border-amber-500 bg-amber-50 text-amber-700'
                   : 'border-gray-200 bg-white text-gray-700 hover:border-amber-300'
               }`}
             >
-              <Sun className="w-4 h-4" />
-              Été
+              <SunSnow className="w-4 h-4" />
+              Toute saison
             </button>
             <button
               type="button"

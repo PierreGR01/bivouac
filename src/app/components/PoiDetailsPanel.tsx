@@ -5,7 +5,7 @@ import {
   Droplets,
   Waves,
   Snowflake,
-  CalendarDays,
+  SunSnow,
   Check,
   AlertCircle,
   MapPin,
@@ -16,6 +16,8 @@ import {
   Star,
   Trash2,
   Loader2,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { ProtectedArea, findAreasContainingPoint, getProtectedAreaInfo } from '../services/protected-areas';
 import { CustomZone, getZoneRestrictionStatus, formatZoneConstraints } from '../../utils/supabase/custom-zones-api';
@@ -181,7 +183,7 @@ export function PoiDetailsPanel({
 
 function getSeasonIcon(season: string) {
   if (season === 'hiver') return <Snowflake className="w-3.5 h-3.5" />;
-  return <CalendarDays className="w-3.5 h-3.5" />;
+  return <SunSnow className="w-3.5 h-3.5" />;
 }
 
 function getSeasonLabel(season: string) {
@@ -209,10 +211,14 @@ function PanelContent({
   customZoneStatus?: { blocked: CustomZone[]; warnings: CustomZone[] };
   onPhotoClick?: () => void;
 }) {
+  const { isAdmin } = useAuth();
   const [newRating, setNewRating] = useState(0);
   const [hoverRating, setHoverRating] = useState(0);
+  const [reviewComment, setReviewComment] = useState('');
   const [isSubmittingRating, setIsSubmittingRating] = useState(false);
-  const [localRatings, setLocalRatings] = useState<number[]>(location.ratings || []);
+  const [showReviews, setShowReviews] = useState(false);
+  const [visibleReviewCount, setVisibleReviewCount] = useState(10);
+  const [localReviews, setLocalReviews] = useState<{ rating: number; comment: string; createdAt?: string }[]>(location.reviews || []);
   const [copiedGps, setCopiedGps] = useState(false);
 
   const handleCopyGps = () => {
@@ -223,30 +229,55 @@ function PanelContent({
     });
   };
 
+  const sortedReviews = useMemo(() =>
+    [...localReviews].sort((a, b) =>
+      (b.createdAt ?? '').localeCompare(a.createdAt ?? '')
+    ), [localReviews]);
+
   const averageRating = useMemo(() => {
-    if (!localRatings || localRatings.length === 0) return 0;
-    return localRatings.reduce((acc, r) => acc + r, 0) / localRatings.length;
-  }, [localRatings]);
+    if (localReviews.length === 0) return 0;
+    return localReviews.reduce((acc, r) => acc + r.rating, 0) / localReviews.length;
+  }, [localReviews]);
+
+  const hasExistingRatings = localReviews.length > 0;
+
+  const formatReviewDate = (iso?: string) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(-2)}`;
+  };
+
+  const handleDeleteReview = async (createdAt?: string) => {
+    if (!createdAt || !isAdmin) return;
+    try {
+      const updatedPoi = await api.deleteReview(location.id, createdAt);
+      if (updatedPoi?.reviews !== undefined) setLocalReviews(updatedPoi.reviews);
+      else setLocalReviews(localReviews.filter(r => r.createdAt !== createdAt));
+    } catch (error) {
+      console.error('Erreur suppression avis:', error);
+    }
+  };
+
+  const isCommentValid = reviewComment.trim().split(/\s+/).filter(Boolean).length >= 3;
+  const canSubmit = newRating > 0 && isCommentValid;
 
   const handleSubmitRating = async () => {
-    if (newRating === 0) return;
+    if (!canSubmit) return;
     setIsSubmittingRating(true);
     try {
-      const updatedPoi = await api.addRating(location.id, newRating);
-      if (updatedPoi && updatedPoi.ratings) {
-        setLocalRatings(updatedPoi.ratings);
-        setNewRating(0);
-        alert(`Note de ${newRating}/5 ajoutée avec succès !`);
+      const updatedPoi = await api.addRating(location.id, newRating, reviewComment.trim());
+      if (updatedPoi?.reviews) {
+        setLocalReviews(updatedPoi.reviews);
       } else {
-        setLocalRatings([...localRatings, newRating]);
-        setNewRating(0);
-        alert(`Note de ${newRating}/5 ajoutée localement.`);
+        setLocalReviews([...localReviews, { rating: newRating, comment: reviewComment.trim() }]);
       }
+      setNewRating(0);
+      setReviewComment('');
     } catch (error) {
       console.error('Erreur lors de l\'ajout de la note:', error);
-      setLocalRatings([...localRatings, newRating]);
+      setLocalReviews([...localReviews, { rating: newRating, comment: reviewComment.trim() }]);
       setNewRating(0);
-      alert(`Note de ${newRating}/5 ajoutée localement.`);
+      setReviewComment('');
     } finally {
       setIsSubmittingRating(false);
     }
@@ -576,61 +607,130 @@ function PanelContent({
 
       {/* Évaluation */}
       <div className="mb-4 bg-amber-50 rounded-lg p-4">
-        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Évaluation</h3>
-
-        {localRatings.length > 0 ? (
-          <div className="flex items-center gap-3 mb-4">
-            <div className="flex items-center gap-0.5">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <Star
-                  key={star}
-                  className={`w-4 h-4 ${
-                    star <= Math.round(averageRating)
-                      ? 'fill-yellow-500 text-yellow-500'
-                      : 'text-gray-300'
-                  }`}
-                />
-              ))}
-            </div>
-            <span className="text-sm font-semibold text-gray-700">
-              {averageRating.toFixed(1)}/5
-            </span>
-            <span className="text-xs text-gray-500">({localRatings.length} avis)</span>
-          </div>
-        ) : (
-          <p className="text-sm text-gray-500 mb-4">Aucune évaluation pour le moment</p>
-        )}
-
-        <div className="border-t border-amber-200 pt-3">
-          <p className="text-sm font-medium text-gray-700 mb-2">Notez ce spot :</p>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-0.5">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <Star
-                  key={star}
-                  className={`w-6 h-6 cursor-pointer transition-all ${
-                    hoverRating >= star || (!hoverRating && newRating >= star)
-                      ? 'fill-yellow-500 text-yellow-500 scale-110'
-                      : 'text-gray-300 hover:text-yellow-400'
-                  }`}
-                  onMouseEnter={() => setHoverRating(star)}
-                  onMouseLeave={() => setHoverRating(0)}
-                  onClick={() => setNewRating(star)}
-                />
-              ))}
-            </div>
-            {newRating > 0 && (
-              <BivouacButton
-                variant="primary"
-                size="sm"
-                onClick={handleSubmitRating}
-                disabled={isSubmittingRating}
-              >
-                {isSubmittingRating ? 'Envoi…' : 'Valider'}
-              </BivouacButton>
-            )}
+        {/* Row 1 : titre + étoiles */}
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Évaluer ce spot</h3>
+          <div className="flex items-center gap-0.5">
+            {[1, 2, 3, 4, 5].map((star) => (
+              <Star
+                key={star}
+                className={`w-6 h-6 cursor-pointer transition-all ${
+                  hoverRating >= star || (!hoverRating && newRating >= star)
+                    ? 'fill-yellow-500 text-yellow-500 scale-110'
+                    : 'text-gray-300 hover:text-yellow-400'
+                }`}
+                onMouseEnter={() => setHoverRating(star)}
+                onMouseLeave={() => setHoverRating(0)}
+                onClick={() => setNewRating(star)}
+              />
+            ))}
           </div>
         </div>
+
+        {/* Row 2 : champ texte — affiché uniquement après sélection d'une note */}
+        {newRating > 0 && (
+          <textarea
+            className="w-full text-sm rounded-md border border-amber-200 bg-white px-3 py-2 text-gray-700 placeholder:text-gray-400 resize-none focus:outline-none focus:ring-1 focus:ring-amber-400"
+            rows={2}
+            placeholder="Décrivez votre expérience…"
+            value={reviewComment}
+            onChange={(e) => setReviewComment(e.target.value)}
+          />
+        )}
+
+        {canSubmit && (
+          <div className="mt-2">
+            <BivouacButton
+              variant="primary"
+              size="sm"
+              onClick={handleSubmitRating}
+              disabled={isSubmittingRating}
+            >
+              {isSubmittingRating ? 'Envoi…' : 'Valider'}
+            </BivouacButton>
+          </div>
+        )}
+
+        {hasExistingRatings && (
+          <div className="mt-3 pt-3 border-t border-amber-200">
+            {/* Récap moyenne — toujours cliquable */}
+            <button
+              className="w-full flex items-center gap-2 text-left cursor-pointer bg-white rounded-md px-3 py-2 hover:bg-amber-100 transition-colors"
+              onClick={() => setShowReviews((v) => !v)}
+            >
+              <div className="flex items-center gap-0.5">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <Star
+                    key={star}
+                    className={`w-3.5 h-3.5 ${
+                      star <= Math.round(averageRating)
+                        ? 'fill-yellow-500 text-yellow-500'
+                        : 'text-gray-300'
+                    }`}
+                  />
+                ))}
+              </div>
+              <span className="text-sm font-semibold text-gray-700">{averageRating.toFixed(1)}/5</span>
+              <span className="text-xs text-gray-500">({localReviews.length} avis)</span>
+              {showReviews
+                ? <ChevronUp className="ml-auto w-4 h-4 text-gray-400" />
+                : <ChevronDown className="ml-auto w-4 h-4 text-gray-400" />}
+            </button>
+
+            {/* Liste des avis */}
+            {showReviews && (
+              <div className="flex flex-col gap-1 mt-2">
+                {sortedReviews.slice(0, visibleReviewCount).map((review, i) => (
+                  <div
+                    key={review.createdAt ?? i}
+                    className="rounded-md bg-white border border-amber-100 px-3 py-2"
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-0.5">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Star
+                              key={star}
+                              className={`w-3 h-3 ${
+                                star <= review.rating
+                                  ? 'fill-yellow-500 text-yellow-500'
+                                  : 'text-gray-300'
+                              }`}
+                            />
+                          ))}
+                        </div>
+                        <span className="text-xs font-semibold text-gray-600">{review.rating}/5</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {review.createdAt && (
+                          <span className="text-xs text-gray-400">{formatReviewDate(review.createdAt)}</span>
+                        )}
+                        {isAdmin && (
+                          <button
+                            onClick={() => handleDeleteReview(review.createdAt)}
+                            className="text-gray-300 hover:text-red-500 transition-colors"
+                            title="Supprimer cet avis"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-600 leading-relaxed">{review.comment}</p>
+                  </div>
+                ))}
+                {visibleReviewCount < sortedReviews.length && (
+                  <button
+                    className="mt-1 text-xs text-amber-700 hover:text-amber-900 underline text-left"
+                    onClick={() => setVisibleReviewCount((n) => n + 10)}
+                  >
+                    Montrer plus d'évaluations
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
     </>

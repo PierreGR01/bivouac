@@ -303,6 +303,8 @@ export default function App() {
           onRouteClick={handleOpenRoutePanel}
           onMeasureClick={handleToggleMeasureMode}
           userPosition={userPosition}
+          selectedZone={selectedZone || editingZone}
+          selectedProtectedArea={selectedProtectedArea || editingOsmZone}
         />
       </div>
 
@@ -362,6 +364,7 @@ export default function App() {
       {pois.selectedLocation && (
         <Suspense fallback={null}>
           <PoiDetailsPanel
+            key={pois.selectedLocation.id}
             location={pois.selectedLocation}
             onClose={handleClosePanel}
             protectedAreas={map.allProtectedAreas}

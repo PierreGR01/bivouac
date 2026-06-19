@@ -58,6 +58,29 @@ export async function createPoi(poi: Partial<PoiLocation>): Promise<boolean> {
   }
 }
 
+export async function enrichPoi(poiId: string, enrichment: { altitude?: number | null; waterProximity?: 'proche' | 'éloigné' | null; naturalWaterProximity?: 'proche' | null }): Promise<boolean> {
+  try {
+    const response = await fetch(`${EDGE_FUNCTION_URL}/pois/${poiId}/enrich`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${ANON_KEY}`,
+      },
+      body: JSON.stringify(enrichment),
+      signal: AbortSignal.timeout(30_000),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to enrich POI: ${response.statusText}`);
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error enriching POI:', error);
+    return false;
+  }
+}
+
 export async function updatePoi(poiId: string, updates: Partial<PoiLocation>): Promise<boolean> {
   try {
     const authHeader = await getAuthHeader();
@@ -103,7 +126,27 @@ export async function deletePoi(poiId: string): Promise<void> {
   }
 }
 
-export async function addRating(poiId: string, rating: number): Promise<PoiLocation | null> {
+export async function deleteReview(poiId: string, createdAt: string): Promise<PoiLocation | null> {
+  try {
+    const authHeader = await getAuthHeader();
+    const response = await fetch(
+      `${EDGE_FUNCTION_URL}/pois/${poiId}/reviews/${encodeURIComponent(createdAt)}`,
+      {
+        method: 'DELETE',
+        headers: { 'Authorization': authHeader },
+        signal: AbortSignal.timeout(30_000),
+      }
+    );
+    if (!response.ok) throw new Error(`Failed to delete review: ${response.statusText}`);
+    const data = await response.json();
+    return data.data || null;
+  } catch (error) {
+    console.error('Error deleting review:', error);
+    throw error;
+  }
+}
+
+export async function addRating(poiId: string, rating: number, comment: string): Promise<PoiLocation | null> {
   try {
     const authHeader = await getAuthHeader();
     const response = await fetch(`${EDGE_FUNCTION_URL}/pois/${poiId}/rate`, {
@@ -112,7 +155,7 @@ export async function addRating(poiId: string, rating: number): Promise<PoiLocat
         'Content-Type': 'application/json',
         'Authorization': authHeader,
       },
-      body: JSON.stringify({ rating }),
+      body: JSON.stringify({ rating, comment }),
       signal: AbortSignal.timeout(30_000),
     });
 

@@ -257,10 +257,13 @@ app.post("/make-server-e51cba93/pois/:id/rate", safeHandler(async (c: any) => {
   try {
     const id = c.req.param("id");
     const body = await c.req.json();
-    const { rating } = body;
+    const { rating, comment } = body;
 
     if (typeof rating !== 'number' || rating < 0 || rating > 5) {
       return c.json({ success: false, error: "Rating must be a number between 0 and 5" }, 400);
+    }
+    if (typeof comment !== 'string' || comment.trim().split(/\s+/).filter(Boolean).length < 3) {
+      return c.json({ success: false, error: "Comment must be at least 3 words" }, 400);
     }
 
     const poi = await kv.get(`poi:${id}`);
@@ -268,12 +271,35 @@ app.post("/make-server-e51cba93/pois/:id/rate", safeHandler(async (c: any) => {
       return c.json({ success: false, error: "POI not found" }, 404);
     }
 
-    const updatedPoi = { ...poi, ratings: [...(poi.ratings || []), rating] };
+    const review = { rating, comment: comment.trim() };
+    const updatedPoi = {
+      ...poi,
+      ratings: [...(poi.ratings || []), rating],
+      reviews: [...(poi.reviews || []), review],
+    };
     await kv.set(`poi:${id}`, updatedPoi);
-    console.log(`✅ Note ajoutée au POI ${id}: ${rating}/5`);
+    console.log(`✅ Note ajoutée au POI ${id}: ${rating}/5 — "${comment.trim()}"`);
     return c.json({ success: true, data: updatedPoi });
   } catch (error) {
     console.error("Error adding rating:", error);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+}));
+
+// Patch POI ratings/reviews — admin only
+app.patch("/make-server-e51cba93/pois/:id/ratings", safeHandler(async (c: any) => {
+  if (!(await requireAdmin(c))) {
+    return c.json({ success: false, error: "Unauthorized" }, 401);
+  }
+  try {
+    const id = c.req.param("id");
+    const body = await c.req.json();
+    const poi = await kv.get(`poi:${id}`);
+    if (!poi) return c.json({ success: false, error: "POI not found" }, 404);
+    const updatedPoi = { ...poi, ratings: body.ratings ?? [], reviews: body.reviews ?? [] };
+    await kv.set(`poi:${id}`, updatedPoi);
+    return c.json({ success: true, data: updatedPoi });
+  } catch (error) {
     return c.json({ success: false, error: 'Internal server error' }, 500);
   }
 }));

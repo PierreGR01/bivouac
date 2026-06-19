@@ -142,7 +142,7 @@ export async function resetPois(): Promise<{ success: boolean; deletedCount?: nu
 }
 
 // Add a rating to a POI
-export async function addRating(poiId: string, rating: number): Promise<PoiLocation | null> {
+export async function addRating(poiId: string, rating: number, comment: string): Promise<PoiLocation | null> {
   try {
     const response = await fetchWithTimeout(`${BASE_URL}/pois/${poiId}/rate`, {
       method: 'POST',
@@ -150,7 +150,7 @@ export async function addRating(poiId: string, rating: number): Promise<PoiLocat
         'Authorization': `Bearer ${publicAnonKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ rating }),
+      body: JSON.stringify({ rating, comment }),
     }, 10000); // 10 secondes timeout
 
     if (!response.ok) {

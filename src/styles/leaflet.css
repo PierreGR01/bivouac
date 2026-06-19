@@ -40,6 +40,19 @@
   cursor: pointer;
 }
 
+/* Selected spot marker - vert bivouac, contour fondu */
+.custom-marker-selected,
+.custom-marker-winter-selected {
+  background-color: #10b981;
+  border: 3px solid #10b981;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  box-shadow: 0 2px 12px rgba(16, 185, 129, 0.55);
+  transform: scale(1.15);
+  cursor: pointer;
+}
+
 /* Summer marker - orange foncé */
 .custom-marker-summer {
   background-color: #ea580c;

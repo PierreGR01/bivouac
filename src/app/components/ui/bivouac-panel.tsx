@@ -50,7 +50,7 @@ export function Panel({
         </div>
 
         {/* Scrollable content */}
-        <div className="flex-1 overflow-y-auto px-6 pb-6">{children}</div>
+        <div className="flex-1 overflow-y-auto px-6 pb-6" style={{ scrollbarGutter: 'stable' }}>{children}</div>
         {stickyFooter && (
           <div className="flex-shrink-0 px-6 py-3 border-t border-gray-100 bg-white">
             {stickyFooter}
@@ -82,7 +82,7 @@ export function Panel({
         </div>
 
         {/* Scrollable content */}
-        <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
+        <div className="flex-1 overflow-y-auto px-6 py-5" style={{ scrollbarGutter: 'stable' }}>{children}</div>
         {stickyFooter && (
           <div className="flex-shrink-0 px-6 py-3 border-t border-gray-100 bg-white">
             {stickyFooter}
