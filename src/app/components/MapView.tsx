@@ -501,6 +501,9 @@ export function MapView({
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
     const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
+    // Canvas renderer: beaucoup plus rapide que SVG individuel pour des centaines de markers
+    const canvasRenderer = L.canvas({ padding: 0.5 });
+
     const connect = () => {
       if (destroyed) return;
       console.log('[lightning] opening SSE connection');
@@ -519,13 +522,12 @@ export function MapView({
         console.log('[lightning] strike', data.lat, data.lon);
 
         const marker = L.circleMarker([data.lat, data.lon], {
-          radius: 8,
+          radius: 7,
           color: '#86198f',
           fillColor: '#e879f9',
           fillOpacity: 0.95,
-          weight: 2.5,
-          className: 'lightning-strike',
-          pane: 'markerPane',
+          weight: 2,
+          renderer: canvasRenderer,
         }).addTo(mapInstanceRef.current);
 
         const fadeTimeout = setTimeout(() => marker.setStyle({ fillOpacity: 0.25, opacity: 0.25 }), 5000);

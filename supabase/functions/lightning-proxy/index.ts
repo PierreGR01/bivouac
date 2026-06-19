@@ -80,9 +80,6 @@ Deno.serve(async (req) => {
             // Filter to Europe + Mediterranean to avoid flooding Leaflet with global strikes
             if (lat < 30 || lat > 75 || lon < -20 || lon > 50) continue;
 
-            // On first connection, only replay the last 60 seconds to avoid marker overload
-            if (isFirst && item.d > 60) continue;
-
             // item.d is "seconds ago"
             const time = now - Math.round(item.d * 1000);
             enqueue(`data: ${JSON.stringify({ lat, lon, time })}\n\n`);
