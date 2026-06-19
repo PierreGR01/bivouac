@@ -20,8 +20,10 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 
-# Vercel
-.vercel/
+# Vercel — on commit project.json (projectId/orgId non secrets) pour éviter
+# que le CLI recrée un nouveau projet à chaque session sans linkage local
+.vercel/*
+!.vercel/repo.json
 
 # Supabase CLI temp files (contain project metadata)
 supabase/.temp/
