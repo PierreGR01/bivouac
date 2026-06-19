@@ -136,16 +136,45 @@ export function usePois() {
 
   const selectLocation = useCallback((loc: PoiLocation | null) => {
     setSelectedLocation(loc);
-    if (!loc || (loc.altitude !== null && loc.altitude !== undefined)) return;
-    api.fetchAltitude(loc.position.lat, loc.position.lng)
-      .then(altitude => {
-        if (altitude == null) return;
-        setSelectedLocation(prev => prev?.id === loc.id ? { ...prev, altitude } : prev);
+    if (!loc) return;
+
+    // Re-enrich altitude if missing
+    if (loc.altitude === null || loc.altitude === undefined) {
+      api.fetchAltitude(loc.position.lat, loc.position.lng)
+        .then(altitude => {
+          if (altitude == null) return;
+          setSelectedLocation(prev => prev?.id === loc.id ? { ...prev, altitude } : prev);
+          queryClient.setQueryData<PoiLocation[]>(['pois'], (old = []) =>
+            old.map(p => p.id === loc.id ? { ...p, altitude } : p)
+          );
+          api.enrichPoi(loc.id, { altitude }).catch(() => {});
+        });
+    }
+
+    // Re-enrich water proximity if both fields are still null (enrichment never persisted)
+    if (loc.waterProximity === null || loc.waterProximity === undefined) {
+      const radius = WATER_LOADING_RADIUS_DEG;
+      const bounds = {
+        south: loc.position.lat - radius,
+        west: loc.position.lng - radius,
+        north: loc.position.lat + radius,
+        east: loc.position.lng + radius,
+      };
+      Promise.all([
+        fetchWaterPoints(bounds, 15).catch(() => []),
+        fetchNearbyStreams(loc.position.lat, loc.position.lng, radius).catch(() => []),
+      ]).then(([localWaterPoints, nearbyStreams]) => {
+        const allWaterPoints = [...(localWaterPoints as any[]), ...(nearbyStreams as any[])];
+        const waterProximity = calculateWaterProximity(loc.position.lat, loc.position.lng, allWaterPoints);
+        const naturalWaterProximity = calculateNaturalWaterProximity(loc.position.lat, loc.position.lng, allWaterPoints);
+        const enriched = { waterProximity, naturalWaterProximity };
+        setSelectedLocation(prev => prev?.id === loc.id ? { ...prev, ...enriched } : prev);
         queryClient.setQueryData<PoiLocation[]>(['pois'], (old = []) =>
-          old.map(p => p.id === loc.id ? { ...p, altitude } : p)
+          old.map(p => p.id === loc.id ? { ...p, ...enriched } : p)
         );
-        api.enrichPoi(loc.id, { altitude }).catch(() => {});
-      });
+        api.enrichPoi(loc.id, enriched).catch(() => {});
+      }).catch(() => {});
+    }
   }, [queryClient]);
 
   return {
