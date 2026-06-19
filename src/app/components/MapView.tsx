@@ -54,6 +54,10 @@ interface MapViewProps {
   onMeasureClick?: () => void;
   onWaterStateChange?: (state: { isLoading: boolean; showButton: boolean }) => void;
   onWaterPointsLoaded?: (points: WaterPoint[]) => void;
+  showRainRadar?: boolean;
+  onRainRadarToggle?: () => void;
+  showLightning?: boolean;
+  onLightningToggle?: () => void;
   satelliteMode?: boolean;
   onSatelliteModeToggle?: () => void;
   winterMode?: boolean;
@@ -90,6 +94,10 @@ export function MapView({
   onMeasureClick,
   onWaterStateChange,
   onWaterPointsLoaded,
+  showRainRadar = false,
+  onRainRadarToggle,
+  showLightning = false,
+  onLightningToggle,
   satelliteMode = false,
   onSatelliteModeToggle,
   winterMode = false,
@@ -116,6 +124,13 @@ export function MapView({
   const userMarkerRef = useRef<L.Marker | null>(null);
   const searchMarkerRef = useRef<L.Marker | null>(null);
   const searchMarkerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rainRadarLayersRef = useRef<L.TileLayer[]>([]);
+  const rainRadarAnimRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const rainRadarIndexRef = useRef(0);
+  const [forecastMode, setForecastMode] = useState(false);
+  const [nowcastDurationMin, setNowcastDurationMin] = useState(0);
+  const lightningEsRef = useRef<EventSource | null>(null);
+  const lightningMarkersRef = useRef<{ marker: L.CircleMarker; timeout: ReturnType<typeof setTimeout> }[]>([]);
   
   const [waterPoints, setWaterPoints] = useState<WaterPoint[]>([]);
   const [isLoadingWater, setIsLoadingWater] = useState(false);
@@ -379,6 +394,161 @@ export function MapView({
       }
     }
   }, [winterMode]);
+
+  // Radar précipitations RainViewer
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    const cleanup = () => {
+      if (rainRadarAnimRef.current) {
+        clearInterval(rainRadarAnimRef.current);
+        rainRadarAnimRef.current = null;
+      }
+      rainRadarLayersRef.current.forEach(l => map.removeLayer(l));
+      rainRadarLayersRef.current = [];
+      rainRadarIndexRef.current = 0;
+    };
+
+    if (!showRainRadar) {
+      cleanup();
+      return;
+    }
+
+    const pane = map.getPane('rainRadarPane') ?? map.createPane('rainRadarPane');
+    pane.style.zIndex = '250';
+    pane.style.pointerEvents = 'none';
+    (pane.style as any).mixBlendMode = 'multiply';
+
+    const owmKey = import.meta.env.VITE_OWM_API_KEY as string | undefined;
+
+    const loadOWM = () => {
+      if (!mapInstanceRef.current || !owmKey) return;
+      const layer = L.tileLayer(
+        `https://tile.openweathermap.org/map/precipitation_new/{z}/{x}/{y}.png?appid=${owmKey}`,
+        { opacity: 0.8, pane: 'rainRadarPane', zIndex: 250, attribution: '© OpenWeatherMap' }
+      ).addTo(mapInstanceRef.current);
+      rainRadarLayersRef.current = [layer];
+    };
+
+    fetch('https://api.rainviewer.com/public/weather-maps.json')
+      .then(r => r.json())
+      .then((data: { host: string; radar: { past: { path: string }[]; nowcast: { path: string }[] } }) => {
+        if (!mapInstanceRef.current) return;
+        const past = data.radar.past ?? [];
+        const nowcast = data.radar.nowcast ?? [];
+        const host = data.host;
+
+        setNowcastDurationMin(nowcast.length * 10);
+
+        const makeLayer = (path: string) => L.tileLayer(`${host}${path}/256/{z}/{x}/{y}/2/1_1.png`, {
+          opacity: 0.8, pane: 'rainRadarPane', zIndex: 250,
+          attribution: 'RainViewer', maxNativeZoom: 7, maxZoom: 20,
+        });
+
+        if (!forecastMode || nowcast.length === 0) {
+          const latest = past[past.length - 1];
+          if (!latest) { loadOWM(); return; }
+          rainRadarLayersRef.current = [makeLayer(latest.path).addTo(mapInstanceRef.current!)];
+        } else {
+          let frameIdx = 0;
+          const animate = () => {
+            if (!mapInstanceRef.current) return;
+            rainRadarLayersRef.current.forEach(l => mapInstanceRef.current!.removeLayer(l));
+            rainRadarLayersRef.current = [makeLayer(nowcast[frameIdx].path).addTo(mapInstanceRef.current!)];
+            frameIdx = (frameIdx + 1) % nowcast.length;
+          };
+          animate();
+          rainRadarAnimRef.current = setInterval(animate, 1000);
+        }
+      })
+      .catch(() => loadOWM());
+
+    return cleanup;
+  }, [showRainRadar, forecastMode]);
+
+  // Points de foudre Blitzortung
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+    let destroyed = false;
+
+    const clearMarkers = () => {
+      lightningMarkersRef.current.forEach(({ marker, timeout }) => {
+        clearTimeout(timeout);
+        map.removeLayer(marker);
+      });
+      lightningMarkersRef.current = [];
+    };
+
+    const cleanup = () => {
+      destroyed = true;
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      if (lightningEsRef.current) {
+        lightningEsRef.current.close();
+        lightningEsRef.current = null;
+      }
+      clearMarkers();
+    };
+
+    if (!showLightning) {
+      cleanup();
+      return;
+    }
+
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
+    const connect = () => {
+      if (destroyed) return;
+      console.log('[lightning] opening SSE connection');
+      // EventSource ne supporte pas les headers custom — on passe la clé en query param
+      const es = new EventSource(`${supabaseUrl}/functions/v1/lightning-proxy?apikey=${supabaseAnonKey}`);
+      lightningEsRef.current = es;
+
+      es.onopen = () => console.log('[lightning] SSE connected');
+
+      es.onmessage = (event) => {
+        if (!mapInstanceRef.current) return;
+        let data: { lat?: number; lon?: number; time?: number };
+        try { data = JSON.parse(event.data); } catch { return; }
+        if (typeof data.lat !== 'number' || typeof data.lon !== 'number') return;
+
+        console.log('[lightning] strike', data.lat, data.lon);
+
+        const marker = L.circleMarker([data.lat, data.lon], {
+          radius: 5,
+          color: '#f59e0b',
+          fillColor: '#fbbf24',
+          fillOpacity: 0.9,
+          weight: 1.5,
+          pane: 'markerPane',
+        }).addTo(mapInstanceRef.current);
+
+        const fadeTimeout = setTimeout(() => marker.setStyle({ fillOpacity: 0.2, opacity: 0.2 }), 5000);
+        const removeTimeout = setTimeout(() => {
+          if (mapInstanceRef.current) mapInstanceRef.current.removeLayer(marker);
+          lightningMarkersRef.current = lightningMarkersRef.current.filter(e => e.marker !== marker);
+          clearTimeout(fadeTimeout);
+        }, 30000);
+
+        lightningMarkersRef.current.push({ marker, timeout: removeTimeout });
+      };
+
+      es.onerror = () => {
+        console.warn('[lightning] SSE error/closed — reconnecting in 5s');
+        es.close();
+        lightningEsRef.current = null;
+        if (!destroyed) reconnectTimeout = setTimeout(connect, 5000);
+      };
+    };
+
+    connect();
+
+    return cleanup;
+  }, [showLightning]);
 
   // Gérer le mode dessin (Leaflet Draw)
   useEffect(() => {
@@ -1258,6 +1428,53 @@ export function MapView({
         );
       })()}
       
+      {/* Légende radar précipitations */}
+      {showRainRadar && (
+        <div className="hidden md:block absolute bottom-6 left-6 z-[400] bg-white/90 backdrop-blur-sm rounded-xl shadow-xl p-3 w-52">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-semibold text-gray-700">Radar précipitations</span>
+          </div>
+          <div className="text-xs text-gray-500 mb-2">
+            {forecastMode ? 'Prévision nowcast · extrapolation radar' : 'Données observées · ~10 min de délai'}
+          </div>
+          <div className="flex flex-col gap-0.5 mb-3">
+            {[
+              { color: '#b3f0ff', label: 'Très légère  < 0.5 mm/h' },
+              { color: '#64d4f0', label: 'Légère  0.5–2 mm/h' },
+              { color: '#3eb050', label: 'Modérée  2–5 mm/h' },
+              { color: '#f0f050', label: 'Notable  5–15 mm/h' },
+              { color: '#f09000', label: 'Forte  15–30 mm/h' },
+              { color: '#d03020', label: 'Très forte  > 30 mm/h' },
+              { color: '#f060f0', label: 'Extrême / grêle' },
+            ].map(({ color, label }) => (
+              <div key={label} className="flex items-center gap-2">
+                <div className="w-5 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
+                <span className="text-xs text-gray-600">{label}</span>
+              </div>
+            ))}
+          </div>
+          {nowcastDurationMin > 0 ? (
+            <button
+              onClick={() => setForecastMode(f => !f)}
+              className={`w-full text-xs rounded-lg py-1.5 px-2 font-medium transition-all ${
+                forecastMode
+                  ? 'bg-cyan-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              {forecastMode
+                ? '⏹ Arrêter la prévision'
+                : `▶ Prévision ${nowcastDurationMin >= 60 ? `${Math.floor(nowcastDurationMin / 60)}h${nowcastDurationMin % 60 > 0 ? nowcastDurationMin % 60 : ''}` : `${nowcastDurationMin}min`}`}
+            </button>
+          ) : (
+            <button disabled className="w-full text-xs rounded-lg py-1.5 px-2 font-medium bg-gray-50 text-gray-400 cursor-not-allowed">
+              Prévision non disponible
+            </button>
+          )}
+          <div className="mt-2 pt-2 border-t border-gray-100 text-xs text-gray-400">Source : RainViewer</div>
+        </div>
+      )}
+
       {/* Panel de contrôles cartographiques en bas à droite */}
       {onWaterPointsToggle && onProtectedAreasToggle && onRouteClick && onMeasureClick && (
         <MapControls
@@ -1269,6 +1486,10 @@ export function MapView({
           isRoutingMode={isRoutingMode}
           isMeasuringMode={isMeasuringMode}
           onMeasureClick={onMeasureClick}
+          showRainRadar={showRainRadar}
+          onRainRadarToggle={onRainRadarToggle}
+          showLightning={showLightning}
+          onLightningToggle={onLightningToggle}
           satelliteMode={satelliteMode}
           onSatelliteModeToggle={onSatelliteModeToggle || (() => {})}
           winterMode={winterMode}

@@ -19,6 +19,9 @@ export function useMapLayers() {
   const [isLoadingWaterPoints, setIsLoadingWaterPoints] = useState(false);
   const [waterPoints, setWaterPoints] = useState<any[]>([]);
 
+  const [showRainRadar, setShowRainRadar] = useState(false);
+  const [showLightning, setShowLightning] = useState(false);
+
   const [showProtectedAreas, setShowProtectedAreas] = useState(false);
   const [showProtectedAreasButton, setShowProtectedAreasButton] = useState(false);
   const [isLoadingProtectedAreas, setIsLoadingProtectedAreas] = useState(false);
@@ -104,6 +107,9 @@ export function useMapLayers() {
     });
   };
 
+  const toggleRainRadar = () => setShowRainRadar(prev => !prev);
+  const toggleLightning = () => setShowLightning(prev => !prev);
+
   const toggleProtectedAreas = useCallback(() => {
     if (!showProtectedAreas) {
       // Activation : lancer le chargement immédiatement, sans afficher le bouton
@@ -122,6 +128,10 @@ export function useMapLayers() {
     winterMode,
     toggleSatellite,
     toggleWinter,
+    showRainRadar,
+    toggleRainRadar,
+    showLightning,
+    toggleLightning,
     showWaterPoints,
     toggleWaterPoints,
     showWaterPointsInfo,

@@ -288,6 +288,10 @@ export default function App() {
           onZoneClick={isAdmin ? handleZoneClick : handleZoneInfoClick}
           onProtectedAreaClick={isAdmin ? handleOsmZoneClick : handleProtectedAreaInfoClick}
           onMapMove={(bounds) => map.setMapBounds(bounds)}
+          showRainRadar={map.showRainRadar}
+          onRainRadarToggle={map.toggleRainRadar}
+          showLightning={map.showLightning}
+          onLightningToggle={map.toggleLightning}
           satelliteMode={map.satelliteMode}
           onSatelliteModeToggle={map.toggleSatellite}
           winterMode={map.winterMode}

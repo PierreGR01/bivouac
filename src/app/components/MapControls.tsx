@@ -1,5 +1,5 @@
 import React from 'react';
-import { Droplet, BanIcon, Route, Plus, Minus, Ruler, Snowflake, Locate, Settings } from 'lucide-react';
+import { Droplet, BanIcon, Route, Plus, Minus, Ruler, Snowflake, Locate, Settings, CloudRain, Zap } from 'lucide-react';
 
 interface MapControlsProps {
   showWaterPoints: boolean;
@@ -10,6 +10,10 @@ interface MapControlsProps {
   isRoutingMode: boolean;
   isMeasuringMode: boolean;
   onMeasureClick: () => void;
+  showRainRadar?: boolean;
+  onRainRadarToggle?: () => void;
+  showLightning?: boolean;
+  onLightningToggle?: () => void;
   satelliteMode: boolean;
   onSatelliteModeToggle: () => void;
   winterMode?: boolean;
@@ -29,6 +33,10 @@ export function MapControls({
   isMeasuringMode,
   onMeasureClick,
   satelliteMode,
+  showRainRadar = false,
+  onRainRadarToggle,
+  showLightning = false,
+  onLightningToggle,
   onSatelliteModeToggle,
   winterMode = false,
   onWinterModeToggle,
@@ -117,6 +125,35 @@ export function MapControls({
         title="Points d'eau"
       >
         <Droplet className="w-5 h-5" />
+      </button>
+
+      {/* Séparateur */}
+      <div className="h-px bg-gray-200 my-1"></div>
+
+      {/* Météo — radar pluie */}
+      <button
+        onClick={onRainRadarToggle}
+        className={`w-10 h-10 rounded-lg transition-all flex items-center justify-center ${
+          showRainRadar
+            ? 'bg-cyan-600 text-white'
+            : 'text-gray-700 hover:bg-gray-100'
+        }`}
+        title="Radar précipitations"
+      >
+        <CloudRain className="w-5 h-5" />
+      </button>
+
+      {/* Météo — foudre */}
+      <button
+        onClick={onLightningToggle}
+        className={`w-10 h-10 rounded-lg transition-all flex items-center justify-center ${
+          showLightning
+            ? 'bg-amber-500 text-white'
+            : 'text-gray-700 hover:bg-gray-100'
+        }`}
+        title="Points de foudre"
+      >
+        <Zap className="w-5 h-5" />
       </button>
 
       {/* Séparateur */}
