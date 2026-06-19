@@ -519,23 +519,30 @@ export function MapView({
         try { data = JSON.parse(event.data); } catch { return; }
         if (typeof data.lat !== 'number' || typeof data.lon !== 'number') return;
 
-        console.log('[lightning] strike', data.lat, data.lon);
+        const now = Date.now();
+        const strikeTime = data.time ?? now;
+        const ageMs = Math.max(0, now - strikeTime);
+        const maxAgeMs = 15 * 60 * 1000; // 15 minutes
+        if (ageMs >= maxAgeMs) return;
+
+        const remainingMs = maxAgeMs - ageMs;
+        // Opacité proportionnelle à la fraîcheur : strike récent = 1.0, 30min = 0.15
+        const opacity = Math.max(0.15, 1 - ageMs / maxAgeMs);
 
         const marker = L.circleMarker([data.lat, data.lon], {
-          radius: 7,
-          color: '#86198f',
-          fillColor: '#e879f9',
-          fillOpacity: 0.95,
-          weight: 2,
+          radius: 6,
+          color: '#000000',
+          fillColor: '#ffee00',
+          fillOpacity: opacity,
+          opacity: opacity,
+          weight: 1.5,
           renderer: canvasRenderer,
         }).addTo(mapInstanceRef.current);
 
-        const fadeTimeout = setTimeout(() => marker.setStyle({ fillOpacity: 0.25, opacity: 0.25 }), 5000);
         const removeTimeout = setTimeout(() => {
           if (mapInstanceRef.current) mapInstanceRef.current.removeLayer(marker);
           lightningMarkersRef.current = lightningMarkersRef.current.filter(e => e.marker !== marker);
-          clearTimeout(fadeTimeout);
-        }, 30000);
+        }, remainingMs);
 
         lightningMarkersRef.current.push({ marker, timeout: removeTimeout });
       };
