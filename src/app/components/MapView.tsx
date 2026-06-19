@@ -519,15 +519,16 @@ export function MapView({
         console.log('[lightning] strike', data.lat, data.lon);
 
         const marker = L.circleMarker([data.lat, data.lon], {
-          radius: 5,
-          color: '#f59e0b',
-          fillColor: '#fbbf24',
-          fillOpacity: 0.9,
-          weight: 1.5,
+          radius: 8,
+          color: '#86198f',
+          fillColor: '#e879f9',
+          fillOpacity: 0.95,
+          weight: 2.5,
+          className: 'lightning-strike',
           pane: 'markerPane',
         }).addTo(mapInstanceRef.current);
 
-        const fadeTimeout = setTimeout(() => marker.setStyle({ fillOpacity: 0.2, opacity: 0.2 }), 5000);
+        const fadeTimeout = setTimeout(() => marker.setStyle({ fillOpacity: 0.25, opacity: 0.25 }), 5000);
         const removeTimeout = setTimeout(() => {
           if (mapInstanceRef.current) mapInstanceRef.current.removeLayer(marker);
           lightningMarkersRef.current = lightningMarkersRef.current.filter(e => e.marker !== marker);
