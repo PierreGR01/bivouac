@@ -265,7 +265,11 @@ app.delete("/make-server-e51cba93/pois/:id/reviews/:createdAt", safeHandler(asyn
     const createdAt = decodeURIComponent(c.req.param("createdAt"));
     const poi = await kv.get(`poi:${id}`);
     if (!poi) return c.json({ success: false, error: "POI not found" }, 404);
-    const updatedReviews = (poi.reviews || []).filter((r: any) => r.createdAt !== createdAt);
+    const reviews: any[] = poi.reviews || [];
+    const idxMatch = createdAt.match(/^__idx_(\d+)__$/);
+    const updatedReviews = idxMatch
+      ? reviews.filter((_, i) => i !== parseInt(idxMatch[1]))
+      : reviews.filter((r: any) => r.createdAt !== createdAt);
     const updatedPoi = { ...poi, reviews: updatedReviews, ratings: updatedReviews.map((r: any) => r.rating) };
     await kv.set(`poi:${id}`, updatedPoi);
     return c.json({ success: true, data: updatedPoi });

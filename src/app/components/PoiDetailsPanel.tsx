@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { toast } from 'sonner';
 import { PoiLocation } from '../types';
 import {
   X,
@@ -247,14 +248,18 @@ function PanelContent({
     return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(-2)}`;
   };
 
-  const handleDeleteReview = async (createdAt?: string) => {
-    if (!createdAt || !isAdmin) return;
+  const handleDeleteReview = async (review: { rating: number; comment: string; createdAt?: string }) => {
+    if (!isAdmin) return;
+    // Use createdAt if available, otherwise fall back to index in the original array
+    const reviewKey = review.createdAt ?? `__idx_${localReviews.indexOf(review)}__`;
     try {
-      const updatedPoi = await api.deleteReview(location.id, createdAt);
+      const updatedPoi = await api.deleteReview(location.id, reviewKey);
       if (updatedPoi?.reviews !== undefined) setLocalReviews(updatedPoi.reviews);
-      else setLocalReviews(localReviews.filter(r => r.createdAt !== createdAt));
+      else setLocalReviews(prev => prev.filter(r => r !== review));
+      toast.success('Avis supprimé');
     } catch (error) {
       console.error('Erreur suppression avis:', error);
+      toast.error('Impossible de supprimer l\'avis');
     }
   };
 
@@ -707,8 +712,8 @@ function PanelContent({
                         )}
                         {isAdmin && (
                           <button
-                            onClick={() => handleDeleteReview(review.createdAt)}
-                            className="text-gray-300 hover:text-red-500 transition-colors"
+                            onClick={() => handleDeleteReview(review)}
+                            className="cursor-pointer p-1 text-gray-300 hover:text-red-500 transition-colors"
                             title="Supprimer cet avis"
                           >
                             <Trash2 className="w-3 h-3" />
