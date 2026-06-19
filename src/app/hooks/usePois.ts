@@ -144,7 +144,7 @@ export function usePois() {
         queryClient.setQueryData<PoiLocation[]>(['pois'], (old = []) =>
           old.map(p => p.id === loc.id ? { ...p, altitude } : p)
         );
-        api.updatePoi(loc.id, { altitude }).catch(() => {});
+        api.enrichPoi(loc.id, { altitude }).catch(() => {});
       });
   }, [queryClient]);
 
