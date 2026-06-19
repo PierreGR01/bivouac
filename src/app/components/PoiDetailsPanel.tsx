@@ -19,7 +19,18 @@ import {
   Loader2,
   ChevronDown,
   ChevronUp,
+  CloudRain,
 } from 'lucide-react';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
+} from 'recharts';
+import { useWeatherForecast } from '../hooks/useWeatherForecast';
 import { ProtectedArea, findAreasContainingPoint, getProtectedAreaInfo } from '../services/protected-areas';
 import { CustomZone, getZoneRestrictionStatus, formatZoneConstraints } from '../../utils/supabase/custom-zones-api';
 import { useAuth } from '../contexts/AuthContext';
@@ -213,6 +224,12 @@ function PanelContent({
   onPhotoClick?: () => void;
 }) {
   const { isAdmin } = useAuth();
+  const { data: weather, loading: weatherLoading, error: weatherError } = useWeatherForecast(
+    location.position.lat,
+    location.position.lng,
+  );
+  const [showChart, setShowChart] = useState(false);
+  const [horizon, setHorizon] = useState<24 | 48>(24);
   const [newRating, setNewRating] = useState(0);
   const [hoverRating, setHoverRating] = useState(0);
   const [reviewComment, setReviewComment] = useState('');
@@ -610,6 +627,53 @@ function PanelContent({
         </div>
       )}
 
+      {/* Prévisions précipitations */}
+      <div className="mb-4 bg-sky-50 rounded-lg p-3">
+        {/* Ligne 1 : picto + label + cumuls */}
+        <div className="flex items-center gap-2 min-w-0">
+          <CloudRain className="w-4 h-4 text-sky-600 flex-shrink-0" />
+          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex-1 truncate">Prévision de précipitations</span>
+          {weatherLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-400 flex-shrink-0" />}
+          {weatherError && <span className="text-[10px] text-sky-400">indisponible</span>}
+          {weather && !weatherLoading && (
+            <div className="flex gap-1 flex-shrink-0">
+              {([
+                { label: "24h", value: weather.next24h, h: 24 },
+                { label: "48h", value: weather.next48h, h: 48 },
+              ] as const).map(({ label, value, h }) => {
+                const active = horizon === h;
+                return (
+                  <button
+                    key={label}
+                    onClick={() => { setHorizon(h); setShowChart(true); }}
+                    className={`rounded border px-1.5 py-0.5 text-center min-w-[38px] transition-colors ${active ? 'bg-sky-600 border-sky-600' : 'bg-white border-sky-100 hover:border-sky-300'}`}
+                  >
+                    <p className={`text-[9px] leading-none mb-0.5 ${active ? 'text-sky-100' : 'text-gray-400'}`}>{label}</p>
+                    <p className={`text-[11px] font-semibold leading-none ${active ? 'text-white' : 'text-sky-700'}`}>{value.toFixed(1)}<span className={`text-[8px] font-normal ml-0.5 ${active ? 'text-sky-200' : 'text-gray-400'}`}>mm</span></p>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Graphe ou bouton */}
+        {weather && !weatherLoading && (
+          <div className="mt-2">
+            {showChart ? (
+              <WeatherBarChart hourly={weather.hourly} horizon={horizon} onHide={() => setShowChart(false)} />
+            ) : (
+              <button
+                onClick={() => setShowChart(true)}
+                className="w-full text-xs text-sky-600 hover:text-sky-800 hover:bg-sky-100 rounded-md py-1.5 transition-colors text-left px-2"
+              >
+                ↓ voir graphique précipitations
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Évaluation */}
       <div className="mb-4 bg-amber-50 rounded-lg p-4">
         {/* Row 1 : titre + étoiles */}
@@ -739,5 +803,80 @@ function PanelContent({
       </div>
 
     </>
+  );
+}
+
+interface WeatherBarChartProps {
+  hourly: Array<{ time: string; precipitation: number; snowfall: number; precipitationProbability: number }>;
+  horizon: 24 | 48;
+  onHide: () => void;
+}
+
+function WeatherBarChart({ hourly, horizon, onHide }: WeatherBarChartProps) {
+  const slice = hourly.slice(0, horizon);
+
+  const chartData = slice.map((h) => {
+    const date = new Date(h.time);
+    const hour = date.getHours();
+    return {
+      label: hour === 0 ? `${String(date.getDate()).padStart(2,'0')}/${String(date.getMonth()+1).padStart(2,'0')}` : `${hour}h`,
+      rain: parseFloat(h.precipitation.toFixed(1)),
+      snow: parseFloat(h.snowfall.toFixed(1)),
+      prob: h.precipitationProbability,
+    };
+  });
+
+  const maxVal = Math.max(...chartData.map((d) => d.rain + d.snow), 0.5);
+
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (!active || !payload?.length) return null;
+    const d = payload[0]?.payload;
+    return (
+      <div className="bg-white border border-sky-200 rounded-md px-2 py-1.5 text-xs shadow-sm">
+        <p className="font-semibold text-gray-700 mb-0.5">{label}</p>
+        {d.rain > 0 && <p className="text-sky-600">Pluie : {d.rain} mm</p>}
+        {d.snow > 0 && <p className="text-cyan-500">Neige : {d.snow} mm</p>}
+        <p className="text-gray-400">Proba : {d.prob}%</p>
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      <div className="flex justify-end mb-1">
+        <button onClick={onHide} className="text-[10px] text-gray-400 hover:text-gray-600 transition-colors">
+          ↑ masquer
+        </button>
+      </div>
+      <ResponsiveContainer width="100%" height={100}>
+        <BarChart data={chartData} barSize={horizon === 48 ? 5 : 8} margin={{ top: 2, right: 4, left: -28, bottom: 0 }}>
+          <XAxis
+            dataKey="label"
+            tick={{ fontSize: 9, fill: '#94a3b8' }}
+            interval={5}
+            tickLine={false}
+            axisLine={false}
+          />
+          <YAxis
+            domain={[0, Math.ceil(maxVal + 0.5)]}
+            tick={{ fontSize: 9, fill: '#94a3b8' }}
+            tickLine={false}
+            axisLine={false}
+            tickCount={3}
+          />
+          <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(186,230,253,0.3)' }} />
+          <Bar dataKey="rain" stackId="a" radius={[2, 2, 0, 0]}>
+            {chartData.map((entry, index) => (
+              <Cell
+                key={index}
+                fill={entry.prob > 60 ? '#0284c7' : entry.prob > 30 ? '#38bdf8' : '#bae6fd'}
+              />
+            ))}
+          </Bar>
+          <Bar dataKey="snow" stackId="a" fill="#e0f2fe" radius={[2, 2, 0, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+      <p className="text-[9px] text-gray-400 text-right">Météo-France AROME · Open-Meteo</p>
+    </div>
   );
 }
