@@ -457,7 +457,7 @@ export default function App() {
 
         {/* Ligne add spot + chevron */}
         {!isAddingMode && !(selectedZone || selectedProtectedArea) && (
-          <div className="flex items-center justify-between px-4 pb-6 pt-1 gap-3">
+          <div className="flex items-center justify-between px-4 pb-1 pt-1 gap-3">
 
             {/* Gauche : espace symétrique */}
             <div className="w-12 flex-shrink-0" />
