@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import L from 'leaflet';
 import 'leaflet-draw';
 import 'leaflet-draw/dist/leaflet.draw.css';
-import { Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Trash2, ChevronDown, ChevronUp, Info } from 'lucide-react';
 import { PoiLocation } from '../types';
 import { fetchWaterPoints, WaterPoint, getWaterPointLabel, getWaterPointInfo, RateLimitError, filterAndSortWaterPoints } from '../services/overpass';
 import { ProtectedArea, getProtectedAreaLabel, getProtectedAreaInfo, shouldDisplayOnMap } from '../services/protected-areas';
@@ -67,6 +67,35 @@ interface MapViewProps {
   selectedProtectedArea?: ProtectedArea | null;
 }
 
+const LEGEND_ITEMS = [
+  { color: '#b3f0ff', label: 'Très légère  < 0.5 mm/h' },
+  { color: '#64d4f0', label: 'Légère  0.5–2 mm/h' },
+  { color: '#3eb050', label: 'Modérée  2–5 mm/h' },
+  { color: '#f0f050', label: 'Notable  5–15 mm/h' },
+  { color: '#f09000', label: 'Forte  15–30 mm/h' },
+  { color: '#d03020', label: 'Très forte  > 30 mm/h' },
+  { color: '#f060f0', label: 'Extrême / grêle' },
+];
+
+function LegendContent({ forecastMode }: { forecastMode: boolean }) {
+  return (
+    <div className="px-3 pb-3 pt-1">
+      <div className="text-xs text-gray-500 mb-2">
+        {forecastMode ? 'Prévision nowcast · extrapolation radar' : 'Données observées · ~10 min de délai'}
+      </div>
+      <div className="flex flex-col gap-0.5">
+        {LEGEND_ITEMS.map(({ color, label }) => (
+          <div key={label} className="flex items-center gap-2">
+            <div className="w-5 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
+            <span className="text-xs text-gray-600">{label}</span>
+          </div>
+        ))}
+      </div>
+      <div className="mt-2 pt-2 border-t border-gray-100 text-xs text-gray-400">Source : RainViewer</div>
+    </div>
+  );
+}
+
 export function MapView({
   locations,
   onLocationClick,
@@ -129,6 +158,7 @@ export function MapView({
   const rainRadarIndexRef = useRef(0);
   const [forecastMode, setForecastMode] = useState(false);
   const [legendOpen, setLegendOpen] = useState(false);
+  const [attribOpen, setAttribOpen] = useState(false);
   const [nowcastDurationMin, setNowcastDurationMin] = useState(0);
   const lightningEsRef = useRef<EventSource | null>(null);
   const lightningMarkersRef = useRef<{ marker: L.CircleMarker; timeout: ReturnType<typeof setTimeout> }[]>([]);
@@ -159,7 +189,8 @@ export function MapView({
     if (!mapRef.current || mapInstanceRef.current) return;
 
     const map = L.map(mapRef.current, {
-      zoomControl: false // Désactiver le contrôle par défaut
+      zoomControl: false,
+      attributionControl: false
     }).setView([MAP_CENTER.lat, MAP_CENTER.lng], MAP_DEFAULT_ZOOM);
 
     // Ajouter les tuiles avec fond topographique
@@ -1437,9 +1468,9 @@ export function MapView({
         );
       })()}
       
-      {/* Légende radar précipitations */}
+      {/* Légende radar précipitations — desktop (bottom-left) */}
       {showRainRadar && (
-        <div className="block absolute bottom-6 left-6 z-[400] bg-white/90 backdrop-blur-sm rounded-xl shadow-xl w-52 overflow-hidden">
+        <div className="hidden md:block absolute bottom-6 left-6 z-[400] bg-white/90 backdrop-blur-sm rounded-xl shadow-xl w-52 overflow-hidden">
           <button
             onClick={() => setLegendOpen(o => !o)}
             className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 transition-colors"
@@ -1447,32 +1478,48 @@ export function MapView({
             <span className="text-xs font-semibold text-gray-700">Légende radar pluie</span>
             {legendOpen ? <ChevronUp className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />}
           </button>
+          {legendOpen && <LegendContent forecastMode={forecastMode} />}
+        </div>
+      )}
+
+      {/* Légende radar précipitations — mobile (top-left, icône seule) */}
+      {showRainRadar && (
+        <div className="md:hidden absolute top-[70px] left-3 z-[400]">
+          <button
+            onClick={() => setLegendOpen(o => !o)}
+            className={`w-10 h-10 rounded-xl shadow-xl flex items-center justify-center transition-colors ${
+              legendOpen ? 'bg-cyan-600 text-white' : 'bg-white/90 backdrop-blur-sm text-gray-600'
+            }`}
+            title="Légende radar pluie"
+          >
+            <Info className="w-5 h-5" />
+          </button>
           {legendOpen && (
-            <div className="px-3 pb-3">
-              <div className="text-xs text-gray-500 mb-2">
-                {forecastMode ? 'Prévision nowcast · extrapolation radar' : 'Données observées · ~10 min de délai'}
-              </div>
-              <div className="flex flex-col gap-0.5 mb-2">
-                {[
-                  { color: '#b3f0ff', label: 'Très légère  < 0.5 mm/h' },
-                  { color: '#64d4f0', label: 'Légère  0.5–2 mm/h' },
-                  { color: '#3eb050', label: 'Modérée  2–5 mm/h' },
-                  { color: '#f0f050', label: 'Notable  5–15 mm/h' },
-                  { color: '#f09000', label: 'Forte  15–30 mm/h' },
-                  { color: '#d03020', label: 'Très forte  > 30 mm/h' },
-                  { color: '#f060f0', label: 'Extrême / grêle' },
-                ].map(({ color, label }) => (
-                  <div key={label} className="flex items-center gap-2">
-                    <div className="w-5 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
-                    <span className="text-xs text-gray-600">{label}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="pt-2 border-t border-gray-100 text-xs text-gray-400">Source : RainViewer</div>
+            <div className="mt-1 bg-white/90 backdrop-blur-sm rounded-xl shadow-xl w-52 overflow-hidden">
+              <LegendContent forecastMode={forecastMode} />
             </div>
           )}
         </div>
       )}
+
+      {/* Attribution sources — bouton © pliable */}
+      <div className="absolute bottom-1 left-1 z-[400]">
+        <div className="relative">
+          <button
+            onClick={() => setAttribOpen(o => !o)}
+            className="text-[10px] text-gray-500 bg-white/80 backdrop-blur-sm px-1.5 py-0.5 rounded leading-none hover:bg-white transition-colors"
+          >
+            ©
+          </button>
+          {attribOpen && (
+            <div className="absolute bottom-6 left-0 bg-white/95 backdrop-blur-sm rounded-lg shadow-lg px-2.5 py-2 text-[10px] text-gray-500 whitespace-nowrap">
+              {satelliteMode
+                ? 'Tiles © Esri'
+                : 'Map data: © OpenStreetMap contributors · Map style: © OpenTopoMap'}
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Panel de contrôles cartographiques en bas à droite */}
       {onWaterPointsToggle && onProtectedAreasToggle && onRouteClick && onMeasureClick && (
