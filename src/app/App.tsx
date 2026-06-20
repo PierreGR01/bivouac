@@ -453,10 +453,10 @@ export default function App() {
 
       {/* Mobile: controls toggle — bottom right */}
       {/* Mobile bottom bar — © row + actions row */}
-      <div className="md:hidden fixed bottom-0 inset-x-0 z-[600] pointer-events-none flex flex-col">
+      <div className="md:hidden fixed bottom-0 inset-x-0 z-[600] flex flex-col">
 
         {/* Ligne © attribution */}
-        <div className="pointer-events-auto flex items-center gap-2 px-4 pt-2 pb-1">
+        <div className="flex items-center gap-2 px-4 pt-2 pb-1">
           <button
             onClick={() => setAttribOpen(o => !o)}
             className={`w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center text-xs font-semibold shadow-md transition-colors ${
@@ -479,11 +479,28 @@ export default function App() {
 
         {/* Ligne add spot + chevron */}
         {!isAddingMode && !(selectedZone || selectedProtectedArea) && (
-          <div className="pointer-events-auto flex items-center justify-between px-4 pb-6 pt-1 gap-3">
+          <div className="flex items-center justify-between px-4 pb-6 pt-1 gap-3">
 
-            {/* Gauche : boutons refresh (flottent vers le haut) */}
-            <div className="relative w-12 flex-shrink-0">
-              <div className="absolute bottom-full left-0 mb-2 flex flex-col items-start gap-2">
+            {/* Gauche : espace symétrique */}
+            <div className="w-12 flex-shrink-0" />
+
+            {/* Centre : ajouter un spot */}
+            <div className="flex-1 flex justify-center">
+              {!filters.isRoutingMode && (
+                <button
+                  onClick={handleOpenAddPanel}
+                  className="flex items-center gap-2 px-5 py-3 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 transition-colors shadow-lg"
+                >
+                  <Plus className="w-5 h-5" />
+                  <span className="text-[15px]">Ajouter un spot</span>
+                </button>
+              )}
+            </div>
+
+            {/* Droite : refresh (flottent) + options (flottent) + chevron */}
+            <div className="relative w-12 flex-shrink-0 flex flex-col items-end">
+              <div className="absolute bottom-full right-0 mb-2 flex flex-col items-end gap-2">
+                {/* Boutons refresh */}
                 {map.showWaterPointsButton && !map.isLoadingWaterPoints && map.showWaterPoints && (
                   <button
                     onClick={() => {
@@ -526,26 +543,9 @@ export default function App() {
                     <Loader2 className="w-4 h-4 text-red-600 animate-spin" />
                   </div>
                 )}
-              </div>
-            </div>
-
-            {/* Centre : ajouter un spot */}
-            <div className="flex-1 flex justify-center">
-              {!filters.isRoutingMode && (
-                <button
-                  onClick={handleOpenAddPanel}
-                  className="flex items-center gap-2 px-5 py-3 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 transition-colors shadow-lg"
-                >
-                  <Plus className="w-5 h-5" />
-                  <span className="text-[15px]">Ajouter un spot</span>
-                </button>
-              )}
-            </div>
-
-            {/* Droite : options (flottent vers le haut) + chevron */}
-            <div className="relative w-12 flex-shrink-0 flex flex-col items-end">
+                {/* Panneau options */}
               {showMobileOptions && (
-                <div className="absolute bottom-full right-0 mb-2 bg-white rounded-2xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-2 duration-200">
+                <div className="bg-white rounded-2xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-2 duration-200">
                   <button
                     onClick={map.toggleProtectedAreas}
                     className={`w-12 h-12 flex items-center justify-center transition-colors ${map.showProtectedAreas ? 'bg-red-50' : 'hover:bg-gray-50'}`}
@@ -623,6 +623,7 @@ export default function App() {
                   </div>
                 </div>
               )}
+              </div>
               <button
                 onClick={() => setShowMobileOptions(!showMobileOptions)}
                 className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors shadow-lg ${
