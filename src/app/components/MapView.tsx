@@ -1503,16 +1503,19 @@ export function MapView({
       )}
 
       {/* Attribution sources — bouton © pliable */}
-      <div className="absolute bottom-1 left-1 z-[400]">
-        <div className="relative">
+      <div className="absolute bottom-20 md:bottom-1 left-3 md:left-1 z-[500]">
+        <div className="relative flex items-center">
           <button
             onClick={() => setAttribOpen(o => !o)}
-            className="text-[10px] text-gray-500 bg-white/80 backdrop-blur-sm px-1.5 py-0.5 rounded leading-none hover:bg-white transition-colors"
+            className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-semibold shadow-md transition-colors ${
+              attribOpen ? 'bg-gray-700 text-white' : 'bg-white/90 backdrop-blur-sm text-gray-600 hover:bg-white'
+            }`}
+            title="Sources cartographiques"
           >
             ©
           </button>
           {attribOpen && (
-            <div className="absolute bottom-6 left-0 bg-white/95 backdrop-blur-sm rounded-lg shadow-lg px-2.5 py-2 text-[10px] text-gray-500 whitespace-nowrap">
+            <div className="ml-2 bg-white/95 backdrop-blur-sm rounded-lg shadow-lg px-2.5 py-2 text-[10px] text-gray-500 whitespace-nowrap">
               {satelliteMode
                 ? 'Tiles © Esri'
                 : 'Map data: © OpenStreetMap contributors · Map style: © OpenTopoMap'}
