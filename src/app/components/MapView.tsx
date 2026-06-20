@@ -1503,7 +1503,7 @@ export function MapView({
       )}
 
       {/* Attribution sources — desktop uniquement (mobile géré dans App.tsx) */}
-      <div className="hidden md:block absolute bottom-1 left-1 z-[500]">
+      <div className="hidden md:block absolute bottom-2 left-1/2 -translate-x-1/2 z-[500]">
         <div className="relative flex items-center">
           <button
             onClick={() => setAttribOpen(o => !o)}
