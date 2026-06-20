@@ -149,7 +149,7 @@ export default function App() {
     pois.selectedLocation !== null || isAddingMode || filters.showFilters || filters.isRoutingMode;
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden">
+    <div className="relative w-screen overflow-hidden" style={{ height: '100dvh' }}>
 
       {/* Search bar */}
       <div>

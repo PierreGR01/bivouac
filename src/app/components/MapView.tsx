@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import L from 'leaflet';
 import 'leaflet-draw';
 import 'leaflet-draw/dist/leaflet.draw.css';
-import { Trash2 } from 'lucide-react';
+import { Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import { PoiLocation } from '../types';
 import { fetchWaterPoints, WaterPoint, getWaterPointLabel, getWaterPointInfo, RateLimitError, filterAndSortWaterPoints } from '../services/overpass';
 import { ProtectedArea, getProtectedAreaLabel, getProtectedAreaInfo, shouldDisplayOnMap } from '../services/protected-areas';
@@ -1444,8 +1444,8 @@ export function MapView({
             onClick={() => setLegendOpen(o => !o)}
             className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 transition-colors"
           >
-            <span className="text-xs font-semibold text-gray-700">Radar précipitations</span>
-            <span className="text-gray-400 text-xs">{legendOpen ? '▲' : '▼'}</span>
+            <span className="text-xs font-semibold text-gray-700">Légende radar pluie</span>
+            {legendOpen ? <ChevronUp className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />}
           </button>
           {legendOpen && (
             <div className="px-3 pb-3">
