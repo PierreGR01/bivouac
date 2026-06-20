@@ -1470,7 +1470,7 @@ export function MapView({
       
       {/* Légende radar précipitations — desktop (bottom-left) */}
       {showRainRadar && (
-        <div className="hidden md:block absolute bottom-6 left-6 z-[400] bg-white/90 backdrop-blur-sm rounded-xl shadow-xl w-52 overflow-hidden">
+        <div className="hidden md:block absolute bottom-11 left-6 z-[400] bg-white/90 backdrop-blur-sm rounded-xl shadow-xl w-52 overflow-hidden">
           <button
             onClick={() => setLegendOpen(o => !o)}
             className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 transition-colors"
@@ -1503,7 +1503,7 @@ export function MapView({
       )}
 
       {/* Attribution sources — desktop uniquement (mobile géré dans App.tsx) */}
-      <div className="hidden md:block absolute bottom-2 left-1/2 -translate-x-1/2 z-[500]">
+      <div className="hidden md:block absolute bottom-1 left-1 z-[500]">
         <div className="relative flex items-center">
           <button
             onClick={() => setAttribOpen(o => !o)}
