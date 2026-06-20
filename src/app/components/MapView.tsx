@@ -467,7 +467,7 @@ export function MapView({
     return cleanup;
   }, [showRainRadar, forecastMode]);
 
-  // Points de foudre Blitzortung
+  // Points de foudre — SSE via Edge Function (proxy MQTT Blitzortung)
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
@@ -507,7 +507,6 @@ export function MapView({
     const connect = () => {
       if (destroyed) return;
       console.log('[lightning] opening SSE connection');
-      // EventSource ne supporte pas les headers custom — on passe la clé en query param
       const es = new EventSource(`${supabaseUrl}/functions/v1/lightning-proxy?apikey=${supabaseAnonKey}`);
       lightningEsRef.current = es;
 
@@ -522,11 +521,10 @@ export function MapView({
         const now = Date.now();
         const strikeTime = data.time ?? now;
         const ageMs = Math.max(0, now - strikeTime);
-        const maxAgeMs = 15 * 60 * 1000; // 15 minutes
+        const maxAgeMs = 15 * 60 * 1000;
         if (ageMs >= maxAgeMs) return;
 
         const remainingMs = maxAgeMs - ageMs;
-        // Opacité proportionnelle à la fraîcheur : strike récent = 1.0, 30min = 0.15
         const opacity = Math.max(0.15, 1 - ageMs / maxAgeMs);
 
         const marker = L.circleMarker([data.lat, data.lon], {
