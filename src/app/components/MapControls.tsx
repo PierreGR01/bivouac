@@ -71,7 +71,35 @@ export function MapControls({
   };
 
   return (
-    <div className="flex absolute bottom-6 right-6 z-[400] bg-white rounded-xl shadow-xl p-2 flex-col gap-2">
+    <>
+    {/* Panneau météo mobile uniquement */}
+    {(onRainRadarToggle || onLightningToggle) && (
+      <div className="flex md:hidden absolute bottom-6 right-6 z-[400] bg-white rounded-xl shadow-xl p-2 flex-col gap-2">
+        {onRainRadarToggle && (
+          <button
+            onClick={onRainRadarToggle}
+            className={`w-10 h-10 rounded-lg transition-all flex items-center justify-center ${
+              showRainRadar ? 'bg-cyan-600 text-white' : 'text-gray-700 hover:bg-gray-100'
+            }`}
+            title="Radar précipitations"
+          >
+            <CloudRain className="w-5 h-5" />
+          </button>
+        )}
+        {onLightningToggle && (
+          <button
+            onClick={onLightningToggle}
+            className={`w-10 h-10 rounded-lg transition-all flex items-center justify-center ${
+              showLightning ? 'bg-amber-500 text-white' : 'text-gray-700 hover:bg-gray-100'
+            }`}
+            title="Points de foudre"
+          >
+            <Zap className="w-5 h-5" />
+          </button>
+        )}
+      </div>
+    )}
+    <div className="hidden md:flex absolute bottom-6 right-6 z-[400] bg-white rounded-xl shadow-xl p-2 flex-col gap-2">
       {/* Bouton itinéraire */}
       <button
         onClick={onRouteClick}
@@ -233,5 +261,6 @@ export function MapControls({
         <Locate className="w-5 h-5" />
       </button>
     </div>
+    </>
   );
 }
