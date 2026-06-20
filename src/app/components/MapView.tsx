@@ -1502,8 +1502,8 @@ export function MapView({
         </div>
       )}
 
-      {/* Attribution sources — bouton © pliable */}
-      <div className="absolute bottom-20 md:bottom-1 left-3 md:left-1 z-[500]">
+      {/* Attribution sources — desktop uniquement (mobile géré dans App.tsx) */}
+      <div className="hidden md:block absolute bottom-1 left-1 z-[500]">
         <div className="relative flex items-center">
           <button
             onClick={() => setAttribOpen(o => !o)}

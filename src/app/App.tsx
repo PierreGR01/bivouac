@@ -44,6 +44,7 @@ export default function App() {
   const [editingZone, setEditingZone] = useState<CustomZone | null>(null);
   const [editingOsmZone, setEditingOsmZone] = useState<ProtectedArea | null>(null);
   const [showMobileOptions, setShowMobileOptions] = useState(false);
+  const [attribOpen, setAttribOpen] = useState(false);
   const [userPosition, setUserPosition] = useState<{ lat: number; lng: number } | null>(null);
   const [selectedZone, setSelectedZone] = useState<CustomZone | null>(null);
   const [selectedProtectedArea, setSelectedProtectedArea] = useState<ProtectedArea | null>(null);
@@ -451,182 +452,190 @@ export default function App() {
       <Toaster position="bottom-center" />
 
       {/* Mobile: controls toggle — bottom right */}
-      {!isAddingMode && !(selectedZone || selectedProtectedArea) && (
-        <div className="md:hidden fixed bottom-6 right-6 z-[600] flex flex-col items-end gap-2">
+      {/* Mobile bottom bar — © row + actions row */}
+      <div className="md:hidden fixed bottom-0 inset-x-0 z-[600] pointer-events-none flex flex-col">
 
-          {/* Mobile refresh buttons — stacked above the panel */}
-          {map.showWaterPointsButton && !map.isLoadingWaterPoints && map.showWaterPoints && (
-            <button
-              onClick={() => {
-                map.setIsLoadingWaterPoints(true);
-                map.setShowWaterPointsButton(false);
-                (window as any).__loadWaterPointsManually?.();
-              }}
-              className="w-12 h-12 rounded-2xl bg-sky-600 hover:bg-sky-700 text-white flex items-center justify-center shadow-lg transition-colors"
-              title="Rechercher les points d'eau"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-                <path d="M3 3v5h5"/>
-                <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
-                <path d="M16 16h5v5"/>
-              </svg>
-            </button>
-          )}
-          {map.isLoadingWaterPoints && map.showWaterPoints && (
-            <div className="w-12 h-12 rounded-2xl bg-white flex items-center justify-center shadow-lg">
-              <Loader2 className="w-4 h-4 text-sky-600 animate-spin" />
+        {/* Ligne © attribution */}
+        <div className="pointer-events-auto flex items-center gap-2 px-4 pt-2 pb-1">
+          <button
+            onClick={() => setAttribOpen(o => !o)}
+            className={`w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center text-xs font-semibold shadow-md transition-colors ${
+              attribOpen ? 'bg-gray-700 text-white' : 'bg-white/90 backdrop-blur-sm text-gray-600'
+            }`}
+            title="Sources cartographiques"
+          >
+            ©
+          </button>
+          {attribOpen && (
+            <div className="flex-1 min-w-0 overflow-x-auto">
+              <span className="inline-block text-[10px] text-gray-500 whitespace-nowrap bg-white/95 backdrop-blur-sm rounded-lg px-2.5 py-1.5 shadow-sm">
+                {map.satelliteMode
+                  ? 'Tiles © Esri'
+                  : 'Map data: © OpenStreetMap contributors · Map style: © OpenTopoMap'}
+              </span>
             </div>
           )}
-          {map.showProtectedAreasButton && !map.isLoadingProtectedAreas && map.showProtectedAreas && (
-            <button
-              onClick={() => map.loadProtectedAreasForView()}
-              className="w-12 h-12 rounded-2xl bg-orange-600 hover:bg-orange-700 text-white flex items-center justify-center shadow-lg transition-colors"
-              title="Rechercher les zones réglementées"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-                <path d="M3 3v5h5"/>
-                <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
-                <path d="M16 16h5v5"/>
-              </svg>
-            </button>
-          )}
-          {map.isLoadingProtectedAreas && map.showProtectedAreas && (
-            <div className="w-12 h-12 rounded-2xl bg-white flex items-center justify-center shadow-lg">
-              <Loader2 className="w-4 h-4 text-red-600 animate-spin" />
-            </div>
-          )}
+        </div>
 
-          {/* Expanded controls panel — icons only, compact */}
-          {showMobileOptions && (
-            <div className="bg-white rounded-2xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-2 duration-200">
-              <button
-                onClick={map.toggleProtectedAreas}
-                className={`w-12 h-12 flex items-center justify-center transition-colors ${
-                  map.showProtectedAreas ? 'bg-red-50' : 'hover:bg-gray-50'
-                }`}
-                title="Zones réglementées"
-              >
-                <BanIcon className={`w-5 h-5 ${map.showProtectedAreas ? 'text-red-600' : 'text-gray-600'}`} />
-              </button>
+        {/* Ligne add spot + chevron */}
+        {!isAddingMode && !(selectedZone || selectedProtectedArea) && (
+          <div className="pointer-events-auto flex items-center justify-between px-4 pb-6 pt-1 gap-3">
 
-              <button
-                onClick={map.toggleWaterPoints}
-                className={`w-12 h-12 flex items-center justify-center transition-colors ${
-                  map.showWaterPoints ? 'bg-sky-50' : 'hover:bg-gray-50'
-                }`}
-                title="Points d'eau"
-              >
-                <Droplet className={`w-5 h-5 ${map.showWaterPoints ? 'text-sky-600' : 'text-gray-600'}`} />
-              </button>
-
-              <button
-                onClick={map.toggleRainRadar}
-                className={`w-12 h-12 flex items-center justify-center transition-colors ${
-                  map.showRainRadar ? 'bg-cyan-50' : 'hover:bg-gray-50'
-                }`}
-                title="Radar précipitations"
-              >
-                <CloudRain className={`w-5 h-5 ${map.showRainRadar ? 'text-cyan-600' : 'text-gray-600'}`} />
-              </button>
-
-              <button
-                onClick={map.toggleLightning}
-                className={`w-12 h-12 flex items-center justify-center transition-colors ${
-                  map.showLightning ? 'bg-amber-50' : 'hover:bg-gray-50'
-                }`}
-                title="Points de foudre"
-              >
-                <Zap className={`w-5 h-5 ${map.showLightning ? 'text-amber-500' : 'text-gray-600'}`} />
-              </button>
-
-              <button
-                onClick={map.toggleSatellite}
-                className={`w-12 h-12 flex items-center justify-center transition-colors ${
-                  map.satelliteMode ? 'bg-emerald-50' : 'hover:bg-gray-50'
-                }`}
-                title={map.satelliteMode ? 'Vue topographique' : 'Vue satellite'}
-              >
-                <svg className={`w-5 h-5 ${map.satelliteMode ? 'text-emerald-700' : 'text-gray-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </button>
-
-              <button
-                onClick={map.toggleWinter}
-                className={`w-12 h-12 flex items-center justify-center transition-colors ${
-                  map.winterMode ? 'bg-blue-50' : 'hover:bg-gray-50'
-                }`}
-                title={map.winterMode ? 'Désactiver le mode hiver' : 'Activer le mode hiver'}
-              >
-                <Snowflake className={`w-5 h-5 ${map.winterMode ? 'text-blue-600' : 'text-gray-600'}`} />
-              </button>
-
-              {isAdmin && (
-                <button
-                  onClick={() => { handleToggleCustomZones(); setShowMobileOptions(false); }}
-                  className={`w-12 h-12 flex items-center justify-center transition-colors ${
-                    showCustomZonesEditor ? 'bg-purple-50' : 'hover:bg-gray-50'
-                  }`}
-                  title="Zones custom"
-                >
-                  <Settings className={`w-5 h-5 ${showCustomZonesEditor ? 'text-purple-600' : 'text-gray-600'}`} />
-                </button>
-              )}
-
-              <div className="border-t border-gray-100">
-                <button
-                  onClick={() => {
-                    setShowMobileOptions(false);
-                    if ('geolocation' in navigator) {
-                      navigator.geolocation.getCurrentPosition(
-                        ({ coords }) => {
-                          setUserPosition({ lat: coords.latitude, lng: coords.longitude });
-                          (window as any).__mapCenterTo?.(coords.latitude, coords.longitude);
-                        },
-                        () => toast.error('Impossible d\'accéder à votre position.')
-                      );
-                    } else {
-                      toast.error('La géolocalisation n\'est pas supportée.');
-                    }
-                  }}
-                  className="w-12 h-12 flex items-center justify-center hover:bg-gray-50 transition-colors"
-                  title="Ma position"
-                >
-                  <Locate className="w-5 h-5 text-gray-600" />
-                </button>
+            {/* Gauche : boutons refresh (flottent vers le haut) */}
+            <div className="relative w-12 flex-shrink-0">
+              <div className="absolute bottom-full left-0 mb-2 flex flex-col items-start gap-2">
+                {map.showWaterPointsButton && !map.isLoadingWaterPoints && map.showWaterPoints && (
+                  <button
+                    onClick={() => {
+                      map.setIsLoadingWaterPoints(true);
+                      map.setShowWaterPointsButton(false);
+                      (window as any).__loadWaterPointsManually?.();
+                    }}
+                    className="w-12 h-12 rounded-2xl bg-sky-600 hover:bg-sky-700 text-white flex items-center justify-center shadow-lg transition-colors"
+                    title="Rechercher les points d'eau"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                      <path d="M3 3v5h5"/>
+                      <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+                      <path d="M16 16h5v5"/>
+                    </svg>
+                  </button>
+                )}
+                {map.isLoadingWaterPoints && map.showWaterPoints && (
+                  <div className="w-12 h-12 rounded-2xl bg-white flex items-center justify-center shadow-lg">
+                    <Loader2 className="w-4 h-4 text-sky-600 animate-spin" />
+                  </div>
+                )}
+                {map.showProtectedAreasButton && !map.isLoadingProtectedAreas && map.showProtectedAreas && (
+                  <button
+                    onClick={() => map.loadProtectedAreasForView()}
+                    className="w-12 h-12 rounded-2xl bg-orange-600 hover:bg-orange-700 text-white flex items-center justify-center shadow-lg transition-colors"
+                    title="Rechercher les zones réglementées"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                      <path d="M3 3v5h5"/>
+                      <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+                      <path d="M16 16h5v5"/>
+                    </svg>
+                  </button>
+                )}
+                {map.isLoadingProtectedAreas && map.showProtectedAreas && (
+                  <div className="w-12 h-12 rounded-2xl bg-white flex items-center justify-center shadow-lg">
+                    <Loader2 className="w-4 h-4 text-red-600 animate-spin" />
+                  </div>
+                )}
               </div>
             </div>
-          )}
 
-          {/* Toggle button — rounded square, desktop-panel style */}
-          <button
-            onClick={() => setShowMobileOptions(!showMobileOptions)}
-            className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors shadow-lg ${
-              showMobileOptions
-                ? 'bg-gray-200 text-gray-700'
-                : 'bg-white text-gray-600 hover:bg-gray-50'
-            }`}
-            title={showMobileOptions ? 'Masquer les options' : 'Plus d\'options'}
-          >
-            {showMobileOptions ? <ChevronDown className="w-5 h-5" /> : <ChevronUp className="w-5 h-5" />}
-          </button>
-        </div>
-      )}
+            {/* Centre : ajouter un spot */}
+            <div className="flex-1 flex justify-center">
+              {!filters.isRoutingMode && (
+                <button
+                  onClick={handleOpenAddPanel}
+                  className="flex items-center gap-2 px-5 py-3 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 transition-colors shadow-lg"
+                >
+                  <Plus className="w-5 h-5" />
+                  <span className="text-[15px]">Ajouter un spot</span>
+                </button>
+              )}
+            </div>
 
-      {/* Mobile: Add spot button — bottom center */}
-      {!isAddingMode && !filters.isRoutingMode && (
-        <div className="md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-[600] pointer-events-auto">
-          <button
-            onClick={handleOpenAddPanel}
-            className="flex items-center gap-2 px-5 py-3 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 transition-colors shadow-lg"
-          >
-            <Plus className="w-5 h-5" />
-            <span className="text-[15px]">Ajouter un spot</span>
-          </button>
-        </div>
-      )}
+            {/* Droite : options (flottent vers le haut) + chevron */}
+            <div className="relative w-12 flex-shrink-0 flex flex-col items-end">
+              {showMobileOptions && (
+                <div className="absolute bottom-full right-0 mb-2 bg-white rounded-2xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-2 duration-200">
+                  <button
+                    onClick={map.toggleProtectedAreas}
+                    className={`w-12 h-12 flex items-center justify-center transition-colors ${map.showProtectedAreas ? 'bg-red-50' : 'hover:bg-gray-50'}`}
+                    title="Zones réglementées"
+                  >
+                    <BanIcon className={`w-5 h-5 ${map.showProtectedAreas ? 'text-red-600' : 'text-gray-600'}`} />
+                  </button>
+                  <button
+                    onClick={map.toggleWaterPoints}
+                    className={`w-12 h-12 flex items-center justify-center transition-colors ${map.showWaterPoints ? 'bg-sky-50' : 'hover:bg-gray-50'}`}
+                    title="Points d'eau"
+                  >
+                    <Droplet className={`w-5 h-5 ${map.showWaterPoints ? 'text-sky-600' : 'text-gray-600'}`} />
+                  </button>
+                  <button
+                    onClick={map.toggleRainRadar}
+                    className={`w-12 h-12 flex items-center justify-center transition-colors ${map.showRainRadar ? 'bg-cyan-50' : 'hover:bg-gray-50'}`}
+                    title="Radar précipitations"
+                  >
+                    <CloudRain className={`w-5 h-5 ${map.showRainRadar ? 'text-cyan-600' : 'text-gray-600'}`} />
+                  </button>
+                  <button
+                    onClick={map.toggleLightning}
+                    className={`w-12 h-12 flex items-center justify-center transition-colors ${map.showLightning ? 'bg-amber-50' : 'hover:bg-gray-50'}`}
+                    title="Points de foudre"
+                  >
+                    <Zap className={`w-5 h-5 ${map.showLightning ? 'text-amber-500' : 'text-gray-600'}`} />
+                  </button>
+                  <button
+                    onClick={map.toggleSatellite}
+                    className={`w-12 h-12 flex items-center justify-center transition-colors ${map.satelliteMode ? 'bg-emerald-50' : 'hover:bg-gray-50'}`}
+                    title={map.satelliteMode ? 'Vue topographique' : 'Vue satellite'}
+                  >
+                    <svg className={`w-5 h-5 ${map.satelliteMode ? 'text-emerald-700' : 'text-gray-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={map.toggleWinter}
+                    className={`w-12 h-12 flex items-center justify-center transition-colors ${map.winterMode ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
+                    title={map.winterMode ? 'Désactiver le mode hiver' : 'Activer le mode hiver'}
+                  >
+                    <Snowflake className={`w-5 h-5 ${map.winterMode ? 'text-blue-600' : 'text-gray-600'}`} />
+                  </button>
+                  {isAdmin && (
+                    <button
+                      onClick={() => { handleToggleCustomZones(); setShowMobileOptions(false); }}
+                      className={`w-12 h-12 flex items-center justify-center transition-colors ${showCustomZonesEditor ? 'bg-purple-50' : 'hover:bg-gray-50'}`}
+                      title="Zones custom"
+                    >
+                      <Settings className={`w-5 h-5 ${showCustomZonesEditor ? 'text-purple-600' : 'text-gray-600'}`} />
+                    </button>
+                  )}
+                  <div className="border-t border-gray-100">
+                    <button
+                      onClick={() => {
+                        setShowMobileOptions(false);
+                        if ('geolocation' in navigator) {
+                          navigator.geolocation.getCurrentPosition(
+                            ({ coords }) => {
+                              setUserPosition({ lat: coords.latitude, lng: coords.longitude });
+                              (window as any).__mapCenterTo?.(coords.latitude, coords.longitude);
+                            },
+                            () => toast.error('Impossible d\'accéder à votre position.')
+                          );
+                        } else {
+                          toast.error('La géolocalisation n\'est pas supportée.');
+                        }
+                      }}
+                      className="w-12 h-12 flex items-center justify-center hover:bg-gray-50 transition-colors"
+                      title="Ma position"
+                    >
+                      <Locate className="w-5 h-5 text-gray-600" />
+                    </button>
+                  </div>
+                </div>
+              )}
+              <button
+                onClick={() => setShowMobileOptions(!showMobileOptions)}
+                className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors shadow-lg ${
+                  showMobileOptions ? 'bg-gray-200 text-gray-700' : 'bg-white text-gray-600 hover:bg-gray-50'
+                }`}
+                title={showMobileOptions ? 'Masquer les options' : 'Plus d\'options'}
+              >
+                {showMobileOptions ? <ChevronDown className="w-5 h-5" /> : <ChevronUp className="w-5 h-5" />}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       {showLoginPanel && (
         <Suspense fallback={null}>
