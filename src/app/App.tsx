@@ -7,7 +7,7 @@ import { FilterOptions } from './components/FilterPanel';
 import { NewPoi } from './components/AddPoiPanel';
 import { MOBILE_BREAKPOINT_PX } from './constants';
 import { useAuth } from './contexts/AuthContext';
-import { Tent, Plus, Loader2, AlertCircle, Settings, Search, BanIcon, Droplet, ChevronUp, ChevronDown, Snowflake, Locate, Lock } from 'lucide-react';
+import { Tent, Plus, Loader2, AlertCircle, Settings, Search, BanIcon, Droplet, ChevronUp, ChevronDown, Snowflake, Locate, Lock, CloudRain, Zap } from 'lucide-react';
 import { usePois } from './hooks/usePois';
 import { useMapLayers } from './hooks/useMapLayers';
 import { useFilters } from './hooks/useFilters';
@@ -519,6 +519,26 @@ export default function App() {
                 title="Points d'eau"
               >
                 <Droplet className={`w-5 h-5 ${map.showWaterPoints ? 'text-sky-600' : 'text-gray-600'}`} />
+              </button>
+
+              <button
+                onClick={map.toggleRainRadar}
+                className={`w-12 h-12 flex items-center justify-center transition-colors ${
+                  map.showRainRadar ? 'bg-cyan-50' : 'hover:bg-gray-50'
+                }`}
+                title="Radar précipitations"
+              >
+                <CloudRain className={`w-5 h-5 ${map.showRainRadar ? 'text-cyan-600' : 'text-gray-600'}`} />
+              </button>
+
+              <button
+                onClick={map.toggleLightning}
+                className={`w-12 h-12 flex items-center justify-center transition-colors ${
+                  map.showLightning ? 'bg-amber-50' : 'hover:bg-gray-50'
+                }`}
+                title="Points de foudre"
+              >
+                <Zap className={`w-5 h-5 ${map.showLightning ? 'text-amber-500' : 'text-gray-600'}`} />
               </button>
 
               <button
