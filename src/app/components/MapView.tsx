@@ -128,6 +128,7 @@ export function MapView({
   const rainRadarAnimRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const rainRadarIndexRef = useRef(0);
   const [forecastMode, setForecastMode] = useState(false);
+  const [legendOpen, setLegendOpen] = useState(false);
   const [nowcastDurationMin, setNowcastDurationMin] = useState(0);
   const lightningEsRef = useRef<EventSource | null>(null);
   const lightningMarkersRef = useRef<{ marker: L.CircleMarker; timeout: ReturnType<typeof setTimeout> }[]>([]);
@@ -1438,48 +1439,38 @@ export function MapView({
       
       {/* Légende radar précipitations */}
       {showRainRadar && (
-        <div className="block absolute bottom-6 left-6 z-[400] bg-white/90 backdrop-blur-sm rounded-xl shadow-xl p-3 w-52">
-          <div className="flex items-center justify-between mb-1">
+        <div className="block absolute bottom-6 left-6 z-[400] bg-white/90 backdrop-blur-sm rounded-xl shadow-xl w-52 overflow-hidden">
+          <button
+            onClick={() => setLegendOpen(o => !o)}
+            className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 transition-colors"
+          >
             <span className="text-xs font-semibold text-gray-700">Radar précipitations</span>
-          </div>
-          <div className="text-xs text-gray-500 mb-2">
-            {forecastMode ? 'Prévision nowcast · extrapolation radar' : 'Données observées · ~10 min de délai'}
-          </div>
-          <div className="flex flex-col gap-0.5 mb-3">
-            {[
-              { color: '#b3f0ff', label: 'Très légère  < 0.5 mm/h' },
-              { color: '#64d4f0', label: 'Légère  0.5–2 mm/h' },
-              { color: '#3eb050', label: 'Modérée  2–5 mm/h' },
-              { color: '#f0f050', label: 'Notable  5–15 mm/h' },
-              { color: '#f09000', label: 'Forte  15–30 mm/h' },
-              { color: '#d03020', label: 'Très forte  > 30 mm/h' },
-              { color: '#f060f0', label: 'Extrême / grêle' },
-            ].map(({ color, label }) => (
-              <div key={label} className="flex items-center gap-2">
-                <div className="w-5 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
-                <span className="text-xs text-gray-600">{label}</span>
+            <span className="text-gray-400 text-xs">{legendOpen ? '▲' : '▼'}</span>
+          </button>
+          {legendOpen && (
+            <div className="px-3 pb-3">
+              <div className="text-xs text-gray-500 mb-2">
+                {forecastMode ? 'Prévision nowcast · extrapolation radar' : 'Données observées · ~10 min de délai'}
               </div>
-            ))}
-          </div>
-          {nowcastDurationMin > 0 ? (
-            <button
-              onClick={() => setForecastMode(f => !f)}
-              className={`w-full text-xs rounded-lg py-1.5 px-2 font-medium transition-all ${
-                forecastMode
-                  ? 'bg-cyan-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              {forecastMode
-                ? '⏹ Arrêter la prévision'
-                : `▶ Prévision ${nowcastDurationMin >= 60 ? `${Math.floor(nowcastDurationMin / 60)}h${nowcastDurationMin % 60 > 0 ? nowcastDurationMin % 60 : ''}` : `${nowcastDurationMin}min`}`}
-            </button>
-          ) : (
-            <button disabled className="w-full text-xs rounded-lg py-1.5 px-2 font-medium bg-gray-50 text-gray-400 cursor-not-allowed">
-              Prévision non disponible
-            </button>
+              <div className="flex flex-col gap-0.5 mb-2">
+                {[
+                  { color: '#b3f0ff', label: 'Très légère  < 0.5 mm/h' },
+                  { color: '#64d4f0', label: 'Légère  0.5–2 mm/h' },
+                  { color: '#3eb050', label: 'Modérée  2–5 mm/h' },
+                  { color: '#f0f050', label: 'Notable  5–15 mm/h' },
+                  { color: '#f09000', label: 'Forte  15–30 mm/h' },
+                  { color: '#d03020', label: 'Très forte  > 30 mm/h' },
+                  { color: '#f060f0', label: 'Extrême / grêle' },
+                ].map(({ color, label }) => (
+                  <div key={label} className="flex items-center gap-2">
+                    <div className="w-5 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
+                    <span className="text-xs text-gray-600">{label}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="pt-2 border-t border-gray-100 text-xs text-gray-400">Source : RainViewer</div>
+            </div>
           )}
-          <div className="mt-2 pt-2 border-t border-gray-100 text-xs text-gray-400">Source : RainViewer</div>
         </div>
       )}
 

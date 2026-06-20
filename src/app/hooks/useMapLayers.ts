@@ -22,14 +22,23 @@ export function useMapLayers() {
   const [showRainRadar, setShowRainRadar] = useState(false);
   const [showLightning, setShowLightning] = useState(false);
 
-  const [showProtectedAreas, setShowProtectedAreas] = useState(false);
+  const [showProtectedAreas, setShowProtectedAreas] = useState(true);
   const [showProtectedAreasButton, setShowProtectedAreasButton] = useState(false);
   const [isLoadingProtectedAreas, setIsLoadingProtectedAreas] = useState(false);
+  const autoLoadedRef = useRef(false);
 
   // mapBounds en state → changement déclenche le useEffect ci-dessous (fiable)
   // mapBoundsRef → lecture synchrone dans loadProtectedAreasForView (bounds frais)
   const [mapBounds, setMapBoundsState] = useState<MapBounds | null>(null);
   const mapBoundsRef = useRef<MapBounds | null>(null);
+
+  // Au premier bounds disponible, auto-charger les zones si actives par défaut
+  useEffect(() => {
+    if (!mapBounds || autoLoadedRef.current) return;
+    autoLoadedRef.current = true;
+    if (showProtectedAreas) loadProtectedAreasForView();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapBounds]);
 
   // Quand la carte bouge : montrer les boutons si les toggles sont actifs
   // useEffect garantit l'exécution après le render avec les vraies valeurs de state
