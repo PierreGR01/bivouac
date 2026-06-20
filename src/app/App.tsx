@@ -455,28 +455,6 @@ export default function App() {
       {/* Mobile bottom bar — © row + actions row */}
       <div className="md:hidden fixed bottom-0 inset-x-0 z-[600] flex flex-col">
 
-        {/* Ligne © attribution */}
-        <div className="flex items-center gap-2 px-4 pt-2 pb-1">
-          <button
-            onClick={() => setAttribOpen(o => !o)}
-            className={`w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center text-xs font-semibold shadow-md transition-colors ${
-              attribOpen ? 'bg-gray-700 text-white' : 'bg-white/90 backdrop-blur-sm text-gray-600'
-            }`}
-            title="Sources cartographiques"
-          >
-            ©
-          </button>
-          {attribOpen && (
-            <div className="flex-1 min-w-0 overflow-x-auto">
-              <span className="inline-block text-[10px] text-gray-500 whitespace-nowrap bg-white/95 backdrop-blur-sm rounded-lg px-2.5 py-1.5 shadow-sm">
-                {map.satelliteMode
-                  ? 'Tiles © Esri'
-                  : 'Map data: © OpenStreetMap contributors · Map style: © OpenTopoMap'}
-              </span>
-            </div>
-          )}
-        </div>
-
         {/* Ligne add spot + chevron */}
         {!isAddingMode && !(selectedZone || selectedProtectedArea) && (
           <div className="flex items-center justify-between px-4 pb-6 pt-1 gap-3">
@@ -636,6 +614,29 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {/* Ligne © attribution — tout en bas */}
+        <div className="flex items-center gap-2 px-4 pt-1 pb-2">
+          <button
+            onClick={() => setAttribOpen(o => !o)}
+            className={`w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center text-xs font-semibold shadow-md transition-colors ${
+              attribOpen ? 'bg-gray-700 text-white' : 'bg-white/90 backdrop-blur-sm text-gray-600'
+            }`}
+            title="Sources cartographiques"
+          >
+            ©
+          </button>
+          {attribOpen && (
+            <div className="flex-1 min-w-0 overflow-x-auto">
+              <span className="inline-block text-[10px] text-gray-500 whitespace-nowrap bg-white/95 backdrop-blur-sm rounded-lg px-2.5 py-1.5 shadow-sm">
+                {map.satelliteMode
+                  ? 'Tiles © Esri'
+                  : 'Map data: © OpenStreetMap contributors · Map style: © OpenTopoMap'}
+              </span>
+            </div>
+          )}
+        </div>
+
       </div>
 
       {showLoginPanel && (
