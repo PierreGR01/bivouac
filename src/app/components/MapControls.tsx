@@ -71,7 +71,7 @@ export function MapControls({
   };
 
   return (
-    <div className="hidden md:flex absolute bottom-6 right-6 z-[400] bg-white rounded-xl shadow-xl p-2 flex-col gap-2">
+    <div className="flex absolute bottom-6 right-6 z-[400] bg-white rounded-xl shadow-xl p-2 flex-col gap-2">
       {/* Bouton itinéraire */}
       <button
         onClick={onRouteClick}

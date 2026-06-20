@@ -363,20 +363,12 @@ function PanelContent({
         </div>
       )}
 
-      {/* Tags GPS + Altitude + Saison */}
+      {/* Tags Saison + Altitude + GPS */}
       <div className="flex flex-wrap gap-1.5 mb-3">
-        <button
-          onClick={handleCopyGps}
-          className="flex items-center gap-1 px-2 py-1 rounded-lg bg-gray-100 text-gray-600 text-xs font-medium flex-shrink-0 hover:bg-gray-200 transition-colors cursor-pointer"
-          title="Copier les coordonnées"
-        >
-          {copiedGps ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <MapPin className="w-3.5 h-3.5" />}
-          <span>
-            {copiedGps
-              ? 'Copié !'
-              : `${location.position.lat.toFixed(4)}°N, ${location.position.lng.toFixed(4)}°E`}
-          </span>
-        </button>
+        <div className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium flex-shrink-0 ${getSeasonStyle(location.season)}`}>
+          {getSeasonIcon(location.season)}
+          <span>{getSeasonLabel(location.season)}</span>
+        </div>
 
         {location.altitude !== undefined && location.altitude !== null && (
           <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-gray-100 text-gray-600 text-xs font-medium flex-shrink-0">
@@ -385,10 +377,18 @@ function PanelContent({
           </div>
         )}
 
-        <div className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium flex-shrink-0 ${getSeasonStyle(location.season)}`}>
-          {getSeasonIcon(location.season)}
-          <span>{getSeasonLabel(location.season)}</span>
-        </div>
+        <button
+          onClick={handleCopyGps}
+          className="flex items-center gap-1 px-2 py-1 rounded-lg bg-gray-100 text-gray-600 text-xs font-medium max-w-[140px] overflow-hidden hover:bg-gray-200 transition-colors cursor-pointer"
+          title="Copier les coordonnées"
+        >
+          {copiedGps ? <Check className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" /> : <MapPin className="w-3.5 h-3.5 flex-shrink-0" />}
+          <span className="truncate">
+            {copiedGps
+              ? 'Copié !'
+              : `${location.position.lat.toFixed(4)}°N, ${location.position.lng.toFixed(4)}°E`}
+          </span>
+        </button>
       </div>
 
       {/* Tags eau */}
@@ -632,7 +632,7 @@ function PanelContent({
         {/* Ligne 1 : picto + label + cumuls */}
         <div className="flex items-center gap-2 min-w-0">
           <CloudRain className="w-4 h-4 text-sky-600 flex-shrink-0" />
-          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex-1 truncate">Prévision de précipitations</span>
+          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex-1 truncate">Prévision pluie</span>
           {weatherLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-400 flex-shrink-0" />}
           {weatherError && <span className="text-[10px] text-sky-400">indisponible</span>}
           {weather && !weatherLoading && (

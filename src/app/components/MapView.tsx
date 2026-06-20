@@ -1438,7 +1438,7 @@ export function MapView({
       
       {/* Légende radar précipitations */}
       {showRainRadar && (
-        <div className="hidden md:block absolute bottom-6 left-6 z-[400] bg-white/90 backdrop-blur-sm rounded-xl shadow-xl p-3 w-52">
+        <div className="block absolute bottom-6 left-6 z-[400] bg-white/90 backdrop-blur-sm rounded-xl shadow-xl p-3 w-52">
           <div className="flex items-center justify-between mb-1">
             <span className="text-xs font-semibold text-gray-700">Radar précipitations</span>
           </div>
