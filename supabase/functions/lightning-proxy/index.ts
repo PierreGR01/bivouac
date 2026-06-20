@@ -9,16 +9,16 @@ Deno.serve(async (req) => {
   }
 
   const encoder = new TextEncoder();
-  let pollInterval: ReturnType<typeof setInterval> | null = null;
   let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+  let blitzWs: WebSocket | null = null;
+  let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   let closed = false;
-  // Track seen strikes: key -> first-seen timestamp (ms) to allow pruning
-  const seenStrikes = new Map<string, number>();
 
   const cleanup = () => {
     closed = true;
-    if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
     if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
+    if (reconnectTimeout) { clearTimeout(reconnectTimeout); reconnectTimeout = null; }
+    if (blitzWs) { try { blitzWs.close(); } catch { /* ignore */ } blitzWs = null; }
   };
 
   const stream = new ReadableStream({
@@ -35,62 +35,68 @@ Deno.serve(async (req) => {
       enqueue(': keepalive\n\n');
       heartbeatInterval = setInterval(() => enqueue(': keepalive\n\n'), 25000);
 
-      const poll = async (isFirst: boolean) => {
-        if (closed) return;
-        try {
-          const duree = isFirst ? 30 : 1;
-          const resp = await fetch('https://www.meteociel.fr/obs/foudre/temps-reel.php', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-              'Referer': 'https://www.meteociel.fr/observations-meteo/foudre-direct.php',
-            },
-            body: `first=1&duree=${duree}&region=fr&dontwait=1&modeloc=1`,
-          });
+      // Blitzortung servers — rotate on reconnect
+      const serverIds = [1, 5, 6, 7];
+      let serverIndex = Math.floor(Math.random() * serverIds.length);
 
-          if (!resp.ok) {
-            console.warn(`[lightning-proxy] poll HTTP ${resp.status}`);
+      const connect = () => {
+        if (closed) return;
+        const serverId = serverIds[serverIndex % serverIds.length];
+        serverIndex++;
+
+        console.log(`[lightning-proxy] connecting to ws${serverId}.blitzortung.org`);
+
+        try {
+          blitzWs = new WebSocket(`wss://ws${serverId}.blitzortung.org:3000/`);
+        } catch (err) {
+          console.error('[lightning-proxy] WebSocket constructor error:', err);
+          if (!closed) reconnectTimeout = setTimeout(connect, 5000);
+          return;
+        }
+
+        blitzWs.onopen = () => {
+          console.log('[lightning-proxy] Blitzortung connected');
+          // Subscribe to all strikes (server streams immediately)
+          blitzWs?.send(JSON.stringify({ time: 0 }));
+        };
+
+        blitzWs.onmessage = (event) => {
+          if (closed) return;
+          let strike: { lat?: number; lon?: number; time?: number };
+          try {
+            strike = JSON.parse(event.data as string);
+          } catch {
             return;
           }
 
-          const json = await resp.json() as { items?: Array<{ x: number; y: number; d: number }> };
-          const items = json.items ?? [];
-          console.log(`[lightning-proxy] poll duree=${duree} → ${items.length} items`);
+          if (
+            typeof strike.lat !== 'number' ||
+            typeof strike.lon !== 'number' ||
+            typeof strike.time !== 'number'
+          ) return;
 
-          const now = Date.now();
+          // Blitzortung timestamps are nanoseconds since Unix epoch
+          const timeMs = Math.round(strike.time / 1e6);
+          const { lat, lon } = strike;
 
-          // Prune strikes older than 35 minutes from the dedup map
-          for (const [k, t] of seenStrikes) {
-            if (now - t > 35 * 60 * 1000) seenStrikes.delete(k);
-          }
+          // Filter to Europe + Mediterranean (Alpes, Pyrénées, etc.)
+          if (lat < 30 || lat > 75 || lon < -20 || lon > 50) return;
 
-          for (const item of items) {
-            const key = `${item.x.toFixed(2)},${item.y.toFixed(2)}`;
-            if (seenStrikes.has(key)) continue;
-            seenStrikes.set(key, now);
+          enqueue(`data: ${JSON.stringify({ lat, lon, time: timeMs })}\n\n`);
+        };
 
-            // Meteociel returns coordinates in tile-pixel space (0–768).
-            // Conversion to geographic coordinates (Web Mercator):
-            const lon = (item.x / 768) * 360 - 180;
-            const latMerc = 1 - 2 * (item.y / 768);
-            const lat = Math.atan(Math.sinh(Math.PI * latMerc)) * (180 / Math.PI);
+        blitzWs.onerror = (err) => {
+          console.error('[lightning-proxy] Blitzortung WS error:', err);
+        };
 
-            if (Math.abs(lat) > 90 || Math.abs(lon) > 180) continue;
-
-            // Filter to Europe + Mediterranean to avoid flooding Leaflet with global strikes
-            if (lat < 30 || lat > 75 || lon < -20 || lon > 50) continue;
-
-            // item.d is "seconds ago"
-            const time = now - Math.round(item.d * 1000);
-            enqueue(`data: ${JSON.stringify({ lat, lon, time })}\n\n`);
-          }
-        } catch (err) {
-          console.error('[lightning-proxy] poll error:', err);
-        }
+        blitzWs.onclose = () => {
+          console.log('[lightning-proxy] Blitzortung WS closed — reconnecting in 5s');
+          blitzWs = null;
+          if (!closed) reconnectTimeout = setTimeout(connect, 5000);
+        };
       };
 
-      poll(true);
-      pollInterval = setInterval(() => poll(false), 5000);
+      connect();
     },
 
     cancel() { cleanup(); },
