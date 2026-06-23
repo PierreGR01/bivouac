@@ -562,6 +562,43 @@ app.post("/make-server-e51cba93/protected-areas", safeHandler(async (c: any) => 
   }
 }));
 
+// Overpass proxy — fetch single OSM zone by type+id (for geometry reset)
+app.post("/make-server-e51cba93/protected-areas-by-id", safeHandler(async (c: any) => {
+  try {
+    const body = await c.req.json();
+    const type = String(body.type ?? '');
+    const id = String(body.id ?? '');
+    if (!['relation', 'way'].includes(type) || !id.match(/^\d+$/)) {
+      return c.json({ success: false, error: 'Invalid type or id' }, 400);
+    }
+
+    // Pour une relation, on inclut les ways membres pour avoir la géométrie complète
+    const query = type === 'relation'
+      ? `[out:json][timeout:60];relation(${id});out geom;`
+      : `[out:json][timeout:30];way(${id});out geom;`;
+
+    const HEADERS = { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json', 'User-Agent': 'bivouac-app/1.0' };
+    const ENDPOINTS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+
+    for (const endpoint of ENDPOINTS) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 65000);
+      try {
+        const resp = await fetch(endpoint, { method: 'POST', body: `data=${encodeURIComponent(query)}`, headers: HEADERS, signal: ctrl.signal });
+        clearTimeout(timer);
+        if (resp.ok) {
+          const data = await resp.json();
+          console.log(`✅ Zone OSM ${type}(${id}): ${(data.elements || []).length} éléments`);
+          return c.json({ success: true, data });
+        }
+      } catch (_err) { clearTimeout(timer); }
+    }
+    return c.json({ success: false, error: 'All Overpass endpoints failed' }, 503);
+  } catch (error) {
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+}));
+
 // Overpass proxy — protected area names only (for admin dropdown, no geometry)
 app.post("/make-server-e51cba93/protected-areas-names", safeHandler(async (c: any) => {
   try {
