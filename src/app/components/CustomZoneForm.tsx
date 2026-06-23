@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { createCustomZone, updateCustomZone, deleteCustomZone, CustomZone } from '../../utils/supabase/custom-zones-api';
 import { hideOsmZone } from '../../utils/supabase/hidden-osm-zones-api';
-import { fetchOsmZoneById, fetchProtectedAreas, protectedAreaToGeojson } from '../services/protected-areas';
+import { fetchOsmZoneById, fetchAlpesProtectedAreas, protectedAreaToGeojson } from '../services/protected-areas';
 import { BivouacButton } from './ui/bivouac-button';
 
 interface CustomZoneFormProps {
@@ -84,17 +84,22 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
 
     const lng = ring.reduce((s, c) => s + c[0], 0) / ring.length;
     const lat = ring.reduce((s, c) => s + c[1], 0) / ring.length;
-    const delta = 0.3;
-    const bounds = { south: lat - delta, north: lat + delta, west: lng - delta, east: lng + delta };
 
     setOsmDetecting(true);
-    fetchProtectedAreas(bounds, 20)
+    fetchAlpesProtectedAreas()
       .then(areas => {
-        const candidates = areas
+        // Filtrer par proximité au centroïde (±0.5°)
+        const nearby = areas.filter(a => {
+          const geom = a.geometry;
+          if (!geom.length) return false;
+          const aLng = geom.reduce((s, p) => s + p.lng, 0) / geom.length;
+          const aLat = geom.reduce((s, p) => s + p.lat, 0) / geom.length;
+          return Math.abs(aLat - lat) < 0.5 && Math.abs(aLng - lng) < 0.5;
+        });
+        const candidates = nearby
           .filter(a => a.name)
           .map(a => ({ id: a.id, name: a.name! }));
         setOsmCandidates(candidates);
-        // Pré-sélection si l'ID est déjà connu ou si un seul candidat correspond au nom
         if (!osmSourceId && candidates.length === 1) {
           setOsmSourceId(candidates[0].id);
         }
