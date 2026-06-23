@@ -346,34 +346,47 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
         {isEditing && (
           <div className="pt-2 border-t border-gray-100 space-y-2">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Mettre à jour depuis OSM</p>
-            <div className="flex gap-2">
-              <select
-                value={osmSourceId}
-                onChange={e => setOsmSourceId(e.target.value)}
-                className={`${inputClass} text-xs`}
-                disabled={isLoading || isResetting}
-              >
-                {osmLoading
-                  ? <option value="">Chargement…</option>
-                  : <>
-                      <option value="">— Choisir une zone OSM —</option>
-                      {osmCandidates.map(c => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </>
-                }
-              </select>
-              <BivouacButton
-                type="button"
-                variant="outline"
-                onClick={handleResetFromOsm}
-                disabled={isLoading || isResetting || !osmSourceId.trim()}
-                className="shrink-0 text-blue-700 border-blue-200 hover:bg-blue-50"
-                title="Recharger le tracé depuis OpenStreetMap"
-              >
-                {isResetting ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
-              </BivouacButton>
-            </div>
+            {osmSourceId.trim() ? (
+              /* ID OSM connu — bouton direct */
+              <div className="flex gap-2 items-center">
+                <span className="text-xs text-gray-400 flex-1 truncate font-mono">{osmSourceId}</span>
+                <BivouacButton
+                  type="button"
+                  variant="outline"
+                  onClick={handleResetFromOsm}
+                  disabled={isLoading || isResetting}
+                  className="shrink-0 text-blue-700 border-blue-200 hover:bg-blue-50"
+                  title="Recharger le tracé depuis OpenStreetMap"
+                >
+                  {isResetting ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
+                </BivouacButton>
+              </div>
+            ) : (
+              /* ID OSM inconnu — dropdown des zones chargées sur la carte */
+              <div className="flex gap-2">
+                <select
+                  value={osmSourceId}
+                  onChange={e => setOsmSourceId(e.target.value)}
+                  className={`${inputClass} text-xs`}
+                  disabled={isLoading || isResetting}
+                >
+                  <option value="">— Choisir une zone OSM —</option>
+                  {osmCandidates.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+                <BivouacButton
+                  type="button"
+                  variant="outline"
+                  onClick={handleResetFromOsm}
+                  disabled={isLoading || isResetting || !osmSourceId.trim()}
+                  className="shrink-0 text-blue-700 border-blue-200 hover:bg-blue-50"
+                  title="Recharger le tracé depuis OpenStreetMap"
+                >
+                  {isResetting ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
+                </BivouacButton>
+              </div>
+            )}
           </div>
         )}
 
