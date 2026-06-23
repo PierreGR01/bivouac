@@ -72,24 +72,25 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
   useEffect(() => {
     if (!isEditing) return;
 
-    // Gérer les deux formats : Feature GeoJSON ou Geometry brute (Polygon/MultiPolygon)
-    const raw = geometry as unknown as Record<string, unknown>;
-    const geom: GeoJSON.Geometry | null = raw.type === 'Feature'
-      ? ((geometry as GeoJSON.Feature).geometry as GeoJSON.Geometry)
-      : (raw.type === 'Polygon' || raw.type === 'MultiPolygon')
-        ? (geometry as unknown as GeoJSON.Geometry)
-        : null;
-    if (!geom) return;
-
-    const ring = geom.type === 'Polygon'
-      ? (geom as GeoJSON.Polygon).coordinates[0]
-      : geom.type === 'MultiPolygon'
-        ? (geom as GeoJSON.MultiPolygon).coordinates[0][0]
-        : null;
-    if (!ring || ring.length === 0) return;
-
-    const lng = ring.reduce((s, c) => s + c[0], 0) / ring.length;
-    const lat = ring.reduce((s, c) => s + c[1], 0) / ring.length;
+    // Centroïde de la zone — fallback sur le centre des Alpes si non parsable
+    let lat = 45.1, lng = 6.4;
+    try {
+      const raw = geometry as unknown as Record<string, unknown>;
+      const geom: GeoJSON.Geometry | null = raw.type === 'Feature'
+        ? ((geometry as GeoJSON.Feature).geometry as GeoJSON.Geometry)
+        : (raw.type === 'Polygon' || raw.type === 'MultiPolygon')
+          ? (geometry as unknown as GeoJSON.Geometry)
+          : null;
+      const ring = geom?.type === 'Polygon'
+        ? (geom as GeoJSON.Polygon).coordinates[0]
+        : geom?.type === 'MultiPolygon'
+          ? (geom as GeoJSON.MultiPolygon).coordinates[0][0]
+          : null;
+      if (ring && ring.length > 0) {
+        lng = ring.reduce((s, c) => s + c[0], 0) / ring.length;
+        lat = ring.reduce((s, c) => s + c[1], 0) / ring.length;
+      }
+    } catch { /* utiliser le fallback */ }
 
     setOsmDetecting(true);
     searchNearbyOsmZones(lat, lng)
