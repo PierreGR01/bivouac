@@ -209,7 +209,10 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
       await queryClient.invalidateQueries({ queryKey: ['customZones'] });
       onSuccess();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur lors de la réinitialisation');
+      const msg = err instanceof Error
+        ? err.message
+        : (err as any)?.message ?? (err as any)?.details ?? JSON.stringify(err);
+      setError(msg || 'Erreur lors de la réinitialisation');
     } finally {
       setIsResetting(false);
     }
