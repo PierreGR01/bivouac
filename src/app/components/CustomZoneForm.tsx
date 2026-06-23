@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { createCustomZone, updateCustomZone, deleteCustomZone, CustomZone } from '../../utils/supabase/custom-zones-api';
 import { hideOsmZone } from '../../utils/supabase/hidden-osm-zones-api';
-import { ProtectedArea, fetchOsmZoneById, fetchAlpesProtectedAreas, protectedAreaToGeojson } from '../services/protected-areas';
+import { ProtectedArea, fetchOsmZoneById, fetchAlpesProtectedAreas, fetchProtectedAreas, protectedAreaToGeojson } from '../services/protected-areas';
 import { BivouacButton } from './ui/bivouac-button';
 
 interface CustomZoneFormProps {
@@ -85,18 +85,26 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
     const lng = ring.reduce((s, c) => s + c[0], 0) / ring.length;
     const lat = ring.reduce((s, c) => s + c[1], 0) / ring.length;
 
+    const delta = 0.4;
+    const localBounds = { south: lat - delta, north: lat + delta, west: lng - delta, east: lng + delta };
+
+    const filterNearby = (areas: ProtectedArea[]) =>
+      areas.filter(a => {
+        if (!a.name || !a.geometry.length) return false;
+        const aLng = a.geometry.reduce((s, p) => s + p.lng, 0) / a.geometry.length;
+        const aLat = a.geometry.reduce((s, p) => s + p.lat, 0) / a.geometry.length;
+        return Math.abs(aLat - lat) < 0.5 && Math.abs(aLng - lng) < 0.5;
+      });
+
     setOsmDetecting(true);
     fetchAlpesProtectedAreas()
-      .then(areas => {
-        // Filtrer par proximité au centroïde (±0.5°)
-        const nearby = areas.filter(a => {
-          const geom = a.geometry;
-          if (!geom.length) return false;
-          const aLng = geom.reduce((s, p) => s + p.lng, 0) / geom.length;
-          const aLat = geom.reduce((s, p) => s + p.lat, 0) / geom.length;
-          return Math.abs(aLat - lat) < 0.5 && Math.abs(aLng - lng) < 0.5;
-        });
-        const candidates = nearby.filter(a => a.name);
+      .then(async areas => {
+        let candidates = filterNearby(areas);
+        // Fallback : requête locale si le cache Alpes est vide
+        if (candidates.length === 0) {
+          const local = await fetchProtectedAreas(localBounds, 25);
+          candidates = filterNearby(local);
+        }
         setOsmCandidates(candidates);
         if (!osmSourceId && candidates.length === 1) {
           setOsmSourceId(candidates[0].id);

@@ -583,7 +583,11 @@ export async function fetchOsmZoneById(osmId: string): Promise<ProtectedArea | n
   const type = parts[1]; // 'relation' ou 'way'
   const id = parts.slice(2).join('-');
 
-  const query = `[out:json][timeout:30];${type}(${id});out geom;`;
+  // Pour une relation, on récurse dans les ways membres (>;) afin d'obtenir
+  // leur géométrie complète — sans ça, out geom ne retourne que les bbox.
+  const query = type === 'relation'
+    ? `[out:json][timeout:60];relation(${id});(._; way(r););out geom;`
+    : `[out:json][timeout:30];way(${id});out geom;`;
 
   try {
     const edgeFunctionUrl = import.meta.env.VITE_EDGE_FUNCTION_URL;
@@ -615,7 +619,9 @@ export async function fetchOsmZoneById(osmId: string): Promise<ProtectedArea | n
     }
 
     const areas = parseProtectedAreas(data);
-    return areas[0] ?? null;
+    // Chercher précisément la zone cible (les ways membres peuvent aussi apparaître dans le résultat)
+    const targetId = `osm-${type}-${id}`;
+    return areas.find(a => a.id === targetId) ?? areas[0] ?? null;
   } catch (error) {
     devLog.warn('⚠️ fetchOsmZoneById:', error);
     return null;
