@@ -205,7 +205,12 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
       const osmZone = cached ?? await fetchOsmZoneById(osmSourceId.trim());
       if (!osmZone) throw new Error('Zone OSM introuvable (vérifier l\'ID)');
       const newGeometry = protectedAreaToGeojson(osmZone);
-      await updateCustomZone(zone.id, { geometry: newGeometry, osm_source_id: osmSourceId.trim() });
+      // Mettre à jour la géométrie (toujours possible)
+      await updateCustomZone(zone.id, { geometry: newGeometry });
+      // Sauvegarder l'ID OSM source en best-effort (nécessite la migration SQL)
+      try {
+        await updateCustomZone(zone.id, { osm_source_id: osmSourceId.trim() });
+      } catch { /* colonne pas encore créée en base */ }
       await queryClient.invalidateQueries({ queryKey: ['customZones'] });
       onSuccess();
     } catch (err) {
