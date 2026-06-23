@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { createCustomZone, updateCustomZone, deleteCustomZone, CustomZone } from '../../utils/supabase/custom-zones-api';
 import { hideOsmZone } from '../../utils/supabase/hidden-osm-zones-api';
-import { ProtectedArea, fetchOsmZoneById, searchNearbyOsmZones, protectedAreaToGeojson } from '../services/protected-areas';
+import { fetchOsmZoneById, searchNearbyOsmZones, protectedAreaToGeojson } from '../services/protected-areas';
 import { BivouacButton } from './ui/bivouac-button';
 
 interface CustomZoneFormProps {
@@ -91,24 +91,6 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
       }
     } catch { /* utiliser le fallback */ }
 
-    // Lire d'abord les zones déjà chargées par la carte (React Query cache)
-    const cached = queryClient.getQueryData<ProtectedArea[]>(['protectedAreas']) ?? [];
-    const fromCache = cached
-      .filter(a => {
-        if (!a.name || !a.geometry.length) return false;
-        const aLng = a.geometry.reduce((s, p) => s + p.lng, 0) / a.geometry.length;
-        const aLat = a.geometry.reduce((s, p) => s + p.lat, 0) / a.geometry.length;
-        return Math.abs(aLat - lat) < 0.8 && Math.abs(aLng - lng) < 0.8;
-      })
-      .map(a => ({ id: a.id, name: a.name! }));
-
-    if (fromCache.length > 0) {
-      setOsmCandidates(fromCache);
-      if (!osmSourceId && fromCache.length === 1) setOsmSourceId(fromCache[0].id);
-      return;
-    }
-
-    // Fallback : requête Overpass si le cache carte est vide
     searchNearbyOsmZones(lat, lng).then(candidates => {
       setOsmCandidates(candidates);
       if (!osmSourceId && candidates.length === 1) setOsmSourceId(candidates[0].id);

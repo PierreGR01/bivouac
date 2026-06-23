@@ -562,6 +562,40 @@ app.post("/make-server-e51cba93/protected-areas", safeHandler(async (c: any) => 
   }
 }));
 
+// Overpass proxy — protected area names only (for admin dropdown, no geometry)
+app.post("/make-server-e51cba93/protected-areas-names", safeHandler(async (c: any) => {
+  try {
+    const body = await c.req.json();
+    let south: number, west: number, north: number, east: number;
+    try {
+      ({ south, west, north, east } = validateBounds(body));
+    } catch (err: any) {
+      return c.json({ success: false, error: err.message }, 400);
+    }
+    const bbox = `${south},${west},${north},${east}`;
+    const query = `[out:json][timeout:15];(relation["boundary"="national_park"](${bbox});relation["boundary"="protected_area"](${bbox});relation["leisure"="nature_reserve"](${bbox}););out tags;`;
+
+    const HEADERS = { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json', 'User-Agent': 'bivouac-app/1.0' };
+    const ENDPOINTS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+
+    for (const endpoint of ENDPOINTS) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 18000);
+      try {
+        const resp = await fetch(endpoint, { method: 'POST', body: `data=${encodeURIComponent(query)}`, headers: HEADERS, signal: ctrl.signal });
+        clearTimeout(timer);
+        if (resp.ok) {
+          const data = await resp.json();
+          return c.json({ success: true, data });
+        }
+      } catch (_err) { clearTimeout(timer); }
+    }
+    return c.json({ success: false, error: 'All Overpass endpoints failed' }, 503);
+  } catch (error) {
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+}));
+
 app.onError((error: any, c: any) => {
   if (
     error?.code === 'EPIPE' ||

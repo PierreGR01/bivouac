@@ -583,36 +583,33 @@ export async function searchNearbyOsmZones(
   lat: number,
   lng: number,
 ): Promise<{ id: string; name: string }[]> {
-  const delta = 0.5;
+  const delta = 0.6;
   const south = lat - delta, north = lat + delta;
   const west = lng - delta, east = lng + delta;
-
-  let elements: any[] = [];
 
   const edgeFunctionUrl = import.meta.env.VITE_EDGE_FUNCTION_URL;
   const anonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY;
 
-  // Passe par l'edge function (évite CORS)
+  let elements: any[] = [];
+
   if (edgeFunctionUrl && anonKey) {
     try {
-      const resp = await fetch(`${edgeFunctionUrl}/protected-areas`, {
+      const resp = await fetch(`${edgeFunctionUrl}/protected-areas-names`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${anonKey}` },
-        body: JSON.stringify({ south, west, north, east, timeout: 25 }),
+        body: JSON.stringify({ south, west, north, east }),
       });
       if (resp.ok) {
         const result = await resp.json();
-        if (result.success && result.data?.elements) {
-          elements = result.data.elements;
-        }
+        if (result.success && result.data?.elements) elements = result.data.elements;
       }
     } catch { /* fallback */ }
   }
 
-  // Fallback direct Overpass
+  // Fallback direct Overpass (out tags = rapide, pas de géométrie)
   if (elements.length === 0) {
     const bbox = `${south},${west},${north},${east}`;
-    const query = `[out:json][timeout:20];(relation["boundary"="national_park"](${bbox});relation["boundary"="protected_area"](${bbox});relation["leisure"="nature_reserve"](${bbox}););out tags;`;
+    const query = `[out:json][timeout:15];(relation["boundary"="national_park"](${bbox});relation["boundary"="protected_area"](${bbox});relation["leisure"="nature_reserve"](${bbox}););out tags;`;
     try {
       const resp = await fetch('https://overpass-api.de/api/interpreter', {
         method: 'POST',
@@ -623,7 +620,7 @@ export async function searchNearbyOsmZones(
         const data = await resp.json();
         elements = data.elements ?? [];
       }
-    } catch { /* retourner vide */ }
+    } catch { /* vide */ }
   }
 
   return elements
