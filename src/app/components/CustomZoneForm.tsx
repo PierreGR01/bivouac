@@ -71,9 +71,10 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
   // Lit les zones OSM déjà chargées dans le cache React Query (les mêmes que la carte affiche)
   useEffect(() => {
     if (!isEditing) return;
+    const RELEVANT_TYPES = new Set(['national_park', 'regional_park', 'nature_reserve', 'protected_area', 'wilderness', 'natura2000']);
     const cached = queryClient.getQueryData<import('../services/protected-areas').ProtectedArea[]>(['protectedAreas']) ?? [];
     const candidates = cached
-      .filter(a => a.name)
+      .filter(a => a.name && RELEVANT_TYPES.has(a.areaType))
       .map(a => ({ id: a.id, name: a.name! }))
       .sort((a, b) => a.name.localeCompare(b.name));
     setOsmCandidates(candidates);
