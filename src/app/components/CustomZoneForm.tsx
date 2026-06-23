@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { createCustomZone, updateCustomZone, deleteCustomZone, CustomZone } from '../../utils/supabase/custom-zones-api';
 import { hideOsmZone } from '../../utils/supabase/hidden-osm-zones-api';
-import { fetchOsmZoneById, protectedAreaToGeojson } from '../services/protected-areas';
+import { fetchOsmZoneById, searchNearbyOsmZones, protectedAreaToGeojson } from '../services/protected-areas';
 import { BivouacButton } from './ui/bivouac-button';
 
 interface CustomZoneFormProps {
@@ -68,18 +68,34 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  // Lit les zones OSM déjà chargées dans le cache React Query (les mêmes que la carte affiche)
+  // Charge les zones OSM proches via l'edge function (nécessaire car la zone masquée n'est pas dans le cache)
   useEffect(() => {
     if (!isEditing) return;
-    const RELEVANT_TYPES = new Set(['national_park', 'regional_park', 'nature_reserve', 'protected_area', 'wilderness', 'natura2000']);
-    const cached = queryClient.getQueryData<import('../services/protected-areas').ProtectedArea[]>(['protectedAreas']) ?? [];
-    const candidates = cached
-      .filter(a => a.name && RELEVANT_TYPES.has(a.areaType))
-      .map(a => ({ id: a.id, name: a.name! }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-    setOsmCandidates(candidates);
-    if (!osmSourceId && candidates.length === 1) setOsmSourceId(candidates[0].id);
-    setOsmLoading(false);
+    let lat = 45.1, lng = 6.4;
+    try {
+      const raw = geometry as unknown as Record<string, unknown>;
+      const geom: GeoJSON.Geometry | null = raw.type === 'Feature'
+        ? ((geometry as GeoJSON.Feature).geometry as GeoJSON.Geometry)
+        : (raw.type === 'Polygon' || raw.type === 'MultiPolygon')
+          ? (geometry as unknown as GeoJSON.Geometry)
+          : null;
+      const ring = geom?.type === 'Polygon'
+        ? (geom as GeoJSON.Polygon).coordinates[0]
+        : geom?.type === 'MultiPolygon'
+          ? (geom as GeoJSON.MultiPolygon).coordinates[0][0]
+          : null;
+      if (ring && ring.length > 0) {
+        lng = ring.reduce((s, c) => s + c[0], 0) / ring.length;
+        lat = ring.reduce((s, c) => s + c[1], 0) / ring.length;
+      }
+    } catch { /* fallback Alpes */ }
+    searchNearbyOsmZones(lat, lng)
+      .then(candidates => {
+        setOsmCandidates(candidates);
+        if (!osmSourceId && candidates.length === 1) setOsmSourceId(candidates[0].id);
+      })
+      .catch(() => {})
+      .finally(() => setOsmLoading(false));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRestrictionToggle = (value: string) => {
