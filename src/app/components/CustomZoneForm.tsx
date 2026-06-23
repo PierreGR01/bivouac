@@ -63,8 +63,7 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
 
   const [isLoading, setIsLoading] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
-  const [osmDetecting, setOsmDetecting] = useState(false);
-  const [osmCandidates, setOsmCandidates] = useState<{ id: string; name: string }[]>([]);
+  const [osmCandidates, setOsmCandidates] = useState<{ id: string; name: string }[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -92,15 +91,12 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
       }
     } catch { /* utiliser le fallback */ }
 
-    setOsmDetecting(true);
-    searchNearbyOsmZones(lat, lng)
-      .then(candidates => {
-        setOsmCandidates(candidates);
-        if (!osmSourceId && candidates.length === 1) {
-          setOsmSourceId(candidates[0].id);
-        }
-      })
-      .finally(() => setOsmDetecting(false));
+    searchNearbyOsmZones(lat, lng).then(candidates => {
+      setOsmCandidates(candidates);
+      if (!osmSourceId && candidates.length === 1) {
+        setOsmSourceId(candidates[0].id);
+      }
+    });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRestrictionToggle = (value: string) => {
@@ -368,48 +364,34 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
         {isEditing && (
           <div className="pt-2 border-t border-gray-100 space-y-2">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Mettre à jour depuis OSM</p>
-            {osmDetecting ? (
-              <p className="text-xs text-gray-400 flex items-center gap-1.5">
-                <Loader2 size={12} className="animate-spin" /> Recherche des zones OSM dans le secteur…
-              </p>
-            ) : null}
             <div className="flex gap-2">
-              {osmCandidates.length > 0 ? (
-                <select
-                  value={osmSourceId}
-                  onChange={e => setOsmSourceId(e.target.value)}
-                  className={`${inputClass} text-xs`}
-                  disabled={isLoading || isResetting || osmDetecting}
-                >
-                  <option value="">— Choisir une zone OSM —</option>
-                  {osmCandidates.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  type="text"
-                  value={osmSourceId}
-                  onChange={e => setOsmSourceId(e.target.value)}
-                  placeholder="osm-relation-1024498"
-                  className={`${inputClass} text-xs font-mono`}
-                  disabled={isLoading || isResetting || osmDetecting}
-                />
-              )}
+              <select
+                value={osmSourceId}
+                onChange={e => setOsmSourceId(e.target.value)}
+                className={`${inputClass} text-xs`}
+                disabled={isLoading || isResetting || osmCandidates === null}
+              >
+                {osmCandidates === null
+                  ? <option value="">Chargement…</option>
+                  : <>
+                      <option value="">— Choisir une zone OSM —</option>
+                      {osmCandidates.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </>
+                }
+              </select>
               <BivouacButton
                 type="button"
                 variant="outline"
                 onClick={handleResetFromOsm}
-                disabled={isLoading || isResetting || osmDetecting || !osmSourceId.trim()}
+                disabled={isLoading || isResetting || !osmSourceId.trim()}
                 className="shrink-0 text-blue-700 border-blue-200 hover:bg-blue-50"
                 title="Recharger le tracé depuis OpenStreetMap"
               >
                 {isResetting ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
               </BivouacButton>
             </div>
-            {!osmDetecting && osmCandidates.length === 0 && (
-              <p className="text-xs text-gray-400">Aucune zone OSM trouvée dans le secteur. Saisir manuellement : <span className="font-mono">osm-relation-XXXXXXX</span></p>
-            )}
           </div>
         )}
 
