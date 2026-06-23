@@ -12,6 +12,7 @@ export interface ProtectedArea {
   type: 'way' | 'relation';
   name?: string;
   geometry: Array<{ lat: number; lng: number }>;
+  rings?: Array<Array<{ lat: number; lng: number }>>; // Multiple disjoint outer rings for multipolygon relations
   tags: {
     boundary?: string;
     leisure?: string;
@@ -154,22 +155,24 @@ async function executeProtectedAreasQuery(
 ): Promise<ProtectedArea[]> {
   const { south, west, north, east } = bounds;
 
-  // Requête ciblée pour les zones avec camping/bivouac interdit ou protégées
+  // bbox par filtre (pas global) pour que out geom retourne la géométrie complète
+  // sans clipping — sinon les ways des grandes relations (parcs nationaux) sont tronqués
+  const bbox = `${south},${west},${north},${east}`;
   const query = `
-    [out:json][timeout:${timeout}][bbox:${south},${west},${north},${east}];
+    [out:json][timeout:${timeout}];
     (
-      relation["boundary"="national_park"];
-      relation["boundary"="protected_area"];
-      relation["leisure"="nature_reserve"];
-      way["leisure"="nature_reserve"];
-      relation["designation"~"parc|réserve|arrêté|protected|park|reserve"];
-      way["designation"~"parc|réserve|arrêté|protected|park|reserve"];
-      relation["camping"~"no|forbidden|prohibited"];
-      way["camping"~"no|forbidden|prohibited"];
-      relation["bivouac"~"no|forbidden|prohibited"];
-      way["bivouac"~"no|forbidden|prohibited"];
-      relation["access"="no"];
-      way["access"="no"];
+      relation["boundary"="national_park"](${bbox});
+      relation["boundary"="protected_area"](${bbox});
+      relation["leisure"="nature_reserve"](${bbox});
+      way["leisure"="nature_reserve"](${bbox});
+      relation["designation"~"parc|réserve|arrêté|protected|park|reserve"](${bbox});
+      way["designation"~"parc|réserve|arrêté|protected|park|reserve"](${bbox});
+      relation["camping"~"no|forbidden|prohibited"](${bbox});
+      way["camping"~"no|forbidden|prohibited"](${bbox});
+      relation["bivouac"~"no|forbidden|prohibited"](${bbox});
+      way["bivouac"~"no|forbidden|prohibited"](${bbox});
+      relation["access"="no"](${bbox});
+      way["access"="no"](${bbox});
     );
     out geom;
   `;
@@ -256,6 +259,71 @@ async function executeProtectedAreasQuery(
 }
 
 /**
+ * Assemble des segments de ways OSM en anneaux fermés continus.
+ * Overpass retourne les ways d'une relation dans un ordre arbitraire ;
+ * cette fonction les chaîne bout-à-bout (en inversant si nécessaire)
+ * pour former des polygones valides. Si certains segments ne se connectent
+ * pas, ils forment des anneaux séparés (cas des enclaves/exclaves).
+ */
+function assembleRings(
+  ways: Array<Array<{ lat: number; lng: number }>>
+): Array<Array<{ lat: number; lng: number }>> {
+  if (ways.length === 0) return [];
+  if (ways.length === 1) return [ways[0]];
+
+  const threshold = 0.00015; // ~15m de tolérance pour la connexion des extrémités
+  const dist = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) =>
+    Math.abs(a.lat - b.lat) + Math.abs(a.lng - b.lng);
+
+  const rings: Array<Array<{ lat: number; lng: number }>> = [];
+  const remaining = ways.map(w => [...w]);
+
+  while (remaining.length > 0) {
+    const ring = [...remaining.shift()!];
+
+    let changed = true;
+    while (changed && remaining.length > 0) {
+      changed = false;
+      for (let i = 0; i < remaining.length; i++) {
+        const way = remaining[i];
+        const ringEnd = ring[ring.length - 1];
+        const ringStart = ring[0];
+        const wayStart = way[0];
+        const wayEnd = way[way.length - 1];
+
+        if (dist(ringEnd, wayStart) < threshold) {
+          ring.push(...way.slice(1));
+          remaining.splice(i, 1);
+          changed = true;
+          break;
+        } else if (dist(ringEnd, wayEnd) < threshold) {
+          ring.push(...[...way].reverse().slice(1));
+          remaining.splice(i, 1);
+          changed = true;
+          break;
+        } else if (dist(ringStart, wayEnd) < threshold) {
+          ring.unshift(...way.slice(0, -1));
+          remaining.splice(i, 1);
+          changed = true;
+          break;
+        } else if (dist(ringStart, wayStart) < threshold) {
+          ring.unshift(...[...way].reverse().slice(0, -1));
+          remaining.splice(i, 1);
+          changed = true;
+          break;
+        }
+      }
+    }
+
+    if (ring.length >= 3) {
+      rings.push(ring);
+    }
+  }
+
+  return rings;
+}
+
+/**
  * Parse les données Overpass pour extraire les zones protégées
  */
 function parseProtectedAreas(data: any): ProtectedArea[] {
@@ -301,19 +369,34 @@ function parseProtectedAreas(data: any): ProtectedArea[] {
 
     // Extraire la géométrie
     let geometry: Array<{ lat: number; lng: number }> = [];
+    let rings: Array<Array<{ lat: number; lng: number }>> | undefined = undefined;
 
     if (element.type === 'way' && element.geometry) {
-      geometry = element.geometry.map((point: any) => ({
+      const pts = element.geometry;
+      const first = pts[0], last = pts[pts.length - 1];
+      const isClosed = first && last &&
+        Math.abs(first.lat - last.lat) < 0.0001 &&
+        Math.abs(first.lon - last.lon) < 0.0001;
+      if (!isClosed) continue; // way linéaire (route, chemin) → pas un polygone valide
+      geometry = pts.map((point: any) => ({
         lat: point.lat,
         lng: point.lon,
       }));
     } else if (element.type === 'relation' && element.members) {
+      const outerWays: Array<Array<{ lat: number; lng: number }>> = [];
       for (const member of element.members) {
         if (member.role === 'outer' && member.geometry) {
-          geometry = [...geometry, ...member.geometry.map((point: any) => ({
+          outerWays.push(member.geometry.map((point: any) => ({
             lat: point.lat,
             lng: point.lon,
-          }))];
+          })));
+        }
+      }
+      const assembledRings = assembleRings(outerWays);
+      if (assembledRings.length > 0) {
+        geometry = assembledRings[0];
+        if (assembledRings.length > 1) {
+          rings = assembledRings;
         }
       }
     }
@@ -328,6 +411,7 @@ function parseProtectedAreas(data: any): ProtectedArea[] {
       type: element.type,
       name: tags.name || tags['name:fr'] || tags.protection_title,
       geometry,
+      ...(rings ? { rings } : {}),
       tags,
       areaType,
       protectionLevel,
@@ -461,6 +545,81 @@ function isPointInPolygon(point: { lat: number; lng: number }, polygon: Array<{ 
   }
 
   return inside;
+}
+
+/**
+ * Convertit une ProtectedArea en GeoJSON Feature (Polygon ou MultiPolygon).
+ * Utilisé pour initialiser l'éditeur de zone custom depuis une zone OSM.
+ */
+export function protectedAreaToGeojson(area: ProtectedArea): GeoJSON.Feature {
+  const rings = area.rings || [area.geometry];
+  if (rings.length === 1) {
+    return {
+      type: 'Feature',
+      properties: {},
+      geometry: {
+        type: 'Polygon',
+        coordinates: [rings[0].map(p => [p.lng, p.lat])],
+      },
+    };
+  }
+  return {
+    type: 'Feature',
+    properties: {},
+    geometry: {
+      type: 'MultiPolygon',
+      coordinates: rings.map(ring => [ring.map(p => [p.lng, p.lat])]),
+    },
+  };
+}
+
+/**
+ * Récupère une zone OSM spécifique par son ID (format "osm-relation-1024498").
+ * Utilisé pour réinitialiser la géométrie d'une custom zone depuis OSM.
+ */
+export async function fetchOsmZoneById(osmId: string): Promise<ProtectedArea | null> {
+  const parts = osmId.split('-');
+  if (parts.length < 3) return null;
+  const type = parts[1]; // 'relation' ou 'way'
+  const id = parts.slice(2).join('-');
+
+  const query = `[out:json][timeout:30];${type}(${id});out geom;`;
+
+  try {
+    const edgeFunctionUrl = import.meta.env.VITE_EDGE_FUNCTION_URL;
+    const anonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY;
+    let data: any = null;
+
+    if (edgeFunctionUrl && anonKey) {
+      try {
+        const resp = await fetch(`${edgeFunctionUrl}/protected-areas-by-id`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${anonKey}` },
+          body: JSON.stringify({ type, id }),
+        });
+        if (resp.ok) {
+          const result = await resp.json();
+          if (result.success) data = result.data;
+        }
+      } catch { /* fallback direct */ }
+    }
+
+    if (!data) {
+      const resp = await fetch('https://overpass-api.de/api/interpreter', {
+        method: 'POST',
+        body: `data=${encodeURIComponent(query)}`,
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      });
+      if (!resp.ok) throw new Error(`Overpass erreur ${resp.status}`);
+      data = await resp.json();
+    }
+
+    const areas = parseProtectedAreas(data);
+    return areas[0] ?? null;
+  } catch (error) {
+    devLog.warn('⚠️ fetchOsmZoneById:', error);
+    return null;
+  }
 }
 
 /**

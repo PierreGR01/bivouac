@@ -7,6 +7,7 @@ export interface CustomZone {
   geometry: GeoJSON.Feature;
   restriction_types: string[]; // ['camping_forbidden', 'bivouac_forbidden', 'fire_forbidden']
   source_url?: string;
+  osm_source_id?: string; // e.g. "osm-relation-1024498" — référence vers la zone OSM d'origine
   created_at: string;
   created_by: string;
   time_range_start?: string; // HH:mm e.g. "09:00"
@@ -21,6 +22,7 @@ export interface CustomZoneInput {
   geometry: GeoJSON.Feature;
   restriction_types: string[];
   source_url?: string;
+  osm_source_id?: string;
   time_range_start?: string;
   time_range_end?: string;
   period_start?: string;

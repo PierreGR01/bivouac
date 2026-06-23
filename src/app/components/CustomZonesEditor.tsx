@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { X, Loader2, Upload, Hexagon, Square, Check } from 'lucide-react';
 import { CustomZoneForm } from './CustomZoneForm';
 import { CustomZone } from '../../utils/supabase/custom-zones-api';
-import { ProtectedArea } from '../services/protected-areas';
+import { ProtectedArea, protectedAreaToGeojson } from '../services/protected-areas';
 
 type DrawTool = 'polygon' | 'rectangle';
 
@@ -15,22 +15,13 @@ interface CustomZonesEditorProps {
   editingOsmZone?: ProtectedArea | null;
 }
 
-function osmZoneToGeojson(area: ProtectedArea): GeoJSON.Feature {
-  return {
-    type: 'Feature',
-    properties: {},
-    geometry: {
-      type: 'Polygon',
-      coordinates: [area.geometry.map(p => [p.lng, p.lat])],
-    },
-  };
-}
+// osmZoneToGeojson est maintenant protectedAreaToGeojson dans protected-areas.ts
 
 export function CustomZonesEditor({ onClose, onDrawingToolChange, drawnGeometry, editingZone, editingOsmZone }: CustomZonesEditorProps) {
   const { isAdmin } = useAuth();
   const [activeTool, setActiveTool] = useState<DrawTool>('polygon');
   const [selectedGeometry, setSelectedGeometry] = useState<GeoJSON.Feature | null>(
-    editingZone?.geometry ?? (editingOsmZone ? osmZoneToGeojson(editingOsmZone) : null)
+    editingZone?.geometry ?? (editingOsmZone ? protectedAreaToGeojson(editingOsmZone) : null)
   );
   const [isLoading, setIsLoading] = useState(false);
 

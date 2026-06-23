@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
-import { X, Loader2, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { createCustomZone, updateCustomZone, deleteCustomZone, CustomZone } from '../../utils/supabase/custom-zones-api';
 import { hideOsmZone } from '../../utils/supabase/hidden-osm-zones-api';
+import { fetchOsmZoneById, fetchProtectedAreas, protectedAreaToGeojson } from '../services/protected-areas';
 import { BivouacButton } from './ui/bivouac-button';
 
 interface CustomZoneFormProps {
@@ -50,6 +51,7 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
     zone?.restriction_types ?? ['camping_forbidden']
   );
   const [sourceUrl, setSourceUrl] = useState(zone?.source_url ?? '');
+  const [osmSourceId, setOsmSourceId] = useState(zone?.osm_source_id ?? osmZoneId ?? '');
 
   const [timeRangeEnabled, setTimeRangeEnabled] = useState(!!(zone?.time_range_start));
   const [timeRangeStart, setTimeRangeStart] = useState(zone?.time_range_start ?? '09:00');
@@ -60,8 +62,45 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
   const [periodEnd, setPeriodEnd] = useState(zone?.period_end ?? '');
 
   const [isLoading, setIsLoading] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [osmDetecting, setOsmDetecting] = useState(false);
+  const [osmCandidates, setOsmCandidates] = useState<{ id: string; name: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // Chargement des zones OSM candidates dans le secteur à l'ouverture du formulaire d'édition
+  useEffect(() => {
+    if (!isEditing) return;
+
+    const geom = geometry.geometry;
+    if (!geom) return;
+
+    const ring = geom.type === 'Polygon'
+      ? (geom as GeoJSON.Polygon).coordinates[0]
+      : geom.type === 'MultiPolygon'
+        ? (geom as GeoJSON.MultiPolygon).coordinates[0][0]
+        : null;
+    if (!ring || ring.length === 0) return;
+
+    const lng = ring.reduce((s, c) => s + c[0], 0) / ring.length;
+    const lat = ring.reduce((s, c) => s + c[1], 0) / ring.length;
+    const delta = 0.3;
+    const bounds = { south: lat - delta, north: lat + delta, west: lng - delta, east: lng + delta };
+
+    setOsmDetecting(true);
+    fetchProtectedAreas(bounds, 20)
+      .then(areas => {
+        const candidates = areas
+          .filter(a => a.name)
+          .map(a => ({ id: a.id, name: a.name! }));
+        setOsmCandidates(candidates);
+        // Pré-sélection si l'ID est déjà connu ou si un seul candidat correspond au nom
+        if (!osmSourceId && candidates.length === 1) {
+          setOsmSourceId(candidates[0].id);
+        }
+      })
+      .finally(() => setOsmDetecting(false));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRestrictionToggle = (value: string) => {
     setRestrictionTypes(prev =>
@@ -94,6 +133,7 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
         geometry,
         restriction_types: restrictionTypes,
         source_url: sourceUrl.trim() || undefined,
+        osm_source_id: osmSourceId.trim() || undefined,
         time_range_start: timeRangeEnabled ? timeRangeStart : undefined,
         time_range_end: timeRangeEnabled ? timeRangeEnd : undefined,
         period_start: periodEnabled ? periodStart.trim() : undefined,
@@ -135,6 +175,24 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur lors de la suppression');
       setIsLoading(false);
+    }
+  };
+
+  const handleResetFromOsm = async () => {
+    if (!osmSourceId.trim() || !zone) return;
+    setIsResetting(true);
+    setError(null);
+    try {
+      const osmZone = await fetchOsmZoneById(osmSourceId.trim());
+      if (!osmZone) throw new Error('Zone OSM introuvable sur Overpass (vérifier l\'ID)');
+      const newGeometry = protectedAreaToGeojson(osmZone);
+      await updateCustomZone(zone.id, { geometry: newGeometry, osm_source_id: osmSourceId.trim() });
+      await queryClient.invalidateQueries({ queryKey: ['customZones'] });
+      onSuccess();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur lors de la réinitialisation');
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -296,6 +354,55 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
             Annuler
           </BivouacButton>
         </div>
+
+        {/* Mettre à jour depuis OSM — admin uniquement, zone existante */}
+        {isEditing && (
+          <div className="pt-2 border-t border-gray-100 space-y-2">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Mettre à jour depuis OSM</p>
+            {osmDetecting ? (
+              <p className="text-xs text-gray-400 flex items-center gap-1.5">
+                <Loader2 size={12} className="animate-spin" /> Recherche des zones OSM dans le secteur…
+              </p>
+            ) : null}
+            <div className="flex gap-2">
+              {osmCandidates.length > 0 ? (
+                <select
+                  value={osmSourceId}
+                  onChange={e => setOsmSourceId(e.target.value)}
+                  className={`${inputClass} text-xs`}
+                  disabled={isLoading || isResetting || osmDetecting}
+                >
+                  <option value="">— Choisir une zone OSM —</option>
+                  {osmCandidates.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={osmSourceId}
+                  onChange={e => setOsmSourceId(e.target.value)}
+                  placeholder="osm-relation-1024498"
+                  className={`${inputClass} text-xs font-mono`}
+                  disabled={isLoading || isResetting || osmDetecting}
+                />
+              )}
+              <BivouacButton
+                type="button"
+                variant="outline"
+                onClick={handleResetFromOsm}
+                disabled={isLoading || isResetting || osmDetecting || !osmSourceId.trim()}
+                className="shrink-0 text-blue-700 border-blue-200 hover:bg-blue-50"
+                title="Recharger le tracé depuis OpenStreetMap"
+              >
+                {isResetting ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
+              </BivouacButton>
+            </div>
+            {!osmDetecting && osmCandidates.length === 0 && (
+              <p className="text-xs text-gray-400">Aucune zone OSM trouvée dans le secteur. Saisir manuellement : <span className="font-mono">osm-relation-XXXXXXX</span></p>
+            )}
+          </div>
+        )}
 
         {/* Suppression / Désactivation */}
         {(isEditing || isOsmZone) && (

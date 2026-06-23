@@ -1288,32 +1288,36 @@ export function MapView({
       const areaColor = isAreaSelected ? '#7f1d1d' : info.color;
       const areaFillOpacity = isAreaSelected ? 0.05 : 0.15;
 
-      const polygon = L.polygon(
-        geometry.map(point => [point.lat, point.lng]),
-        {
-          color: areaColor,
-          weight: isAreaSelected ? 3 : 2,
-          opacity: 0.8,
-          fillColor: areaColor,
-          fillOpacity: areaFillOpacity,
-          interactive: true,
-        }
-      );
+      // Rendu multi-ring : chaque anneau disjoint devient un polygone séparé
+      const allRings = area.rings || [area.geometry];
+      const polygonStyle = {
+        color: areaColor,
+        weight: isAreaSelected ? 3 : 2,
+        opacity: 0.8,
+        fillColor: areaColor,
+        fillOpacity: areaFillOpacity,
+        interactive: true,
+      };
 
-      // Ajouter les événements pour rendre la zone cliquable même si au-dessus
-      polygon.on('mouseenter', function() {
-        this.bringToFront();
-        this.setStyle({ weight: 3, opacity: 1 });
+      allRings.forEach(ring => {
+        const polygon = L.polygon(
+          ring.map(point => [point.lat, point.lng] as [number, number]),
+          polygonStyle
+        );
+
+        polygon.on('mouseenter', function() {
+          this.bringToFront();
+          this.setStyle({ weight: 3, opacity: 1 });
+        });
+        polygon.on('mouseleave', function() {
+          this.setStyle({ weight: isAreaSelected ? 3 : 2, opacity: 0.8 });
+        });
+        polygon.on('click', () => onProtectedAreaClick?.(area));
+
+        polygon.addTo(map);
+        (polygon as any)._zIndex = zIndex;
+        protectedAreasLayersRef.current.push(polygon);
       });
-      polygon.on('mouseleave', function() {
-        this.setStyle({ weight: isAreaSelected ? 3 : 2, opacity: 0.8 });
-      });
-
-      polygon.on('click', () => onProtectedAreaClick?.(area));
-
-      polygon.addTo(map);
-      (polygon as any)._zIndex = zIndex;
-      protectedAreasLayersRef.current.push(polygon);
     });
   }, [protectedAreas, showProtectedAreas, onProtectedAreaClick, selectedProtectedArea]);
 
@@ -1345,35 +1349,39 @@ export function MapView({
         : types.includes('fire_forbidden') ? '#eab308'
         : '#8b5cf6';
 
-      const coordinates = geom.type === 'Polygon'
-        ? geom.coordinates[0].map((coord: [number, number]) => [coord[1], coord[0]] as [number, number])
-        : [];
-
-      if (coordinates.length === 0) return;
-
       const zoneFillOpacity = isZoneSelected ? 0.15 : 0.25;
-
-      const polygon = L.polygon(coordinates, {
+      const polygonStyle = {
         color,
         weight: isZoneSelected ? 3 : 2,
         opacity: 0.9,
         fillColor: color,
         fillOpacity: zoneFillOpacity,
         interactive: true,
-      });
+      };
 
-      polygon.on('mouseenter', function() {
-        this.bringToFront();
-        this.setStyle({ weight: 3, opacity: 1, fillOpacity: isZoneSelected ? 0.25 : 0.35 });
-      });
-      polygon.on('mouseleave', function() {
-        this.setStyle({ weight: isZoneSelected ? 3 : 2, opacity: 0.9, fillOpacity: zoneFillOpacity });
-      });
+      // Extraire les anneaux selon le type GeoJSON (Polygon ou MultiPolygon)
+      const rings: [number, number][][] = geom.type === 'Polygon'
+        ? [geom.coordinates[0].map((c: [number, number]) => [c[1], c[0]])]
+        : geom.type === 'MultiPolygon'
+          ? (geom as GeoJSON.MultiPolygon).coordinates.map(poly => poly[0].map((c: [number, number]) => [c[1], c[0]]))
+          : [];
 
-      polygon.on('click', () => onZoneClick?.(zone));
+      rings.forEach(ring => {
+        if (ring.length < 3) return;
+        const polygon = L.polygon(ring as [number, number][], polygonStyle);
 
-      polygon.addTo(map);
-      customZonesLayersRef.current.push(polygon);
+        polygon.on('mouseenter', function() {
+          this.bringToFront();
+          this.setStyle({ weight: 3, opacity: 1, fillOpacity: isZoneSelected ? 0.25 : 0.35 });
+        });
+        polygon.on('mouseleave', function() {
+          this.setStyle({ weight: isZoneSelected ? 3 : 2, opacity: 0.9, fillOpacity: zoneFillOpacity });
+        });
+        polygon.on('click', () => onZoneClick?.(zone));
+
+        polygon.addTo(map);
+        customZonesLayersRef.current.push(polygon);
+      });
     });
   }, [customZones, showProtectedAreas, onZoneClick, selectedZone]);
 

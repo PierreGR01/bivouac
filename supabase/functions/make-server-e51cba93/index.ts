@@ -511,7 +511,8 @@ app.post("/make-server-e51cba93/protected-areas", safeHandler(async (c: any) => 
     }
     const timeout = validateTimeout(body.timeout, 90);
 
-    const query = `[out:json][timeout:${timeout}][bbox:${south},${west},${north},${east}];(relation["boundary"="national_park"];relation["boundary"="protected_area"];relation["leisure"="nature_reserve"];way["leisure"="nature_reserve"];relation["designation"~"parc|réserve|arrêté|protected|park|reserve"];way["designation"~"parc|réserve|arrêté|protected|park|reserve"];relation["camping"~"no|forbidden|prohibited"];way["camping"~"no|forbidden|prohibited"];relation["bivouac"~"no|forbidden|prohibited"];way["bivouac"~"no|forbidden|prohibited"];);out geom;`;
+    const bbox = `${south},${west},${north},${east}`;
+    const query = `[out:json][timeout:${timeout}];(relation["boundary"="national_park"](${bbox});relation["boundary"="protected_area"](${bbox});relation["leisure"="nature_reserve"](${bbox});way["leisure"="nature_reserve"](${bbox});relation["designation"~"parc|réserve|arrêté|protected|park|reserve"](${bbox});way["designation"~"parc|réserve|arrêté|protected|park|reserve"](${bbox});relation["camping"~"no|forbidden|prohibited"](${bbox});way["camping"~"no|forbidden|prohibited"](${bbox});relation["bivouac"~"no|forbidden|prohibited"](${bbox});way["bivouac"~"no|forbidden|prohibited"](${bbox});relation["access"="no"](${bbox});way["access"="no"](${bbox}););out geom;`;
 
     const ENDPOINTS = [
       'https://overpass-api.de/api/interpreter',
