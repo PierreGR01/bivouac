@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { createCustomZone, updateCustomZone, deleteCustomZone, CustomZone } from '../../utils/supabase/custom-zones-api';
 import { hideOsmZone } from '../../utils/supabase/hidden-osm-zones-api';
-import { fetchOsmZoneById, fetchAlpesProtectedAreas, protectedAreaToGeojson } from '../services/protected-areas';
+import { ProtectedArea, fetchOsmZoneById, fetchAlpesProtectedAreas, protectedAreaToGeojson } from '../services/protected-areas';
 import { BivouacButton } from './ui/bivouac-button';
 
 interface CustomZoneFormProps {
@@ -64,7 +64,7 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
   const [isLoading, setIsLoading] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [osmDetecting, setOsmDetecting] = useState(false);
-  const [osmCandidates, setOsmCandidates] = useState<{ id: string; name: string }[]>([]);
+  const [osmCandidates, setOsmCandidates] = useState<ProtectedArea[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -96,9 +96,7 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
           const aLat = geom.reduce((s, p) => s + p.lat, 0) / geom.length;
           return Math.abs(aLat - lat) < 0.5 && Math.abs(aLng - lng) < 0.5;
         });
-        const candidates = nearby
-          .filter(a => a.name)
-          .map(a => ({ id: a.id, name: a.name! }));
+        const candidates = nearby.filter(a => a.name);
         setOsmCandidates(candidates);
         if (!osmSourceId && candidates.length === 1) {
           setOsmSourceId(candidates[0].id);
@@ -188,8 +186,10 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
     setIsResetting(true);
     setError(null);
     try {
-      const osmZone = await fetchOsmZoneById(osmSourceId.trim());
-      if (!osmZone) throw new Error('Zone OSM introuvable sur Overpass (vérifier l\'ID)');
+      // Chercher d'abord dans les candidates déjà chargées (évite un appel réseau)
+      const cached = osmCandidates.find(c => c.id === osmSourceId.trim());
+      const osmZone = cached ?? await fetchOsmZoneById(osmSourceId.trim());
+      if (!osmZone) throw new Error('Zone OSM introuvable (vérifier l\'ID)');
       const newGeometry = protectedAreaToGeojson(osmZone);
       await updateCustomZone(zone.id, { geometry: newGeometry, osm_source_id: osmSourceId.trim() });
       await queryClient.invalidateQueries({ queryKey: ['customZones'] });
@@ -379,7 +379,7 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
                 >
                   <option value="">— Choisir une zone OSM —</option>
                   {osmCandidates.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
+                    <option key={c.id} value={c.id}>{c.name!}</option>
                   ))}
                 </select>
               ) : (
