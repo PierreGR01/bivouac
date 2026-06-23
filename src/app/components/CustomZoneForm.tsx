@@ -63,7 +63,8 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
 
   const [isLoading, setIsLoading] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
-  const [osmCandidates, setOsmCandidates] = useState<{ id: string; name: string }[] | null>(null);
+  const [osmCandidates, setOsmCandidates] = useState<{ id: string; name: string }[]>([]);
+  const [osmLoading, setOsmLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -91,10 +92,13 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
       }
     } catch { /* utiliser le fallback */ }
 
-    searchNearbyOsmZones(lat, lng).then(candidates => {
-      setOsmCandidates(candidates);
-      if (!osmSourceId && candidates.length === 1) setOsmSourceId(candidates[0].id);
-    });
+    searchNearbyOsmZones(lat, lng)
+      .then(candidates => {
+        setOsmCandidates(candidates);
+        if (!osmSourceId && candidates.length === 1) setOsmSourceId(candidates[0].id);
+      })
+      .catch(() => {})
+      .finally(() => setOsmLoading(false));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRestrictionToggle = (value: string) => {
@@ -367,9 +371,9 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
                 value={osmSourceId}
                 onChange={e => setOsmSourceId(e.target.value)}
                 className={`${inputClass} text-xs`}
-                disabled={isLoading || isResetting || osmCandidates === null}
+                disabled={isLoading || isResetting}
               >
-                {osmCandidates === null
+                {osmLoading
                   ? <option value="">Chargement…</option>
                   : <>
                       <option value="">— Choisir une zone OSM —</option>
