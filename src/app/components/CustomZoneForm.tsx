@@ -72,7 +72,13 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
   useEffect(() => {
     if (!isEditing) return;
 
-    const geom = geometry.geometry;
+    // Gérer les deux formats : Feature GeoJSON ou Geometry brute (Polygon/MultiPolygon)
+    const raw = geometry as unknown as Record<string, unknown>;
+    const geom: GeoJSON.Geometry | null = raw.type === 'Feature'
+      ? ((geometry as GeoJSON.Feature).geometry as GeoJSON.Geometry)
+      : (raw.type === 'Polygon' || raw.type === 'MultiPolygon')
+        ? (geometry as unknown as GeoJSON.Geometry)
+        : null;
     if (!geom) return;
 
     const ring = geom.type === 'Polygon'
