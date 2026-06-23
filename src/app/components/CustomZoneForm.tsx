@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { createCustomZone, updateCustomZone, deleteCustomZone, CustomZone } from '../../utils/supabase/custom-zones-api';
 import { hideOsmZone } from '../../utils/supabase/hidden-osm-zones-api';
-import { fetchOsmZoneById, searchNearbyOsmZones, protectedAreaToGeojson } from '../services/protected-areas';
+import { fetchOsmZoneById, fetchProtectedAreas, protectedAreaToGeojson } from '../services/protected-areas';
 import { BivouacButton } from './ui/bivouac-button';
 
 interface CustomZoneFormProps {
@@ -68,10 +68,12 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  // Charge les zones OSM proches via l'edge function (nécessaire car la zone masquée n'est pas dans le cache)
+  // Charge les zones OSM proches en réutilisant fetchProtectedAreas (même endpoint que la carte, fiable)
+  // On ne filtre PAS les zones cachées : c'est précisément celles-là qu'on veut retrouver ici
   useEffect(() => {
     if (!isEditing) return;
-    let lat = 45.1, lng = 6.4;
+    // Calcul du bbox depuis la géométrie de la zone, avec padding
+    let south = 44.5, north = 45.7, west = 5.8, east = 7.0;
     try {
       const raw = geometry as unknown as Record<string, unknown>;
       const geom: GeoJSON.Geometry | null = raw.type === 'Feature'
@@ -79,18 +81,27 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
         : (raw.type === 'Polygon' || raw.type === 'MultiPolygon')
           ? (geometry as unknown as GeoJSON.Geometry)
           : null;
-      const ring = geom?.type === 'Polygon'
-        ? (geom as GeoJSON.Polygon).coordinates[0]
+      const rings: number[][][] = geom?.type === 'Polygon'
+        ? (geom as GeoJSON.Polygon).coordinates
         : geom?.type === 'MultiPolygon'
-          ? (geom as GeoJSON.MultiPolygon).coordinates[0][0]
-          : null;
-      if (ring && ring.length > 0) {
-        lng = ring.reduce((s, c) => s + c[0], 0) / ring.length;
-        lat = ring.reduce((s, c) => s + c[1], 0) / ring.length;
+          ? (geom as GeoJSON.MultiPolygon).coordinates.flat()
+          : [];
+      const coords = rings.flat();
+      if (coords.length > 0) {
+        const pad = 0.3;
+        west  = Math.min(...coords.map(c => c[0])) - pad;
+        east  = Math.max(...coords.map(c => c[0])) + pad;
+        south = Math.min(...coords.map(c => c[1])) - pad;
+        north = Math.max(...coords.map(c => c[1])) + pad;
       }
     } catch { /* fallback Alpes */ }
-    searchNearbyOsmZones(lat, lng)
-      .then(candidates => {
+    const RELEVANT_TYPES = new Set(['national_park', 'regional_park', 'nature_reserve', 'protected_area', 'wilderness', 'natura2000']);
+    fetchProtectedAreas({ south, west, north, east })
+      .then(areas => {
+        const candidates = areas
+          .filter(a => a.name && RELEVANT_TYPES.has(a.areaType))
+          .map(a => ({ id: a.id, name: a.name! }))
+          .sort((a, b) => a.name.localeCompare(b.name));
         setOsmCandidates(candidates);
         if (!osmSourceId && candidates.length === 1) setOsmSourceId(candidates[0].id);
       })
