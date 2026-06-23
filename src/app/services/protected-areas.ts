@@ -574,6 +574,37 @@ export function protectedAreaToGeojson(area: ProtectedArea): GeoJSON.Feature {
 }
 
 /**
+ * Recherche les zones OSM proches d'un point (lat/lng) — retourne uniquement
+ * les noms et IDs, sans géométrie. Rapide (~1-2s) pour alimenter un dropdown.
+ */
+export async function searchNearbyOsmZones(
+  lat: number,
+  lng: number,
+): Promise<{ id: string; name: string }[]> {
+  const delta = 0.5;
+  const bbox = `${lat - delta},${lng - delta},${lat + delta},${lng + delta}`;
+  const query = `[out:json][timeout:20];(relation["boundary"="national_park"](${bbox});relation["boundary"="protected_area"](${bbox});relation["leisure"="nature_reserve"](${bbox});relation["designation"~"parc|réserve|arrêté|protected|park|reserve"](${bbox}););out tags;`;
+
+  try {
+    const resp = await fetch('https://overpass-api.de/api/interpreter', {
+      method: 'POST',
+      body: `data=${encodeURIComponent(query)}`,
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    });
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    return (data.elements ?? [])
+      .map((el: any) => ({
+        id: `osm-${el.type}-${el.id}`,
+        name: el.tags?.name || el.tags?.['name:fr'] || el.tags?.protection_title || '',
+      }))
+      .filter((c: { id: string; name: string }) => c.name);
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Récupère une zone OSM spécifique par son ID (format "osm-relation-1024498").
  * Utilisé pour réinitialiser la géométrie d'une custom zone depuis OSM.
  */

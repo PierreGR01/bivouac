@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { createCustomZone, updateCustomZone, deleteCustomZone, CustomZone } from '../../utils/supabase/custom-zones-api';
 import { hideOsmZone } from '../../utils/supabase/hidden-osm-zones-api';
-import { ProtectedArea, fetchOsmZoneById, fetchAlpesProtectedAreas, fetchProtectedAreas, protectedAreaToGeojson } from '../services/protected-areas';
+import { fetchOsmZoneById, searchNearbyOsmZones, protectedAreaToGeojson } from '../services/protected-areas';
 import { BivouacButton } from './ui/bivouac-button';
 
 interface CustomZoneFormProps {
@@ -64,7 +64,7 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
   const [isLoading, setIsLoading] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [osmDetecting, setOsmDetecting] = useState(false);
-  const [osmCandidates, setOsmCandidates] = useState<ProtectedArea[]>([]);
+  const [osmCandidates, setOsmCandidates] = useState<{ id: string; name: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -91,26 +91,9 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
     const lng = ring.reduce((s, c) => s + c[0], 0) / ring.length;
     const lat = ring.reduce((s, c) => s + c[1], 0) / ring.length;
 
-    const delta = 0.4;
-    const localBounds = { south: lat - delta, north: lat + delta, west: lng - delta, east: lng + delta };
-
-    const filterNearby = (areas: ProtectedArea[]) =>
-      areas.filter(a => {
-        if (!a.name || !a.geometry.length) return false;
-        const aLng = a.geometry.reduce((s, p) => s + p.lng, 0) / a.geometry.length;
-        const aLat = a.geometry.reduce((s, p) => s + p.lat, 0) / a.geometry.length;
-        return Math.abs(aLat - lat) < 0.5 && Math.abs(aLng - lng) < 0.5;
-      });
-
     setOsmDetecting(true);
-    fetchAlpesProtectedAreas()
-      .then(async areas => {
-        let candidates = filterNearby(areas);
-        // Fallback : requête locale si le cache Alpes est vide
-        if (candidates.length === 0) {
-          const local = await fetchProtectedAreas(localBounds, 25);
-          candidates = filterNearby(local);
-        }
+    searchNearbyOsmZones(lat, lng)
+      .then(candidates => {
         setOsmCandidates(candidates);
         if (!osmSourceId && candidates.length === 1) {
           setOsmSourceId(candidates[0].id);
@@ -200,9 +183,7 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
     setIsResetting(true);
     setError(null);
     try {
-      // Chercher d'abord dans les candidates déjà chargées (évite un appel réseau)
-      const cached = osmCandidates.find(c => c.id === osmSourceId.trim());
-      const osmZone = cached ?? await fetchOsmZoneById(osmSourceId.trim());
+      const osmZone = await fetchOsmZoneById(osmSourceId.trim());
       if (!osmZone) throw new Error('Zone OSM introuvable (vérifier l\'ID)');
       const newGeometry = protectedAreaToGeojson(osmZone);
       // Mettre à jour la géométrie (toujours possible)
@@ -401,7 +382,7 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
                 >
                   <option value="">— Choisir une zone OSM —</option>
                   {osmCandidates.map(c => (
-                    <option key={c.id} value={c.id}>{c.name!}</option>
+                    <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
               ) : (
