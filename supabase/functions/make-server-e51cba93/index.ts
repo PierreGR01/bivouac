@@ -572,9 +572,10 @@ app.post("/make-server-e51cba93/protected-areas-by-id", safeHandler(async (c: an
       return c.json({ success: false, error: 'Invalid type or id' }, 400);
     }
 
-    // Pour une relation, on inclut les ways membres pour avoir la géométrie complète
+    // Pour une relation : récupère directement les outer ways comme éléments individuels
+    // (plus fiable que relation(id);out geom; qui retourne la géométrie en inline dans les membres)
     const query = type === 'relation'
-      ? `[out:json][timeout:60];relation(${id});out geom;`
+      ? `[out:json][timeout:60];relation(${id})->.r;way(r.r:"outer");out geom;`
       : `[out:json][timeout:30];way(${id});out geom;`;
 
     const HEADERS = { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json', 'User-Agent': 'bivouac-app/1.0' };

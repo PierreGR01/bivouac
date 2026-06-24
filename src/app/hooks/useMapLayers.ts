@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchProtectedAreas, ProtectedArea } from '../services/protected-areas';
 import { fetchCustomZones } from '../../utils/supabase/custom-zones-api';
-import { fetchHiddenOsmZoneIds } from '../../utils/supabase/hidden-osm-zones-api';
+import { fetchHiddenOsmZones } from '../../utils/supabase/hidden-osm-zones-api';
 import { devLog } from '../utils/logger';
 
 type MapBounds = { south: number; west: number; north: number; east: number };
@@ -57,7 +57,7 @@ export function useMapLayers() {
 
   const hiddenOsmQuery = useQuery({
     queryKey: ['hiddenOsmZones'],
-    queryFn: fetchHiddenOsmZoneIds,
+    queryFn: fetchHiddenOsmZones,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -83,7 +83,7 @@ export function useMapLayers() {
     try {
       devLog.log('🗻 Chargement zones protégées (viewport)...');
       const areas = await fetchProtectedAreas(bounds);
-      const hiddenIds = new Set(hiddenOsmQuery.data ?? []);
+      const hiddenIds = new Set((hiddenOsmQuery.data ?? []).map(z => z.id));
       const filtered = areas.filter((a: ProtectedArea) => !hiddenIds.has(a.id));
       devLog.log(`✅ ${filtered.length} zones protégées`);
       queryClient.setQueryData(['protectedAreas'], filtered);

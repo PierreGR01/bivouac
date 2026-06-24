@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { X, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { X, Loader2, AlertCircle } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { createCustomZone, updateCustomZone, deleteCustomZone, CustomZone } from '../../utils/supabase/custom-zones-api';
 import { hideOsmZone } from '../../utils/supabase/hidden-osm-zones-api';
-import { fetchOsmZoneById, fetchProtectedAreas, protectedAreaToGeojson } from '../services/protected-areas';
+import { fetchOsmZoneById } from '../services/protected-areas';
 import { BivouacButton } from './ui/bivouac-button';
 
 interface CustomZoneFormProps {
@@ -14,12 +14,13 @@ interface CustomZoneFormProps {
   zone?: CustomZone;
   osmZoneId?: string;
   prefill?: { name?: string };
+  onRegisterRequestClose?: (fn: () => void) => void;
 }
 
 const RESTRICTION_OPTIONS = [
   { value: 'camping_forbidden', label: 'Camping interdit' },
   { value: 'bivouac_forbidden', label: 'Bivouac interdit' },
-  { value: 'fire_forbidden', label: 'Feu interdit' },
+  { value: 'fire_forbidden', label: 'Tout type de feux interdits' },
 ];
 
 function Toggle({ enabled, onChange, disabled }: { enabled: boolean; onChange: () => void; disabled?: boolean }) {
@@ -39,75 +40,79 @@ function Toggle({ enabled, onChange, disabled }: { enabled: boolean; onChange: (
   );
 }
 
-export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, prefill }: CustomZoneFormProps) {
+export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, prefill, onRegisterRequestClose }: CustomZoneFormProps) {
   const { currentUser } = useAuth();
   const queryClient = useQueryClient();
   const isEditing = !!zone;
   const isOsmZone = !!osmZoneId;
+  const isExistingZone = isEditing || isOsmZone;
 
-  const [name, setName] = useState(zone?.name ?? prefill?.name ?? '');
-  const [description, setDescription] = useState(zone?.description ?? '');
-  const [restrictionTypes, setRestrictionTypes] = useState<string[]>(
-    zone?.restriction_types ?? ['camping_forbidden']
-  );
-  const [sourceUrl, setSourceUrl] = useState(zone?.source_url ?? '');
-  const [osmSourceId, setOsmSourceId] = useState(zone?.osm_source_id ?? osmZoneId ?? '');
+  const initial = useMemo(() => ({
+    name: zone?.name ?? prefill?.name ?? '',
+    description: zone?.description ?? '',
+    restrictionTypes: zone?.restriction_types ?? ['camping_forbidden'],
+    sourceUrl: zone?.source_url ?? '',
+    osmSourceId: zone?.osm_source_id ?? '',
+    timeRangeEnabled: !!(zone?.time_range_start),
+    timeRangeStart: zone?.time_range_start ?? '09:00',
+    timeRangeEnd: zone?.time_range_end ?? '19:00',
+    periodEnabled: !!(zone?.period_start),
+    periodStart: zone?.period_start ?? '',
+    periodEnd: zone?.period_end ?? '',
+  }), []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const [timeRangeEnabled, setTimeRangeEnabled] = useState(!!(zone?.time_range_start));
-  const [timeRangeStart, setTimeRangeStart] = useState(zone?.time_range_start ?? '09:00');
-  const [timeRangeEnd, setTimeRangeEnd] = useState(zone?.time_range_end ?? '19:00');
+  const [name, setName] = useState(initial.name);
+  const [description, setDescription] = useState(initial.description);
+  const [restrictionTypes, setRestrictionTypes] = useState<string[]>(initial.restrictionTypes);
+  const [sourceUrl, setSourceUrl] = useState(initial.sourceUrl);
+  const [osmSourceId, setOsmSourceId] = useState(initial.osmSourceId);
 
-  const [periodEnabled, setPeriodEnabled] = useState(!!(zone?.period_start));
-  const [periodStart, setPeriodStart] = useState(zone?.period_start ?? '');
-  const [periodEnd, setPeriodEnd] = useState(zone?.period_end ?? '');
+  const [timeRangeEnabled, setTimeRangeEnabled] = useState(initial.timeRangeEnabled);
+  const [timeRangeStart, setTimeRangeStart] = useState(initial.timeRangeStart);
+  const [timeRangeEnd, setTimeRangeEnd] = useState(initial.timeRangeEnd);
+
+  const [periodEnabled, setPeriodEnabled] = useState(initial.periodEnabled);
+  const [periodStart, setPeriodStart] = useState(initial.periodStart);
+  const [periodEnd, setPeriodEnd] = useState(initial.periodEnd);
 
   const [isLoading, setIsLoading] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
-  const [osmCandidates, setOsmCandidates] = useState<{ id: string; name: string }[]>([]);
-  const [osmLoading, setOsmLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [osmResetStatus, setOsmResetStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [osmResetError, setOsmResetError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showConfirmClose, setShowConfirmClose] = useState(false);
 
-  // Charge les zones OSM proches en réutilisant fetchProtectedAreas (même endpoint que la carte, fiable)
-  // On ne filtre PAS les zones cachées : c'est précisément celles-là qu'on veut retrouver ici
+  const isDirty = isExistingZone && (
+    name !== initial.name
+    || description !== initial.description
+    || JSON.stringify([...restrictionTypes].sort()) !== JSON.stringify([...initial.restrictionTypes].sort())
+    || sourceUrl !== initial.sourceUrl
+    || osmSourceId !== initial.osmSourceId
+    || timeRangeEnabled !== initial.timeRangeEnabled
+    || timeRangeStart !== initial.timeRangeStart
+    || timeRangeEnd !== initial.timeRangeEnd
+    || periodEnabled !== initial.periodEnabled
+    || periodStart !== initial.periodStart
+    || periodEnd !== initial.periodEnd
+  );
+
+  const isDirtyRef = useRef(isDirty);
+  isDirtyRef.current = isDirty;
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  const handleRequestClose = useCallback(() => {
+    if (isDirtyRef.current) {
+      setShowConfirmClose(true);
+    } else {
+      onCloseRef.current();
+    }
+  }, []);
+
   useEffect(() => {
-    if (!isEditing) return;
-    // Calcul du bbox depuis la géométrie de la zone, avec padding
-    let south = 44.5, north = 45.7, west = 5.8, east = 7.0;
-    try {
-      const raw = geometry as unknown as Record<string, unknown>;
-      const geom: GeoJSON.Geometry | null = raw.type === 'Feature'
-        ? ((geometry as GeoJSON.Feature).geometry as GeoJSON.Geometry)
-        : (raw.type === 'Polygon' || raw.type === 'MultiPolygon')
-          ? (geometry as unknown as GeoJSON.Geometry)
-          : null;
-      const rings: number[][][] = geom?.type === 'Polygon'
-        ? (geom as GeoJSON.Polygon).coordinates
-        : geom?.type === 'MultiPolygon'
-          ? (geom as GeoJSON.MultiPolygon).coordinates.flat()
-          : [];
-      const coords = rings.flat();
-      if (coords.length > 0) {
-        const pad = 0.3;
-        west  = Math.min(...coords.map(c => c[0])) - pad;
-        east  = Math.max(...coords.map(c => c[0])) + pad;
-        south = Math.min(...coords.map(c => c[1])) - pad;
-        north = Math.max(...coords.map(c => c[1])) + pad;
-      }
-    } catch { /* fallback Alpes */ }
-    const RELEVANT_TYPES = new Set(['national_park', 'regional_park', 'nature_reserve', 'protected_area', 'wilderness', 'natura2000']);
-    fetchProtectedAreas({ south, west, north, east })
-      .then(areas => {
-        const candidates = areas
-          .filter(a => a.name && RELEVANT_TYPES.has(a.areaType))
-          .map(a => ({ id: a.id, name: a.name! }))
-          .sort((a, b) => a.name.localeCompare(b.name));
-        setOsmCandidates(candidates);
-        if (!osmSourceId && candidates.length === 1) setOsmSourceId(candidates[0].id);
-      })
-      .catch(() => {})
-      .finally(() => setOsmLoading(false));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    onRegisterRequestClose?.(handleRequestClose);
+  }, [handleRequestClose, onRegisterRequestClose]);
 
   const handleRestrictionToggle = (value: string) => {
     setRestrictionTypes(prev =>
@@ -151,9 +156,8 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
         await updateCustomZone(zone.id, payload);
       } else {
         await createCustomZone(payload);
-        // Si zone OSM : masquer l'original après création de la copie custom
         if (osmZoneId) {
-          await hideOsmZone(osmZoneId);
+          await hideOsmZone(osmZoneId, name.trim());
           await queryClient.invalidateQueries({ queryKey: ['hiddenOsmZones'] });
           await queryClient.invalidateQueries({ queryKey: ['protectedAreas'] });
         }
@@ -171,7 +175,7 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
     setIsLoading(true);
     try {
       if (isOsmZone && osmZoneId) {
-        await hideOsmZone(osmZoneId);
+        await hideOsmZone(osmZoneId, name.trim());
         await queryClient.invalidateQueries({ queryKey: ['hiddenOsmZones'] });
         await queryClient.invalidateQueries({ queryKey: ['protectedAreas'] });
       } else if (zone) {
@@ -186,26 +190,26 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
   };
 
   const handleResetFromOsm = async () => {
-    if (!osmSourceId.trim() || !zone) return;
+    const raw = osmSourceId.trim();
+    if (!raw || !zone) return;
+    const normalizedId = /^\d+$/.test(raw) ? `osm-relation-${raw}` : raw;
     setIsResetting(true);
-    setError(null);
+    setOsmResetStatus('idle');
+    setOsmResetError(null);
     try {
-      const osmZone = await fetchOsmZoneById(osmSourceId.trim());
-      if (!osmZone) throw new Error('Zone OSM introuvable (vérifier l\'ID)');
-      const newGeometry = protectedAreaToGeojson(osmZone);
-      // Mettre à jour la géométrie (toujours possible)
-      await updateCustomZone(zone.id, { geometry: newGeometry });
-      // Sauvegarder l'ID OSM source en best-effort (nécessite la migration SQL)
-      try {
-        await updateCustomZone(zone.id, { osm_source_id: osmSourceId.trim() });
-      } catch { /* colonne pas encore créée en base */ }
+      const newGeometry = await fetchOsmZoneById(normalizedId);
+      if (!newGeometry) throw new Error('Zone OSM introuvable — vérifier l\'ID');
+      await updateCustomZone(zone.id, { geometry: newGeometry, osm_source_id: normalizedId });
       await queryClient.invalidateQueries({ queryKey: ['customZones'] });
-      onSuccess();
+      await queryClient.refetchQueries({ queryKey: ['customZones'] });
+      setOsmResetStatus('success');
+      setTimeout(() => onSuccess(), 1500);
     } catch (err) {
       const msg = err instanceof Error
         ? err.message
         : (err as any)?.message ?? (err as any)?.details ?? JSON.stringify(err);
-      setError(msg || 'Erreur lors de la réinitialisation');
+      setOsmResetStatus('error');
+      setOsmResetError(msg || 'Erreur lors de la mise à jour');
     } finally {
       setIsResetting(false);
     }
@@ -215,211 +219,185 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
   const smallInputClass = 'w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500';
 
   return (
-    <div
-      className="fixed bottom-4 right-4 w-[22rem] bg-white rounded-lg shadow-2xl border border-gray-200 p-4 z-[9999] max-h-[90vh] overflow-y-auto"
-      style={{ position: 'fixed', bottom: '16px', right: '16px', zIndex: 9999 }}
-    >
-      {/* Header */}
-      <div className="flex justify-between items-center mb-4 sticky top-0 bg-white pb-2 border-b border-gray-100">
-        <h3 className="text-lg font-bold text-gray-800">
-          {isEditing ? 'Modifier la zone' : 'Créer une zone réglementée'}
-        </h3>
-        <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full transition-colors">
-          <X size={18} className="text-gray-500" />
-        </button>
-      </div>
-
-      {/* Erreur — en haut pour toujours être visible */}
-      {error && (
-        <div className="mb-3 bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm flex items-center gap-2">
-          <AlertCircle size={15} className="flex-shrink-0" />
-          {error}
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Nom */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Nom de la zone *</label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Ex: Parc national des Écrins"
-            className={inputClass}
-            disabled={isLoading}
-          />
+    <>
+      <div
+        className="fixed bottom-4 right-4 w-[22rem] bg-white rounded-lg shadow-2xl border border-gray-200 p-4 z-[9999] max-h-[90vh] overflow-y-auto"
+        style={{ position: 'fixed', bottom: '16px', right: '16px', zIndex: 9999 }}
+      >
+        {/* Header */}
+        <div className="flex justify-between items-center mb-4 sticky top-0 bg-white pb-2 border-b border-gray-100">
+          <h3 className="text-lg font-bold text-gray-800">
+            {isExistingZone ? 'Modifier la zone réglementée' : 'Créer une zone réglementée'}
+          </h3>
+          <button onClick={handleRequestClose} className="p-1 hover:bg-gray-100 rounded-full transition-colors">
+            <X size={18} className="text-gray-500" />
+          </button>
         </div>
 
-        {/* Description */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Contexte et détails de la restriction..."
-            rows={2}
-            className={inputClass}
-            disabled={isLoading}
-          />
-        </div>
-
-        {/* Types de restrictions (cumulatifs) */}
-        <div>
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-            Types de restrictions *
-          </p>
-          <div className="space-y-2">
-            {RESTRICTION_OPTIONS.map(({ value, label }) => (
-              <label key={value} className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={restrictionTypes.includes(value)}
-                  onChange={() => handleRestrictionToggle(value)}
-                  disabled={isLoading}
-                  className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-                />
-                <span className="text-sm text-gray-700">{label}</span>
-              </label>
-            ))}
+        {error && (
+          <div className="mb-3 bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm flex items-center gap-2">
+            <AlertCircle size={15} className="flex-shrink-0" />
+            {error}
           </div>
-        </div>
+        )}
 
-        {/* Tranche horaire */}
-        <div className="border border-gray-200 rounded-lg p-3 space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-700 leading-tight">
-              Restriction sur une tranche horaire
-            </span>
-            <Toggle enabled={timeRangeEnabled} onChange={() => setTimeRangeEnabled(v => !v)} disabled={isLoading} />
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Nom */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Nom de la zone *</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Ex: Parc national des Écrins"
+              className={inputClass}
+              disabled={isLoading}
+            />
           </div>
-          {timeRangeEnabled && (
-            <div className="flex items-end gap-2 pt-1">
-              <div className="flex-1">
-                <label className="block text-xs text-gray-500 mb-1">De</label>
-                <input type="time" value={timeRangeStart} onChange={(e) => setTimeRangeStart(e.target.value)} disabled={isLoading} className={smallInputClass} />
-              </div>
-              <div className="flex-1">
-                <label className="block text-xs text-gray-500 mb-1">À</label>
-                <input type="time" value={timeRangeEnd} onChange={(e) => setTimeRangeEnd(e.target.value)} disabled={isLoading} className={smallInputClass} />
-              </div>
+
+          {/* Description */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Contexte et détails de la restriction..."
+              rows={2}
+              className={inputClass}
+              disabled={isLoading}
+            />
+          </div>
+
+          {/* Types de restrictions */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              Types de restrictions *
+            </p>
+            <div className="space-y-2">
+              {RESTRICTION_OPTIONS.map(({ value, label }) => (
+                <label key={value} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={restrictionTypes.includes(value)}
+                    onChange={() => handleRestrictionToggle(value)}
+                    disabled={isLoading}
+                    className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span className="text-sm text-gray-700">{label}</span>
+                </label>
+              ))}
             </div>
-          )}
-        </div>
-
-        {/* Période de l'année */}
-        <div className="border border-gray-200 rounded-lg p-3 space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-700 leading-tight">
-              Restriction sur une période de l'année
-            </span>
-            <Toggle enabled={periodEnabled} onChange={() => setPeriodEnabled(v => !v)} disabled={isLoading} />
           </div>
-          {periodEnabled && (
-            <div className="flex items-end gap-2 pt-1">
-              <div className="flex-1">
-                <label className="block text-xs text-gray-500 mb-1">Du (JJ/MM)</label>
-                <input
-                  type="text"
-                  value={periodStart}
-                  onChange={(e) => setPeriodStart(e.target.value)}
-                  placeholder="01/05"
-                  maxLength={5}
-                  disabled={isLoading}
-                  className={smallInputClass}
-                />
-              </div>
-              <div className="flex-1">
-                <label className="block text-xs text-gray-500 mb-1">Au (JJ/MM)</label>
-                <input
-                  type="text"
-                  value={periodEnd}
-                  onChange={(e) => setPeriodEnd(e.target.value)}
-                  placeholder="30/09"
-                  maxLength={5}
-                  disabled={isLoading}
-                  className={smallInputClass}
-                />
-              </div>
+
+          {/* Tranche horaire */}
+          <div className="border border-gray-200 rounded-lg p-3 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-700 leading-tight">
+                Restriction sur une tranche horaire
+              </span>
+              <Toggle enabled={timeRangeEnabled} onChange={() => setTimeRangeEnabled(v => !v)} disabled={isLoading} />
             </div>
-          )}
-        </div>
-
-        {/* Source officielle */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Source officielle (URL)</label>
-          <input
-            type="url"
-            value={sourceUrl}
-            onChange={(e) => setSourceUrl(e.target.value)}
-            placeholder="https://..."
-            className={inputClass}
-            disabled={isLoading}
-          />
-        </div>
-
-        {/* Actions principales */}
-        <div className="flex gap-2 pt-2 border-t border-gray-100">
-          <BivouacButton type="submit" variant="primary" disabled={isLoading} className="flex-1">
-            {isLoading && !confirmDelete
-              ? <><Loader2 size={15} className="animate-spin" /> Sauvegarde…</>
-              : isEditing ? 'Modifier la zone' : 'Créer la zone'}
-          </BivouacButton>
-          <BivouacButton type="button" variant="outline" onClick={onClose} disabled={isLoading} className="flex-1">
-            Annuler
-          </BivouacButton>
-        </div>
-
-        {/* Mettre à jour depuis OSM — admin uniquement, zone existante */}
-        {isEditing && (
-          <div className="pt-2 border-t border-gray-100 space-y-2">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Mettre à jour depuis OSM</p>
-            {osmSourceId.trim() ? (
-              /* ID OSM connu — bouton direct */
-              <div className="flex gap-2 items-center">
-                <span className="text-xs text-gray-400 flex-1 truncate font-mono">{osmSourceId}</span>
-                <BivouacButton
-                  type="button"
-                  variant="outline"
-                  onClick={handleResetFromOsm}
-                  disabled={isLoading || isResetting}
-                  className="shrink-0 text-blue-700 border-blue-200 hover:bg-blue-50"
-                  title="Recharger le tracé depuis OpenStreetMap"
-                >
-                  {isResetting ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
-                </BivouacButton>
+            {timeRangeEnabled && (
+              <div className="flex items-end gap-2 pt-1">
+                <div className="flex-1">
+                  <label className="block text-xs text-gray-500 mb-1">De</label>
+                  <input type="time" value={timeRangeStart} onChange={(e) => setTimeRangeStart(e.target.value)} disabled={isLoading} className={smallInputClass} />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-xs text-gray-500 mb-1">À</label>
+                  <input type="time" value={timeRangeEnd} onChange={(e) => setTimeRangeEnd(e.target.value)} disabled={isLoading} className={smallInputClass} />
+                </div>
               </div>
-            ) : (
-              /* ID OSM inconnu — dropdown des zones chargées sur la carte */
+            )}
+          </div>
+
+          {/* Période de l'année */}
+          <div className="border border-gray-200 rounded-lg p-3 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-700 leading-tight">
+                Restriction sur une période de l'année
+              </span>
+              <Toggle enabled={periodEnabled} onChange={() => setPeriodEnabled(v => !v)} disabled={isLoading} />
+            </div>
+            {periodEnabled && (
+              <div className="flex items-end gap-2 pt-1">
+                <div className="flex-1">
+                  <label className="block text-xs text-gray-500 mb-1">Du (JJ/MM)</label>
+                  <input
+                    type="text"
+                    value={periodStart}
+                    onChange={(e) => setPeriodStart(e.target.value)}
+                    placeholder="01/05"
+                    maxLength={5}
+                    disabled={isLoading}
+                    className={smallInputClass}
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-xs text-gray-500 mb-1">Au (JJ/MM)</label>
+                  <input
+                    type="text"
+                    value={periodEnd}
+                    onChange={(e) => setPeriodEnd(e.target.value)}
+                    placeholder="30/09"
+                    maxLength={5}
+                    disabled={isLoading}
+                    className={smallInputClass}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Source officielle */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Source officielle (URL)</label>
+            <input
+              type="url"
+              value={sourceUrl}
+              onChange={(e) => setSourceUrl(e.target.value)}
+              placeholder="https://..."
+              className={inputClass}
+              disabled={isLoading}
+            />
+          </div>
+
+          {/* Mettre à jour depuis OSM — admin uniquement, zone existante */}
+          {isEditing && (
+            <div className="pt-2 border-t border-gray-100 space-y-2">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Mettre à jour depuis OSM</p>
               <div className="flex gap-2">
-                <select
+                <input
+                  type="text"
                   value={osmSourceId}
-                  onChange={e => setOsmSourceId(e.target.value)}
-                  className={`${inputClass} text-xs`}
+                  onChange={e => { setOsmSourceId(e.target.value); setOsmResetStatus('idle'); setOsmResetError(null); }}
+                  placeholder="ID OSM (ex: 1024508)"
+                  className={`${inputClass} text-xs font-mono`}
                   disabled={isLoading || isResetting}
-                >
-                  <option value="">— Choisir une zone OSM —</option>
-                  {osmCandidates.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
+                />
                 <BivouacButton
                   type="button"
                   variant="outline"
                   onClick={handleResetFromOsm}
                   disabled={isLoading || isResetting || !osmSourceId.trim()}
                   className="shrink-0 text-blue-700 border-blue-200 hover:bg-blue-50"
-                  title="Recharger le tracé depuis OpenStreetMap"
                 >
-                  {isResetting ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
+                  {isResetting ? <Loader2 size={15} className="animate-spin" /> : 'Charger'}
                 </BivouacButton>
               </div>
-            )}
-          </div>
-        )}
+              {osmResetStatus === 'success' && (
+                <p className="text-xs text-emerald-700 font-medium">✓ Tracé mis à jour sur la carte</p>
+              )}
+              {osmResetStatus === 'error' && osmResetError && (
+                <p className="text-xs text-red-600 flex items-start gap-1">
+                  <AlertCircle size={13} className="flex-shrink-0 mt-0.5" />
+                  {osmResetError}
+                </p>
+              )}
+            </div>
+          )}
 
-        {/* Suppression / Désactivation */}
-        {(isEditing || isOsmZone) && (
+          {/* Actions principales + Suppression */}
           <div className="pt-2 border-t border-gray-100">
             {confirmDelete ? (
               <div className="space-y-2">
@@ -442,19 +420,61 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
                 </div>
               </div>
             ) : (
+              <div className="flex gap-2">
+                <BivouacButton
+                  type="submit"
+                  variant="primary"
+                  disabled={isLoading || (isExistingZone && !isDirty)}
+                  className="flex-1"
+                >
+                  {isLoading && !confirmDelete
+                    ? <><Loader2 size={15} className="animate-spin" /> Sauvegarde…</>
+                    : isExistingZone ? 'Modifier la zone' : 'Créer la zone'}
+                </BivouacButton>
+                {isExistingZone && (
+                  <BivouacButton
+                    type="button"
+                    variant="destructive"
+                    onClick={() => setConfirmDelete(true)}
+                    disabled={isLoading}
+                    className="flex-1 bg-red-50 text-red-700 border border-red-200 hover:bg-red-100"
+                  >
+                    {isOsmZone ? 'Désactiver' : 'Supprimer'}
+                  </BivouacButton>
+                )}
+              </div>
+            )}
+          </div>
+        </form>
+      </div>
+
+      {/* Modale de confirmation d'annulation */}
+      {showConfirmClose && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-2xl p-5 mx-4 max-w-sm w-full">
+            <h4 className="text-base font-bold text-gray-800 mb-2">Annuler les modifications ?</h4>
+            <p className="text-sm text-gray-600 mb-4">Les modifications non sauvegardées seront perdues.</p>
+            <div className="flex gap-2">
               <BivouacButton
                 type="button"
                 variant="destructive"
-                onClick={() => setConfirmDelete(true)}
-                disabled={isLoading}
-                className="w-full bg-red-50 text-red-700 border border-red-200 hover:bg-red-100"
+                onClick={() => { setShowConfirmClose(false); onClose(); }}
+                className="flex-1"
               >
-                {isOsmZone ? 'Désactiver cette zone' : 'Supprimer cette zone'}
+                Oui, annuler
               </BivouacButton>
-            )}
+              <BivouacButton
+                type="button"
+                variant="outline"
+                onClick={() => setShowConfirmClose(false)}
+                className="flex-1"
+              >
+                Continuer l'édition
+              </BivouacButton>
+            </div>
           </div>
-        )}
-      </form>
-    </div>
+        </div>
+      )}
+    </>
   );
 }

@@ -39,6 +39,12 @@ interface CacheEntry {
 const cache = new Map<string, CacheEntry>();
 const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes (viewport statiques en général)
 
+// Index global id→zone pour retrouver le nom des zones masquées sans requête réseau
+const knownAreasById = new Map<string, ProtectedArea>();
+export function getKnownArea(id: string): ProtectedArea | undefined {
+  return knownAreasById.get(id);
+}
+
 // Rate limiting simple
 let lastRequestTime = 0;
 const MIN_REQUEST_INTERVAL = 3000; // 3 secondes entre requêtes
@@ -178,9 +184,6 @@ async function executeProtectedAreasQuery(
   `;
 
   try {
-    const controller = new AbortController();
-    const clientTimeout = setTimeout(() => controller.abort(), (timeout + 5) * 1000);
-
     devLog.log('🔍 Requête zones protégées...');
 
     const edgeFunctionUrl = import.meta.env.VITE_EDGE_FUNCTION_URL;
@@ -188,8 +191,10 @@ async function executeProtectedAreasQuery(
 
     const anonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY;
 
-    // Priorité : proxy Edge Function (évite CORS en production)
+    // Priorité : proxy Edge Function (essaie aussi overpass.kumi.systems en fallback)
     if (edgeFunctionUrl && anonKey) {
+      const proxyController = new AbortController();
+      const proxyTimer = setTimeout(() => proxyController.abort(), 15000);
       try {
         const proxyResp = await fetch(`${edgeFunctionUrl}/protected-areas`, {
           method: 'POST',
@@ -198,7 +203,7 @@ async function executeProtectedAreasQuery(
             'Authorization': `Bearer ${anonKey}`,
           },
           body: JSON.stringify({ south, west, north, east, timeout }),
-          signal: controller.signal,
+          signal: proxyController.signal,
         });
         if (proxyResp.ok) {
           const result = await proxyResp.json();
@@ -209,29 +214,33 @@ async function executeProtectedAreasQuery(
         }
       } catch (proxyErr) {
         devLog.warn('⚠️ Proxy zones protégées échoué, fallback direct', proxyErr);
+      } finally {
+        clearTimeout(proxyTimer);
       }
     }
 
-    // Fallback : appel direct Overpass
+    // Fallback : appel direct Overpass — contrôleur indépendant du proxy
     if (!data) {
-      const response = await fetch('https://overpass-api.de/api/interpreter', {
-        method: 'POST',
-        body: query,
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        signal: controller.signal,
-      });
+      const fallbackController = new AbortController();
+      const fallbackTimer = setTimeout(() => fallbackController.abort(), (timeout + 5) * 1000);
+      try {
+        const response = await fetch('https://overpass-api.de/api/interpreter', {
+          method: 'POST',
+          body: query,
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          signal: fallbackController.signal,
+        });
 
-      clearTimeout(clientTimeout);
-
-      if (!response.ok) {
-        if (response.status === 504) throw new Error('Overpass timeout - zone trop complexe');
-        if (response.status === 429) throw new Error('Overpass rate limit - trop de requêtes');
-        throw new Error(`Overpass erreur ${response.status}`);
+        if (!response.ok) {
+          if (response.status === 504) throw new Error('Overpass timeout - zone trop complexe');
+          if (response.status === 429) throw new Error('Overpass rate limit - trop de requêtes');
+          throw new Error(`Overpass erreur ${response.status}`);
+        }
+        data = await response.json();
+      } finally {
+        clearTimeout(fallbackTimer);
       }
-      data = await response.json();
     }
-
-    clearTimeout(clientTimeout);
     const areas = parseProtectedAreas(data);
 
     // Mettre en cache
@@ -241,6 +250,7 @@ async function executeProtectedAreasQuery(
       bounds: cacheKey,
     });
 
+    areas.forEach(a => knownAreasById.set(a.id, a));
     devLog.log(`✅ ${areas.length} zones protégées trouvées`);
     return areas;
   } catch (error: any) {
@@ -632,21 +642,135 @@ export async function searchNearbyOsmZones(
     .filter((c: { id: string; name: string }) => c.name);
 }
 
+interface WaySegment {
+  nodeIds: number[];
+  coords: number[][];
+}
+
+/**
+ * Assemble des segments OSM en anneaux GeoJSON fermés.
+ * Utilise les node IDs (champ `nodes` de la réponse Overpass) pour l'appariement
+ * des extrémités — 100% fiable, indépendant de la précision flottante des coordonnées.
+ */
+function assembleGeoJSONRings(ways: WaySegment[]): number[][][] {
+  if (ways.length === 0) return [];
+
+  const rings: number[][][] = [];
+  const remaining = ways.map(w => ({ nodeIds: [...w.nodeIds], coords: [...w.coords] }));
+
+  while (remaining.length > 0) {
+    const cur = remaining.shift()!;
+    let nodeIds = [...cur.nodeIds];
+    let coords = [...cur.coords];
+
+    let changed = true;
+    while (changed && remaining.length > 0) {
+      changed = false;
+      for (let i = 0; i < remaining.length; i++) {
+        const w = remaining[i];
+        const rEnd = nodeIds[nodeIds.length - 1];
+        const rStart = nodeIds[0];
+        const wStart = w.nodeIds[0];
+        const wEnd = w.nodeIds[w.nodeIds.length - 1];
+
+        if (rEnd === wStart) {
+          nodeIds.push(...w.nodeIds.slice(1));
+          coords.push(...w.coords.slice(1));
+          remaining.splice(i, 1); changed = true; break;
+        } else if (rEnd === wEnd) {
+          nodeIds.push(...[...w.nodeIds].reverse().slice(1));
+          coords.push(...[...w.coords].reverse().slice(1));
+          remaining.splice(i, 1); changed = true; break;
+        } else if (rStart === wEnd) {
+          nodeIds.unshift(...w.nodeIds.slice(0, -1));
+          coords.unshift(...w.coords.slice(0, -1));
+          remaining.splice(i, 1); changed = true; break;
+        } else if (rStart === wStart) {
+          nodeIds.unshift(...[...w.nodeIds].reverse().slice(0, -1));
+          coords.unshift(...[...w.coords].reverse().slice(0, -1));
+          remaining.splice(i, 1); changed = true; break;
+        }
+      }
+    }
+
+    // Fermer l'anneau (GeoJSON : premier = dernier)
+    if (nodeIds[0] !== nodeIds[nodeIds.length - 1]) {
+      coords.push([...coords[0]]);
+    }
+    if (coords.length >= 4) rings.push(coords);
+  }
+
+  return rings;
+}
+
+/**
+ * Convertit le JSON brut Overpass en GeoJSON Feature directement.
+ *
+ * Pour une relation : la requête retourne les outer ways comme éléments individuels
+ * (query: relation(id)->.r;way(r.r:"outer");out geom;)
+ * → on collecte tous les way elements et on les assemble.
+ *
+ * Pour un way : retourne l'unique way element.
+ */
+function overpassToGeoJSON(data: any, type: string, id: string): GeoJSON.Feature | null {
+  if (!data?.elements) return null;
+
+  if (type === 'relation') {
+    // Collecte tous les way elements avec géométrie ET node IDs (= les outer ways retournés par la requête)
+    const outerWays: WaySegment[] = data.elements
+      .filter((e: any) => e.type === 'way' && Array.isArray(e.nodes) && Array.isArray(e.geometry) && e.geometry.length >= 2)
+      .map((e: any) => ({
+        nodeIds: e.nodes as number[],
+        coords: e.geometry.map((p: any) => [p.lon, p.lat]),
+      }));
+
+    if (outerWays.length === 0) return null;
+
+    const rings = assembleGeoJSONRings(outerWays);
+    if (rings.length === 0) return null;
+
+    return {
+      type: 'Feature',
+      properties: {},
+      geometry: rings.length === 1
+        ? { type: 'Polygon', coordinates: [rings[0]] } as GeoJSON.Polygon
+        : { type: 'MultiPolygon', coordinates: rings.map(r => [r]) } as GeoJSON.MultiPolygon,
+    };
+  }
+
+  if (type === 'way') {
+    const numId = parseInt(id, 10);
+    const way = data.elements.find((e: any) => e.type === 'way' && e.id === numId);
+    if (!Array.isArray(way?.geometry) || way.geometry.length < 3) return null;
+    const coords: number[][] = way.geometry.map((p: any) => [p.lon, p.lat]);
+    if (Math.abs(coords[0][0] - coords[coords.length - 1][0]) > 0.000001 ||
+        Math.abs(coords[0][1] - coords[coords.length - 1][1]) > 0.000001) {
+      coords.push([...coords[0]]);
+    }
+    return {
+      type: 'Feature',
+      properties: {},
+      geometry: { type: 'Polygon', coordinates: [coords] } as GeoJSON.Polygon,
+    };
+  }
+
+  return null;
+}
+
 /**
  * Récupère une zone OSM spécifique par son ID (format "osm-relation-1024498").
- * Utilisé pour réinitialiser la géométrie d'une custom zone depuis OSM.
+ * Retourne directement un GeoJSON Feature pour mise à jour de custom zone.
  */
-export async function fetchOsmZoneById(osmId: string): Promise<ProtectedArea | null> {
+export async function fetchOsmZoneById(osmId: string): Promise<GeoJSON.Feature | null> {
   const parts = osmId.split('-');
   if (parts.length < 3) return null;
   const type = parts[1]; // 'relation' ou 'way'
   const id = parts.slice(2).join('-');
 
-  // Pour une relation, on récurse dans les ways membres (>;) afin d'obtenir
-  // leur géométrie complète — sans ça, out geom ne retourne que les bbox.
+  // Pour une relation : récupère les outer ways directement comme éléments individuels
   const query = type === 'relation'
-    ? `[out:json][timeout:60];relation(${id});(._; way(r););out geom;`
-    : `[out:json][timeout:30];way(${id});out geom;`;
+    ? `[out:json][timeout:60];relation(${id})->.r;way(r.r:"outer");out geom;`
+    : `[out:json][timeout:15];way(${id});out geom;`;
 
   try {
     const edgeFunctionUrl = import.meta.env.VITE_EDGE_FUNCTION_URL;
@@ -654,33 +778,52 @@ export async function fetchOsmZoneById(osmId: string): Promise<ProtectedArea | n
     let data: any = null;
 
     if (edgeFunctionUrl && anonKey) {
+      const proxyCtrl = new AbortController();
+      const proxyTimer = setTimeout(() => proxyCtrl.abort(), 10000);
       try {
         const resp = await fetch(`${edgeFunctionUrl}/protected-areas-by-id`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${anonKey}` },
           body: JSON.stringify({ type, id }),
+          signal: proxyCtrl.signal,
         });
         if (resp.ok) {
           const result = await resp.json();
           if (result.success) data = result.data;
         }
-      } catch { /* fallback direct */ }
+      } catch { /* fallback direct */ } finally {
+        clearTimeout(proxyTimer);
+      }
     }
 
     if (!data) {
-      const resp = await fetch('https://overpass-api.de/api/interpreter', {
-        method: 'POST',
-        body: `data=${encodeURIComponent(query)}`,
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      });
-      if (!resp.ok) throw new Error(`Overpass erreur ${resp.status}`);
-      data = await resp.json();
+      const MIN_OVERPASS_GAP = 65000;
+      const elapsed = Date.now() - lastRequestTime;
+      if (elapsed < MIN_OVERPASS_GAP) {
+        const wait = MIN_OVERPASS_GAP - elapsed;
+        devLog.log(`⏱️ Pause rate-limit Overpass (${Math.ceil(wait / 1000)}s)...`);
+        await new Promise(r => setTimeout(r, wait));
+      }
+      lastRequestTime = Date.now();
+
+      const overpassCtrl = new AbortController();
+      const overpassTimer = setTimeout(() => overpassCtrl.abort(), 65000);
+      try {
+        const resp = await fetch('https://overpass-api.de/api/interpreter', {
+          method: 'POST',
+          body: `data=${encodeURIComponent(query)}`,
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          signal: overpassCtrl.signal,
+        });
+        if (resp.status === 429) throw new Error('API Overpass surchargée — attends 60 secondes et réessaie');
+        if (!resp.ok) throw new Error(`Overpass erreur ${resp.status}`);
+        data = await resp.json();
+      } finally {
+        clearTimeout(overpassTimer);
+      }
     }
 
-    const areas = parseProtectedAreas(data);
-    // Chercher précisément la zone cible (les ways membres peuvent aussi apparaître dans le résultat)
-    const targetId = `osm-${type}-${id}`;
-    return areas.find(a => a.id === targetId) ?? areas[0] ?? null;
+    return overpassToGeoJSON(data, type, id);
   } catch (error) {
     devLog.warn('⚠️ fetchOsmZoneById:', error);
     return null;

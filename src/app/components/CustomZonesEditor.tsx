@@ -13,11 +13,12 @@ interface CustomZonesEditorProps {
   drawnGeometry?: GeoJSON.Feature | null;
   editingZone?: CustomZone | null;
   editingOsmZone?: ProtectedArea | null;
+  onRegisterRequestClose?: (fn: () => void) => void;
 }
 
 // osmZoneToGeojson est maintenant protectedAreaToGeojson dans protected-areas.ts
 
-export function CustomZonesEditor({ onClose, onDrawingToolChange, drawnGeometry, editingZone, editingOsmZone }: CustomZonesEditorProps) {
+export function CustomZonesEditor({ onClose, onDrawingToolChange, drawnGeometry, editingZone, editingOsmZone, onRegisterRequestClose }: CustomZonesEditorProps) {
   const { isAdmin } = useAuth();
   const [activeTool, setActiveTool] = useState<DrawTool>('polygon');
   const [selectedGeometry, setSelectedGeometry] = useState<GeoJSON.Feature | null>(
@@ -75,6 +76,7 @@ export function CustomZonesEditor({ onClose, onDrawingToolChange, drawnGeometry,
         prefill={editingOsmZone ? { name: osmName } : undefined}
         onClose={() => { setSelectedGeometry(null); onClose(); }}
         onSuccess={() => { setSelectedGeometry(null); onClose(); }}
+        onRegisterRequestClose={onRegisterRequestClose}
       />
     );
   }

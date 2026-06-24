@@ -72,21 +72,15 @@ export async function createCustomZone(zone: CustomZoneInput): Promise<CustomZon
   }
 }
 
-export async function updateCustomZone(id: string, zone: Partial<CustomZoneInput>): Promise<CustomZone | null> {
-  try {
-    const { data, error } = await supabaseClient
-      .from('custom_regulated_zones')
-      .update(zone)
-      .eq('id', id)
-      .select()
-      .single();
+export async function updateCustomZone(id: string, zone: Partial<CustomZoneInput>): Promise<void> {
+  const { data, error } = await supabaseClient
+    .from('custom_regulated_zones')
+    .update(zone)
+    .eq('id', id)
+    .select('id');
 
-    if (error) throw error;
-    return data;
-  } catch (error) {
-    console.error('Error updating custom zone:', error);
-    throw error;
-  }
+  if (error) throw error;
+  if (!data || data.length === 0) throw new Error(`Mise à jour refusée — vérifier les permissions (id: ${id})`);
 }
 
 export async function deleteCustomZone(id: string): Promise<void> {

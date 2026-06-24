@@ -48,6 +48,7 @@ export default function App() {
   const [userPosition, setUserPosition] = useState<{ lat: number; lng: number } | null>(null);
   const [selectedZone, setSelectedZone] = useState<CustomZone | null>(null);
   const [selectedProtectedArea, setSelectedProtectedArea] = useState<ProtectedArea | null>(null);
+  const requestCloseZoneForm = useRef<(() => void) | null>(null);
 
   // --- Composed handlers ---
 
@@ -91,6 +92,8 @@ export default function App() {
       setTemporaryPosition({ lat, lng });
     } else if (filters.isRoutingMode) {
       filters.setRoutePoints(prev => [...prev, { lat, lng }]);
+    } else if (showCustomZonesEditor && (editingZone || editingOsmZone)) {
+      requestCloseZoneForm.current?.();
     }
   };
 
@@ -147,7 +150,8 @@ export default function App() {
   };
 
   const isPanelOpen =
-    pois.selectedLocation !== null || isAddingMode || filters.showFilters || filters.isRoutingMode;
+    pois.selectedLocation !== null || isAddingMode || filters.showFilters || filters.isRoutingMode
+    || selectedZone !== null || selectedProtectedArea !== null;
 
   return (
     <div className="relative w-screen overflow-hidden" style={{ height: '100dvh' }}>
@@ -659,6 +663,7 @@ export default function App() {
           drawnGeometry={drawnGeometry}
           editingZone={editingZone}
           editingOsmZone={editingOsmZone}
+          onRegisterRequestClose={(fn) => { requestCloseZoneForm.current = fn; }}
         />
         </Suspense>
       )}
