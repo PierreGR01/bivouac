@@ -245,8 +245,8 @@
     /* ── LAPTOP MOCKUP ───────────────────────────────── */
     .laptop-wrap {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 40px;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 32px;
       align-items: start;
       margin-top: 8px;
     }
@@ -254,23 +254,14 @@
     .laptop-block {
       display: flex;
       flex-direction: column;
-      gap: 24px;
-    }
-
-    .laptop {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
+      gap: 20px;
     }
 
     .laptop-lid {
-      width: 100%;
       background: #F1F2F4;
       border-radius: 22px;
-      padding: 18px;
+      padding: 14px;
       border: 1.5px solid #C2C6CC;
-      position: relative;
-      z-index: 2;
     }
 
     .laptop-screen-area {
@@ -285,28 +276,6 @@
       width: 100%;
       height: auto;
       display: block;
-    }
-
-    .laptop-base {
-      width: 107%;
-      margin-top: -1.5px;
-      height: 26px;
-      background: #F1F2F4;
-      border: 1.5px solid #C2C6CC;
-      border-top: none;
-      border-radius: 0 0 14px 14px;
-      display: flex;
-      align-items: flex-start;
-      justify-content: center;
-    }
-
-    .laptop-notch {
-      width: 12.15%;
-      height: 11px;
-      background: #F1F2F4;
-      border: 1.5px solid #C2C6CC;
-      border-top: none;
-      border-radius: 0 0 9px 9px;
     }
 
     /* ── SECTION GÉNÉRIQUE ───────────────────────────── */
@@ -780,7 +749,7 @@
       .partner-card { border-right: none; border-bottom: 1px solid var(--ligne); }
       .partner-card:last-child { border-bottom: none; }
 
-      .laptop-wrap { grid-template-columns: 1fr; gap: 48px; }
+      .laptop-wrap { grid-template-columns: 1fr; gap: 40px; }
       .phones-duo { gap: 10px; }
       .phone { width: 130px; padding: 8px; border-radius: 21px; }
       .phone-screen { border-radius: 17px; }
@@ -924,36 +893,72 @@
       <h2>Une interface cartographique<br><strong>pensée pour le terrain</strong></h2>
       <div class="laptop-wrap">
         <div class="laptop-block">
-          <div class="laptop">
-            <div class="laptop-lid">
-              <div class="laptop-screen-area">
-                <img src="screenshots/laptop-radar.png" alt="Radar précipitations — données météo en temps réel" loading="lazy" />
-              </div>
+          <div class="laptop-lid">
+            <div class="laptop-screen-area">
+              <img src="screenshots/laptop-spot.png" alt="Fiche spot — Joli spot au dessus des Doménons" loading="lazy" />
             </div>
-            <div class="laptop-base"><div class="laptop-notch"></div></div>
           </div>
           <div class="screenshot-caption">
             <span class="caption-num">01</span>
             <div>
-              <strong>Données météo en temps réel</strong>
-              <p>Le radar précipitations s'active en un clic et se superpose à la carte. Les données sont actualisées en continu — une information directement utile avant de poser sa tente.</p>
+              <strong>Fiche spot détaillée</strong>
+              <p>Altitude, saison, accès à l'eau, capacité, difficulté — chaque spot agrège les données institutionnelles et les contributions terrain.</p>
             </div>
           </div>
         </div>
         <div class="laptop-block">
-          <div class="laptop">
-            <div class="laptop-lid">
-              <div class="laptop-screen-area">
-                <img src="screenshots/laptop-ecrins.png" alt="Fiche zone — Parc national des Écrins" loading="lazy" />
-              </div>
+          <div class="laptop-lid">
+            <div class="laptop-screen-area">
+              <img src="screenshots/laptop-radar-zoom.png" alt="Données précipitations — radar météo zoomé" loading="lazy" />
             </div>
-            <div class="laptop-base"><div class="laptop-notch"></div></div>
           </div>
           <div class="screenshot-caption">
             <span class="caption-num">02</span>
             <div>
-              <strong>Réglementation sourcée par zone</strong>
-              <p>Chaque zone affiche ses règles précises — périodes, types de restriction, gestionnaire. L'information est attribuée à son émetteur légitime : ici, le Parc national des Écrins.</p>
+              <strong>Radar précipitations</strong>
+              <p>Le radar s'active en surcouche de la carte topographique. Données actualisées en continu, directement lisibles sur le terrain.</p>
+            </div>
+          </div>
+        </div>
+        <div class="laptop-block">
+          <div class="laptop-lid">
+            <div class="laptop-screen-area">
+              <img src="screenshots/laptop-radar.png" alt="Vue d'ensemble — radar précipitations large" loading="lazy" />
+            </div>
+          </div>
+          <div class="screenshot-caption">
+            <span class="caption-num">03</span>
+            <div>
+              <strong>Vue massif complet</strong>
+              <p>Le radar couvre l'ensemble du massif — visualiser d'un coup d'œil les zones de précipitations sur un itinéraire de plusieurs jours.</p>
+            </div>
+          </div>
+        </div>
+        <div class="laptop-block">
+          <div class="laptop-lid">
+            <div class="laptop-screen-area">
+              <img src="screenshots/laptop-ecrins.png" alt="Zone réglementée — Parc national des Écrins" loading="lazy" />
+            </div>
+          </div>
+          <div class="screenshot-caption">
+            <span class="caption-num">04</span>
+            <div>
+              <strong>Réglementation sourcée</strong>
+              <p>La fiche zone Parc des Écrins affiche les restrictions précises, les périodes et le gestionnaire responsable — l'information à sa source.</p>
+            </div>
+          </div>
+        </div>
+        <div class="laptop-block">
+          <div class="laptop-lid">
+            <div class="laptop-screen-area">
+              <img src="screenshots/laptop-admin.png" alt="Interface admin — édition zone réglementée" loading="lazy" />
+            </div>
+          </div>
+          <div class="screenshot-caption">
+            <span class="caption-num">05</span>
+            <div>
+              <strong>Administration autonome</strong>
+              <p>Les gestionnaires de territoires administrent directement leurs zones dans la plateforme — types de restriction, périodes, source officielle.</p>
             </div>
           </div>
         </div>
