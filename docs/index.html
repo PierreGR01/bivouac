@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Bivouac — Plateforme de médiation réglementaire</title>
+  <title>Bivouac — Plateforme collaborative et pédagogique</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -184,10 +184,10 @@
     /* Phone mockup frame */
     .phone {
       position: relative;
-      width: 188px;
-      padding: 9px;
+      width: 220px;
+      padding: 11px;
       background: #F1F2F4;
-      border-radius: 48px;
+      border-radius: 54px;
       border: 1.5px solid #C2C6CC;
       flex-shrink: 0;
     }
@@ -213,7 +213,7 @@
     }
 
     .phone-screen {
-      border-radius: 38px;
+      border-radius: 44px;
       overflow: hidden;
       background: #fff;
       border: 1.5px solid #D4D7DC;
@@ -221,7 +221,7 @@
     }
 
     .phone-notch {
-      height: 22px;
+      height: 26px;
       background: #fff;
       display: flex;
       align-items: center;
@@ -229,8 +229,8 @@
     }
 
     .phone-notch-pill {
-      width: 76px;
-      height: 18px;
+      width: 88px;
+      height: 20px;
       background: #F1F2F4;
       border: 1.5px solid #C2C6CC;
       border-radius: 12px;
@@ -240,6 +240,76 @@
       width: 100%;
       height: auto;
       display: block;
+    }
+
+    /* ── LAPTOP MOCKUP ───────────────────────────────── */
+    .laptop-wrap {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 40px;
+      align-items: start;
+      margin-top: 8px;
+    }
+
+    .laptop-block {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .laptop {
+      position: relative;
+    }
+
+    .laptop-lid {
+      background: #E8E9EB;
+      border-radius: 12px 12px 0 0;
+      padding: 14px 14px 8px;
+      border: 1.5px solid #C2C6CC;
+      border-bottom: none;
+    }
+
+    .laptop-cam {
+      width: 5px;
+      height: 5px;
+      background: #B8BABE;
+      border-radius: 50%;
+      margin: 0 auto 8px;
+    }
+
+    .laptop-screen-area {
+      background: #fff;
+      border-radius: 4px;
+      overflow: hidden;
+      border: 1px solid #D4D7DC;
+      line-height: 0;
+      aspect-ratio: 16 / 10;
+    }
+
+    .laptop-screen-area img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: top left;
+      display: block;
+    }
+
+    .laptop-base {
+      background: #D4D5D7;
+      height: 16px;
+      border-radius: 0 0 3px 3px;
+      border: 1.5px solid #C2C6CC;
+      border-top: none;
+    }
+
+    .laptop-foot {
+      background: #C4C5C7;
+      height: 6px;
+      width: 55%;
+      margin: 0 auto;
+      border-radius: 0 0 8px 8px;
+      border: 1px solid #B8BABE;
+      border-top: none;
     }
 
     /* ── SECTION GÉNÉRIQUE ───────────────────────────── */
@@ -713,11 +783,12 @@
       .partner-card { border-right: none; border-bottom: 1px solid var(--ligne); }
       .partner-card:last-child { border-bottom: none; }
 
-      .screenshots-grid { grid-template-columns: 1fr; gap: 40px; }
-      .screenshots-grid--3 { grid-template-columns: 1fr; }
-      .phones-duo { gap: 14px; }
-      .phone { width: 148px; }
-      .screenshot-frame--mobile { aspect-ratio: 9 / 16; }
+      .laptop-wrap { grid-template-columns: 1fr; gap: 48px; }
+      .phones-duo { gap: 10px; }
+      .phone { width: 130px; padding: 8px; border-radius: 40px; }
+      .phone-screen { border-radius: 32px; }
+      .phone-notch { height: 20px; }
+      .phone-notch-pill { width: 68px; height: 16px; }
 
       .proto-inner { grid-template-columns: 1fr; gap: 48px; }
 
@@ -745,9 +816,9 @@
   <div class="hero">
     <div class="hero-text">
       <p class="eyebrow">Outil pédagogique & cartographique — Phase prototype</p>
-      <h1>Bivouac sauvage en France — <strong>naviguer dans un cadre réglementaire morcelé</strong></h1>
+      <h1>Bivouac — <strong>plateforme collaborative et pédagogique</strong></h1>
       <p class="hero-desc">
-        Bivouac est une plateforme qui croise cartographie, données réglementaires institutionnelles et retours terrain pour orienter les pratiquants du bivouac en France vers une pratique responsable.
+        Pour une meilleure sensibilisation aux réglementations, et une approche durable du Bivouac.
       </p>
       <div class="hero-actions">
         <a href="#partenariat" class="btn-primary">Devenir partenaire</a>
@@ -760,25 +831,37 @@
 
         <!-- Phone 1 — Spot de bivouac -->
         <div class="phone">
-          <div class="phone-btn phone-btn-left" style="top:66px;height:17px;"></div>
-          <div class="phone-btn phone-btn-left" style="top:93px;height:30px;"></div>
-          <div class="phone-btn phone-btn-left" style="top:133px;height:30px;"></div>
-          <div class="phone-btn phone-btn-right" style="top:104px;height:42px;"></div>
+          <div class="phone-btn phone-btn-left" style="top:76px;height:20px;"></div>
+          <div class="phone-btn phone-btn-left" style="top:107px;height:35px;"></div>
+          <div class="phone-btn phone-btn-left" style="top:152px;height:35px;"></div>
+          <div class="phone-btn phone-btn-right" style="top:120px;height:50px;"></div>
           <div class="phone-screen">
             <div class="phone-notch"><div class="phone-notch-pill"></div></div>
             <img src="screenshots/mobile-spot.png" alt="Joli spot au dessus des Doménons" loading="lazy" />
           </div>
         </div>
 
-        <!-- Phone 2 — Point d'eau -->
-        <div class="phone">
-          <div class="phone-btn phone-btn-left" style="top:66px;height:17px;"></div>
-          <div class="phone-btn phone-btn-left" style="top:93px;height:30px;"></div>
-          <div class="phone-btn phone-btn-left" style="top:133px;height:30px;"></div>
-          <div class="phone-btn phone-btn-right" style="top:104px;height:42px;"></div>
+        <!-- Phone 2 — Zone Écrins / Pierriers -->
+        <div class="phone" style="margin-top:32px;">
+          <div class="phone-btn phone-btn-left" style="top:76px;height:20px;"></div>
+          <div class="phone-btn phone-btn-left" style="top:107px;height:35px;"></div>
+          <div class="phone-btn phone-btn-left" style="top:152px;height:35px;"></div>
+          <div class="phone-btn phone-btn-right" style="top:120px;height:50px;"></div>
           <div class="phone-screen">
             <div class="phone-notch"><div class="phone-notch-pill"></div></div>
-            <img src="screenshots/mobile-water.png" alt="Spot avec point d'eau à proximité" loading="lazy" />
+            <img src="screenshots/proto-ecrins.png" alt="Pierriers vers la source de la Romanche — Parc des Écrins" loading="lazy" />
+          </div>
+        </div>
+
+        <!-- Phone 3 — Heatmap précipitations -->
+        <div class="phone">
+          <div class="phone-btn phone-btn-left" style="top:76px;height:20px;"></div>
+          <div class="phone-btn phone-btn-left" style="top:107px;height:35px;"></div>
+          <div class="phone-btn phone-btn-left" style="top:152px;height:35px;"></div>
+          <div class="phone-btn phone-btn-right" style="top:120px;height:50px;"></div>
+          <div class="phone-screen">
+            <div class="phone-notch"><div class="phone-notch-pill"></div></div>
+            <img src="screenshots/proto-layers.png" alt="Données précipitations — heatmap en temps réel" loading="lazy" />
           </div>
         </div>
 
@@ -842,40 +925,42 @@
     <div class="container">
       <p class="section-label">Le prototype</p>
       <h2>Une interface cartographique<br><strong>pensée pour le terrain</strong></h2>
-      <div class="screenshots-grid screenshots-grid--3">
-        <div class="screenshot-block">
-          <div class="screenshot-frame screenshot-frame--mobile">
-            <img src="screenshots/proto-layers.png" alt="Données météo — précipitations au col de Maure" loading="lazy" />
+      <div class="laptop-wrap">
+        <div class="laptop-block">
+          <div class="laptop">
+            <div class="laptop-lid">
+              <div class="laptop-cam"></div>
+              <div class="laptop-screen-area">
+                <img src="screenshots/map-zones.png" alt="Carte des zones réglementées — vue desktop" loading="lazy" />
+              </div>
+            </div>
+            <div class="laptop-base"></div>
+            <div class="laptop-foot"></div>
           </div>
           <div class="screenshot-caption">
             <span class="caption-num">01</span>
             <div>
-              <strong>Données météo en temps réel</strong>
-              <p>Le radar précipitations et le mode hiver s'activent en un clic. Ici, des précipitations visibles au col de Maure — une information directement utile avant de poser sa tente.</p>
+              <strong>Cartographie réglementaire interactive</strong>
+              <p>Les zones réglementées s'affichent directement sur la carte, sourcées auprès des gestionnaires de territoires. Un clic sur une zone ouvre sa fiche réglementaire complète.</p>
             </div>
           </div>
         </div>
-        <div class="screenshot-block">
-          <div class="screenshot-frame screenshot-frame--mobile">
-            <img src="screenshots/proto-ecrins.png" alt="Zone réglementée — Parc national des Écrins" loading="lazy" />
+        <div class="laptop-block">
+          <div class="laptop">
+            <div class="laptop-lid">
+              <div class="laptop-cam"></div>
+              <div class="laptop-screen-area">
+                <img src="screenshots/zone-info.png" alt="Fiche de zone réglementée — détail" loading="lazy" />
+              </div>
+            </div>
+            <div class="laptop-base"></div>
+            <div class="laptop-foot"></div>
           </div>
           <div class="screenshot-caption">
             <span class="caption-num">02</span>
             <div>
-              <strong>Réglementation Parc national des Écrins</strong>
-              <p>La fiche de zone affiche la réglementation précise : bivouac interdit du 01/01 au 31/12 dans le cœur du parc, avec les nuances propres aux zones de tranquillité et d'héliportage.</p>
-            </div>
-          </div>
-        </div>
-        <div class="screenshot-block">
-          <div class="screenshot-frame screenshot-frame--mobile">
-            <img src="screenshots/mobile-spot.png" alt="Fiche spot — Joli spot au dessus des Doménons" loading="lazy" />
-          </div>
-          <div class="screenshot-caption">
-            <span class="caption-num">03</span>
-            <div>
-              <strong>Fiche spot détaillée</strong>
-              <p>Chaque spot affiche altitude, saison, accès à l'eau, capacité, difficulté et prévision de précipitations. Les contributions de la communauté complètent ce que les données institutionnelles ne capturent pas.</p>
+              <strong>Fiches réglementaires sourcées</strong>
+              <p>Chaque zone affiche ses règles précises : périodes d'interdiction, statut de protection, gestionnaire responsable. L'information est attribuée à son émetteur légitime, pas reformulée.</p>
             </div>
           </div>
         </div>
