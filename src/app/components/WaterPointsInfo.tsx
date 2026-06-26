@@ -1,5 +1,7 @@
 import React from 'react';
 import { AlertCircle, Droplet } from 'lucide-react';
+import { BivouacButton } from './ui/bivouac-button';
+import { Card } from './ui/bivouac-card';
 
 interface WaterPointsInfoProps {
   onClose: () => void;
@@ -22,7 +24,7 @@ export function WaterPointsInfo({ onClose }: WaterPointsInfoProps) {
         </div>
 
         <div className="space-y-3">
-          <div className="bg-blue-50 rounded-lg p-3">
+          <Card className="bg-blue-50 shadow-none p-3 rounded-lg">
             <h4 className="text-sm font-semibold text-blue-900 mb-2">ℹ️ Comment ça marche ?</h4>
             <ul className="text-xs text-blue-800 space-y-1">
               <li>• Maximum 35 points d'eau affichés simultanément</li>
@@ -32,9 +34,9 @@ export function WaterPointsInfo({ onClose }: WaterPointsInfoProps) {
               <li>• Les cours d'eau ne sont pas affichés (pris en compte dans la fiche spot)</li>
               <li>• Cliquez sur un point pour voir les détails</li>
             </ul>
-          </div>
+          </Card>
 
-          <div className="bg-yellow-50 rounded-lg p-3">
+          <Card className="bg-yellow-50 shadow-none p-3 rounded-lg">
             <h4 className="text-sm font-semibold text-yellow-900 mb-2">⚠️ Limitations importantes</h4>
             <ul className="text-xs text-yellow-800 space-y-1">
               <li>• <strong>Zoomez suffisamment</strong> avant d'activer (zone max ~55km)</li>
@@ -44,9 +46,9 @@ export function WaterPointsInfo({ onClose }: WaterPointsInfoProps) {
               <li>• En cas d'erreur, zoomez plus ou patientez</li>
               <li>• Vérifiez toujours la potabilité sur place</li>
             </ul>
-          </div>
+          </Card>
 
-          <div className="bg-emerald-50 rounded-lg p-3">
+          <Card className="bg-emerald-50 shadow-none p-3 rounded-lg">
             <h4 className="text-sm font-semibold text-emerald-900 mb-2">✓ Conseils</h4>
             <ul className="text-xs text-emerald-800 space-y-1">
               <li>• <strong>Naviguez d'abord</strong>, puis activez les points d'eau</li>
@@ -55,15 +57,16 @@ export function WaterPointsInfo({ onClose }: WaterPointsInfoProps) {
               <li>• Le compteur indique combien de points sont disponibles</li>
               <li>• Les données proviennent de la communauté OSM</li>
             </ul>
-          </div>
+          </Card>
         </div>
 
-        <button
+        <BivouacButton
+          variant="primary"
           onClick={onClose}
-          className="w-full mt-4 px-4 py-2 bg-sky-600 text-white font-semibold rounded-lg hover:bg-sky-700 transition-colors"
+          className="w-full mt-4 bg-sky-600 hover:bg-sky-700"
         >
           J'ai compris
-        </button>
+        </BivouacButton>
       </div>
     </div>
   );

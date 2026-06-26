@@ -6,6 +6,8 @@ import { createCustomZone, updateCustomZone, deleteCustomZone, CustomZone } from
 import { hideOsmZone } from '../../utils/supabase/hidden-osm-zones-api';
 import { fetchOsmZoneById } from '../services/protected-areas';
 import { BivouacButton } from './ui/bivouac-button';
+import { Input, Textarea } from './ui/bivouac-input';
+import { AlertCard } from './ui/bivouac-card';
 
 interface CustomZoneFormProps {
   geometry: GeoJSON.Feature;
@@ -243,30 +245,26 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Nom */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Nom de la zone *</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Ex: Parc national des Écrins"
-              className={inputClass}
-              disabled={isLoading}
-            />
-          </div>
+          <Input
+            label="Nom de la zone *"
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Ex: Parc national des Écrins"
+            className="text-sm px-3 py-2"
+            disabled={isLoading}
+          />
 
           {/* Description */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Contexte et détails de la restriction..."
-              rows={2}
-              className={inputClass}
-              disabled={isLoading}
-            />
-          </div>
+          <Textarea
+            label="Description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Contexte et détails de la restriction..."
+            rows={2}
+            className="text-sm px-3 py-2"
+            disabled={isLoading}
+          />
 
           {/* Types de restrictions */}
           <div>
@@ -301,11 +299,11 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
               <div className="flex items-end gap-2 pt-1">
                 <div className="flex-1">
                   <label className="block text-xs text-gray-500 mb-1">De</label>
-                  <input type="time" value={timeRangeStart} onChange={(e) => setTimeRangeStart(e.target.value)} disabled={isLoading} className={smallInputClass} />
+                  <Input type="time" value={timeRangeStart} onChange={(e) => setTimeRangeStart(e.target.value)} disabled={isLoading} className="text-sm px-2 py-1.5" />
                 </div>
                 <div className="flex-1">
                   <label className="block text-xs text-gray-500 mb-1">À</label>
-                  <input type="time" value={timeRangeEnd} onChange={(e) => setTimeRangeEnd(e.target.value)} disabled={isLoading} className={smallInputClass} />
+                  <Input type="time" value={timeRangeEnd} onChange={(e) => setTimeRangeEnd(e.target.value)} disabled={isLoading} className="text-sm px-2 py-1.5" />
                 </div>
               </div>
             )}
@@ -323,26 +321,26 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
               <div className="flex items-end gap-2 pt-1">
                 <div className="flex-1">
                   <label className="block text-xs text-gray-500 mb-1">Du (JJ/MM)</label>
-                  <input
+                  <Input
                     type="text"
                     value={periodStart}
                     onChange={(e) => setPeriodStart(e.target.value)}
                     placeholder="01/05"
                     maxLength={5}
                     disabled={isLoading}
-                    className={smallInputClass}
+                    className="text-sm px-2 py-1.5"
                   />
                 </div>
                 <div className="flex-1">
                   <label className="block text-xs text-gray-500 mb-1">Au (JJ/MM)</label>
-                  <input
+                  <Input
                     type="text"
                     value={periodEnd}
                     onChange={(e) => setPeriodEnd(e.target.value)}
                     placeholder="30/09"
                     maxLength={5}
                     disabled={isLoading}
-                    className={smallInputClass}
+                    className="text-sm px-2 py-1.5"
                   />
                 </div>
               </div>
@@ -350,29 +348,27 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
           </div>
 
           {/* Source officielle */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Source officielle (URL)</label>
-            <input
-              type="url"
-              value={sourceUrl}
-              onChange={(e) => setSourceUrl(e.target.value)}
-              placeholder="https://..."
-              className={inputClass}
-              disabled={isLoading}
-            />
-          </div>
+          <Input
+            label="Source officielle (URL)"
+            type="url"
+            value={sourceUrl}
+            onChange={(e) => setSourceUrl(e.target.value)}
+            placeholder="https://..."
+            className="text-sm px-3 py-2"
+            disabled={isLoading}
+          />
 
           {/* Mettre à jour depuis OSM — admin uniquement, zone existante */}
           {isEditing && (
             <div className="pt-2 border-t border-gray-100 space-y-2">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Mettre à jour depuis OSM</p>
               <div className="flex gap-2">
-                <input
+                <Input
                   type="text"
                   value={osmSourceId}
                   onChange={e => { setOsmSourceId(e.target.value); setOsmResetStatus('idle'); setOsmResetError(null); }}
                   placeholder="ID OSM (ex: 1024508)"
-                  className={`${inputClass} text-xs font-mono`}
+                  className="text-xs font-mono px-3 py-2"
                   disabled={isLoading || isResetting}
                 />
                 <BivouacButton
@@ -402,10 +398,10 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
             {confirmDelete ? (
               <div className="space-y-2">
                 {isOsmZone && (
-                  <div className="bg-red-50 border border-red-300 rounded-lg p-3">
+                  <AlertCard type="error">
                     <p className="text-sm text-red-800 font-bold">⚠️ Action irréversible</p>
                     <p className="text-xs text-red-700 mt-1">Cette zone OSM sera masquée définitivement pour tous les utilisateurs. Cette action ne peut pas être annulée.</p>
-                  </div>
+                  </AlertCard>
                 )}
                 <p className="text-sm text-red-700 font-medium text-center">
                   {isOsmZone ? 'Confirmer la désactivation ?' : 'Supprimer définitivement ?'}

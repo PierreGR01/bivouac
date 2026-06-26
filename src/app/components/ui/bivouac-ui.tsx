@@ -7,6 +7,7 @@
 
 export {
   BivouacButton,
+  FilterChip,
   type BivouacButtonVariant,
   type BivouacButtonSize,
 } from './bivouac-button';
@@ -30,11 +31,11 @@ export {
   Select,
   Checkbox,
   RangeSlider,
+  DifficultySelector,
 } from './bivouac-input';
 
 export {
   Panel,
-  PanelHeader,
   PanelSection,
   PanelActions,
 } from './bivouac-panel';

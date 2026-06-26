@@ -2,6 +2,8 @@ import React from 'react';
 import { Route, Trash2, Check, Zap } from 'lucide-react';
 import { Panel } from './ui/bivouac-panel';
 import { BivouacButton } from './ui/bivouac-button';
+import { AlertCard, InfoCard } from './ui/bivouac-card';
+import { RangeSlider } from './ui/bivouac-input';
 
 interface RoutePanelProps {
   onClose: () => void;
@@ -33,23 +35,17 @@ export function RoutePanel({
       icon={<Route className="w-5 h-5" />}
     >
       {/* Instructions */}
-      <div className="bg-emerald-50 border-l-4 border-emerald-400 p-3 rounded-r-lg mb-4">
-        <p className="text-sm text-emerald-800">
+      <AlertCard type="success" className="mb-4">
+        <p className="text-sm">
           Cliquez sur la carte pour placer des points. Les spots de bivouac proches seront
           automatiquement filtrés.
         </p>
-      </div>
+      </AlertCard>
 
       {/* Statistiques */}
       <div className="grid grid-cols-2 gap-3 mb-4">
-        <div className="bg-blue-50 rounded-lg p-3">
-          <p className="text-xs text-blue-600 font-medium mb-1">Points d'itinéraire</p>
-          <p className="text-2xl font-bold text-blue-700">{routePointsCount}</p>
-        </div>
-        <div className="bg-emerald-50 rounded-lg p-3">
-          <p className="text-xs text-emerald-600 font-medium mb-1">Spots à proximité</p>
-          <p className="text-2xl font-bold text-emerald-700">{nearbyPoisCount}</p>
-        </div>
+        <InfoCard title="Points d'itinéraire" value={routePointsCount} variant="blue" />
+        <InfoCard title="Spots à proximité" value={nearbyPoisCount} variant="emerald" />
       </div>
 
       {/* Toggle mode de routage */}
@@ -78,23 +74,16 @@ export function RoutePanel({
 
       {/* Distance maximale */}
       <div className="mb-5">
-        <label className="block text-sm font-semibold mb-2 text-gray-800">
-          Distance maximale de l'itinéraire
-        </label>
-        <div className="flex items-center gap-3">
-          <input
-            type="range"
-            min="0.5"
-            max="10"
-            step="0.5"
-            value={maxDistance}
-            onChange={(e) => onMaxDistanceChange(parseFloat(e.target.value))}
-            className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
-          />
-          <span className="text-sm font-medium text-gray-700 w-16 text-right">
-            {maxDistance} km
-          </span>
-        </div>
+        <RangeSlider
+          label="Distance maximale de l'itinéraire"
+          min="0.5"
+          max="10"
+          step="0.5"
+          value={maxDistance}
+          onChange={(e) => onMaxDistanceChange(parseFloat(e.target.value))}
+          unit="km"
+          displayValue={maxDistance}
+        />
         <p className="text-xs text-gray-500 mt-1">
           Affiche les spots à moins de {maxDistance} km de l'itinéraire
         </p>

@@ -1,7 +1,9 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { MapPin, Upload, Snowflake, SunSnow, AlertCircle, AlertTriangle, Camera, Mountain, Tent, Locate, Loader2, X } from 'lucide-react';
 import { Panel } from './ui/bivouac-panel';
-import { BivouacButton } from './ui/bivouac-button';
+import { BivouacButton, FilterChip } from './ui/bivouac-button';
+import { AlertCard } from './ui/bivouac-card';
+import { DifficultySelector, Input, Textarea } from './ui/bivouac-input';
 import { useIsMobile } from './ui/use-mobile';
 import { CustomZone, getZoneRestrictionStatus, formatZoneConstraints } from '../../utils/supabase/custom-zones-api';
 import { ProtectedArea, findAreasContainingPoint, getProtectedAreaInfo } from '../services/protected-areas';
@@ -198,7 +200,7 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
 
         {/* Zone restriction feedback */}
         {isBlocked && (
-          <div className="mb-3 bg-red-50 border-l-4 border-red-500 p-3 rounded-r-lg">
+          <AlertCard type="error" className="mb-3 border-red-500">
             <div className="flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
               <div>
@@ -210,11 +212,11 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
                 ))}
               </div>
             </div>
-          </div>
+          </AlertCard>
         )}
 
         {!isBlocked && zoneStatus.warnings.length > 0 && (
-          <div className="mb-3 bg-orange-50 border-l-4 border-orange-400 p-3 rounded-r-lg">
+          <AlertCard type="orange" className="mb-3">
             <div className="flex items-start gap-2">
               <AlertCircle className="w-4 h-4 text-orange-600 flex-shrink-0 mt-0.5" />
               <div>
@@ -226,11 +228,11 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
                 ))}
               </div>
             </div>
-          </div>
+          </AlertCard>
         )}
 
         {osmZoneStatus.blocked.length > 0 && (
-          <div className="mb-3 bg-red-50 border-l-4 border-red-500 p-3 rounded-r-lg">
+          <AlertCard type="error" className="mb-3 border-red-500">
             <div className="flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
               <div>
@@ -245,11 +247,11 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
                 })}
               </div>
             </div>
-          </div>
+          </AlertCard>
         )}
 
         {!isBlocked && osmZoneStatus.warnings.length > 0 && (
-          <div className="mb-3 bg-orange-50 border-l-4 border-orange-400 p-3 rounded-r-lg">
+          <AlertCard type="orange" className="mb-3">
             <div className="flex items-start gap-2">
               <AlertCircle className="w-4 h-4 text-orange-600 flex-shrink-0 mt-0.5" />
               <div>
@@ -265,39 +267,31 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
                 })}
               </div>
             </div>
-          </div>
+          </AlertCard>
         )}
 
         {/* Titre */}
         <div className="mb-3">
-          {!isMobile && (
-            <label className="block text-sm font-semibold mb-1.5 text-gray-700">
-              Titre <span className="text-red-500">*</span>
-            </label>
-          )}
-          <input
+          <Input
+            label={isMobile ? undefined : 'Titre *'}
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder={isMobile ? 'Titre du spot *' : 'Ex : Lac des Chéserys'}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none bg-white"
+            className="text-sm px-3 py-2"
             required
           />
         </div>
 
         {/* Description */}
         <div className="mb-3">
-          {!isMobile && (
-            <label className="block text-sm font-semibold mb-1.5 text-gray-700">
-              Description <span className="text-red-500">*</span>
-            </label>
-          )}
-          <textarea
+          <Textarea
+            label={isMobile ? undefined : 'Description *'}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder={isMobile ? 'Description *' : 'Décrivez le lieu, l\'accès, les particularités…'}
+            placeholder={isMobile ? 'Description *' : "Décrivez le lieu, l'accès, les particularités…"}
             rows={isMobile ? 2 : 3}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none resize-none bg-white"
+            className="text-sm px-3 py-2"
             required
           />
         </div>
@@ -351,12 +345,12 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
             </>
           ) : (
             <div className="flex gap-2">
-              <input
+              <Input
                 type="url"
                 value={newPhotoUrl}
                 onChange={(e) => setNewPhotoUrl(e.target.value)}
                 placeholder="URL de la photo"
-                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none bg-white"
+                className="text-sm px-3 py-2"
                 onKeyPress={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
@@ -385,30 +379,28 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
             </label>
           )}
           <div className="flex gap-2">
-            <button
+            <FilterChip
               type="button"
+              active={season === 'toute-annee'}
               onClick={() => setSeason('toute-annee')}
-              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg border-2 transition-all text-sm font-medium ${
-                season === 'toute-annee'
-                  ? 'border-amber-500 bg-amber-50 text-amber-700'
-                  : 'border-gray-200 bg-white text-gray-700 hover:border-amber-300'
-              }`}
+              activeColor="border-amber-500 bg-amber-50 text-amber-700"
+              showCheckmark={false}
+              className="px-3 py-2"
             >
               <SunSnow className="w-4 h-4" />
               Toute saison
-            </button>
-            <button
+            </FilterChip>
+            <FilterChip
               type="button"
+              active={season === 'hiver'}
               onClick={() => setSeason('hiver')}
-              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg border-2 transition-all text-sm font-medium ${
-                season === 'hiver'
-                  ? 'border-blue-500 bg-blue-50 text-blue-700'
-                  : 'border-gray-200 bg-white text-gray-700 hover:border-blue-300'
-              }`}
+              activeColor="border-blue-500 bg-blue-50 text-blue-700"
+              showCheckmark={false}
+              className="px-3 py-2"
             >
               <Snowflake className="w-4 h-4" />
               Hiver
-            </button>
+            </FilterChip>
           </div>
         </div>
 
@@ -419,19 +411,18 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
           </label>
           <div className="grid grid-cols-4 gap-2">
             {(['1', '2-3', '4-5', '5+'] as const).map((value) => (
-              <button
+              <FilterChip
                 key={value}
                 type="button"
+                active={capacity === value}
                 onClick={() => setCapacity(value)}
-                className={`flex flex-col items-center justify-center py-2 rounded-lg border-2 transition-all ${
-                  capacity === value
-                    ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                    : 'border-gray-200 bg-white text-gray-600 hover:border-emerald-300'
-                }`}
+                activeColor="border-emerald-500 bg-emerald-50 text-emerald-700"
+                showCheckmark={false}
+                className="flex-col py-2 px-1"
               >
                 <Tent className="w-4 h-4 mb-1" />
                 <span className="text-xs font-medium">{value}</span>
-              </button>
+              </FilterChip>
             ))}
           </div>
         </div>
@@ -441,28 +432,10 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
           <label className="block text-sm font-semibold mb-1.5 text-gray-700">
             Difficulté d'accès <span className="text-red-500">*</span>
           </label>
-          <div className="flex items-center gap-1.5">
-            {[0, 1, 2, 3, 4, 5].map((level) => (
-              <button
-                key={level}
-                type="button"
-                onClick={() => setDifficulty(level)}
-                className={`flex-1 h-10 flex items-center justify-center rounded-lg border-2 transition-all ${
-                  difficulty === level
-                    ? level === 0
-                      ? 'border-gray-500 bg-gray-100 text-gray-700'
-                      : level <= 2
-                      ? 'border-green-500 bg-green-50 text-green-700'
-                      : level === 3
-                      ? 'border-yellow-500 bg-yellow-50 text-yellow-700'
-                      : 'border-red-500 bg-red-50 text-red-700'
-                    : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
-                }`}
-              >
-                <span className="text-sm font-bold">{level}</span>
-              </button>
-            ))}
-          </div>
+          <DifficultySelector
+            selectedLevels={[difficulty]}
+            onToggle={(level) => setDifficulty(level)}
+          />
           {!isMobile && (
             <p className="text-xs text-gray-400 mt-1">0 = très facile · 3 = moyen · 5 = difficile</p>
           )}
@@ -492,12 +465,12 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
                 />
                 <span className="text-sm text-gray-700">Parc national — bivouac 19h à 9h</span>
               </label>
-              <textarea
+              <Textarea
                 value={regulationDetails}
                 onChange={(e) => setRegulationDetails(e.target.value)}
                 placeholder="Autres restrictions…"
                 rows={2}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none resize-none bg-white"
+                className="text-sm px-3 py-2 focus:ring-orange-500"
               />
             </div>
           )}

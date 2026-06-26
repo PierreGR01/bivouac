@@ -49,7 +49,7 @@ export function InfoCard({ title, value, variant = 'blue', className, ...props }
 }
 
 interface AlertCardProps extends React.HTMLAttributes<HTMLDivElement> {
-  type: 'success' | 'warning' | 'error' | 'info';
+  type: 'success' | 'warning' | 'error' | 'info' | 'orange';
   children: React.ReactNode;
 }
 
@@ -58,6 +58,7 @@ const alertClasses = {
   warning: 'bg-yellow-50 border-yellow-400',
   error: 'bg-red-50 border-red-400',
   info: 'bg-blue-50 border-blue-400',
+  orange: 'bg-orange-50 border-orange-400',
 };
 
 const alertTextClasses = {
@@ -65,6 +66,7 @@ const alertTextClasses = {
   warning: 'text-yellow-800',
   error: 'text-red-800',
   info: 'text-blue-800',
+  orange: 'text-orange-800',
 };
 
 export function AlertCard({ type, children, className, ...props }: AlertCardProps) {

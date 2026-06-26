@@ -37,6 +37,9 @@ import { useAuth } from '../contexts/AuthContext';
 import * as api from '../../utils/supabase/api';
 import { Panel } from './ui/bivouac-panel';
 import { BivouacButton } from './ui/bivouac-button';
+import { AlertCard } from './ui/bivouac-card';
+import { SeasonBadge } from './ui/bivouac-badge';
+import { Textarea } from './ui/bivouac-input';
 
 interface PoiDetailsPanelProps {
   location: PoiLocation | null;
@@ -193,20 +196,6 @@ export function PoiDetailsPanel({
   );
 }
 
-function getSeasonIcon(season: string) {
-  if (season === 'hiver') return <Snowflake className="w-3.5 h-3.5" />;
-  return <SunSnow className="w-3.5 h-3.5" />;
-}
-
-function getSeasonLabel(season: string) {
-  if (season === 'hiver') return 'hiver';
-  return 'toute saison';
-}
-
-function getSeasonStyle(season: string) {
-  if (season === 'hiver') return 'bg-blue-100 text-blue-900';
-  return 'bg-amber-100 text-amber-800';
-}
 
 function PanelContent({
   location,
@@ -365,10 +354,11 @@ function PanelContent({
 
       {/* Tags Saison + Altitude + GPS */}
       <div className="flex flex-wrap gap-1.5 mb-3">
-        <div className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium flex-shrink-0 ${getSeasonStyle(location.season)}`}>
-          {getSeasonIcon(location.season)}
-          <span>{getSeasonLabel(location.season)}</span>
-        </div>
+        <SeasonBadge
+          season={location.season === 'hiver' ? 'hiver' : 'toute saison'}
+          icon={location.season === 'hiver' ? <Snowflake className="w-3.5 h-3.5" /> : <SunSnow className="w-3.5 h-3.5" />}
+          className="rounded-lg"
+        />
 
         {location.altitude !== undefined && location.altitude !== null && (
           <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-gray-100 text-gray-600 text-xs font-medium flex-shrink-0">
@@ -490,7 +480,7 @@ function PanelContent({
       {(customZoneStatus.blocked.length > 0 || customZoneStatus.warnings.length > 0) && (
         <div className="mb-4 space-y-3">
           {customZoneStatus.blocked.map(zone => (
-            <div key={zone.id} className="border-l-4 border-red-500 bg-red-50 p-4 rounded-r-lg">
+            <AlertCard key={zone.id} type="error" className="border-red-500 p-4">
               <div className="flex items-start gap-3">
                 <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
                 <div>
@@ -501,10 +491,10 @@ function PanelContent({
                   )}
                 </div>
               </div>
-            </div>
+            </AlertCard>
           ))}
           {customZoneStatus.warnings.map(zone => (
-            <div key={zone.id} className="border-l-4 border-orange-400 bg-orange-50 p-4 rounded-r-lg">
+            <AlertCard key={zone.id} type="orange" className="p-4">
               <div className="flex items-start gap-3">
                 <AlertCircle className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
                 <div>
@@ -528,7 +518,7 @@ function PanelContent({
                   )}
                 </div>
               </div>
-            </div>
+            </AlertCard>
           ))}
         </div>
       )}
@@ -539,13 +529,10 @@ function PanelContent({
           {areasContainingPoi.map((area) => {
             const info = getProtectedAreaInfo(area);
             return (
-              <div
+              <AlertCard
                 key={area.id}
-                className={`border-l-4 p-4 rounded-r-lg ${
-                  info.isCampingForbidden
-                    ? 'bg-red-50 border-red-500'
-                    : 'bg-orange-50 border-orange-500'
-                }`}
+                type={info.isCampingForbidden ? 'error' : 'orange'}
+                className={`p-4 ${info.isCampingForbidden ? 'border-red-500' : 'border-orange-500'}`}
               >
                 <div className="flex items-start gap-3">
                   {info.isCampingForbidden ? (
@@ -554,38 +541,21 @@ function PanelContent({
                     <Shield className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
                   )}
                   <div className="flex-1">
-                    <h3
-                      className={`font-bold text-sm mb-1 ${
-                        info.isCampingForbidden ? 'text-red-900' : 'text-orange-900'
-                      }`}
-                    >
+                    <h3 className={`font-bold text-sm mb-1 ${info.isCampingForbidden ? 'text-red-900' : 'text-orange-900'}`}>
                       {info.isCampingForbidden ? 'Zone interdite' : 'Zone réglementée'}
                     </h3>
-                    <p
-                      className={`font-semibold text-sm mb-1 ${
-                        info.isCampingForbidden ? 'text-red-800' : 'text-orange-800'
-                      }`}
-                    >
+                    <p className={`font-semibold text-sm mb-1 ${info.isCampingForbidden ? 'text-red-800' : 'text-orange-800'}`}>
                       {info.title}
                     </p>
                     {info.description && (
-                      <p
-                        className={`text-sm mb-2 ${
-                          info.isCampingForbidden ? 'text-red-700' : 'text-orange-700'
-                        }`}
-                      >
+                      <p className={`text-sm mb-2 ${info.isCampingForbidden ? 'text-red-700' : 'text-orange-700'}`}>
                         {info.description}
                       </p>
                     )}
                     {info.restrictions.length > 0 && (
                       <ul className="space-y-1">
                         {info.restrictions.map((restriction, idx) => (
-                          <li
-                            key={idx}
-                            className={`text-sm flex items-start gap-2 ${
-                              info.isCampingForbidden ? 'text-red-800' : 'text-orange-800'
-                            }`}
-                          >
+                          <li key={idx} className={`text-sm flex items-start gap-2 ${info.isCampingForbidden ? 'text-red-800' : 'text-orange-800'}`}>
                             <span className="flex-shrink-0">•</span>
                             <span>{restriction}</span>
                           </li>
@@ -597,18 +567,14 @@ function PanelContent({
                         href={safeHref(area.tags.website)}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className={`inline-block mt-2 text-sm font-medium underline ${
-                          info.isCampingForbidden
-                            ? 'text-red-700 hover:text-red-900'
-                            : 'text-orange-700 hover:text-orange-900'
-                        }`}
+                        className={`inline-block mt-2 text-sm font-medium underline ${info.isCampingForbidden ? 'text-red-700 hover:text-red-900' : 'text-orange-700 hover:text-orange-900'}`}
                       >
                         Plus d'informations →
                       </a>
                     )}
                   </div>
                 </div>
-              </div>
+              </AlertCard>
             );
           })}
         </div>
@@ -616,7 +582,7 @@ function PanelContent({
 
       {/* Réglementation du spot */}
       {location.regulations && (
-        <div className="bg-orange-50 border-l-4 border-orange-400 p-3 rounded-r-lg mb-4">
+        <AlertCard type="orange" className="mb-4">
           <div className="flex items-start gap-2">
             <AlertCircle className="w-4 h-4 text-orange-600 flex-shrink-0 mt-0.5" />
             <div>
@@ -624,7 +590,7 @@ function PanelContent({
               <p className="text-sm text-orange-800">{location.regulations}</p>
             </div>
           </div>
-        </div>
+        </AlertCard>
       )}
 
       {/* Prévisions précipitations */}
@@ -698,8 +664,8 @@ function PanelContent({
 
         {/* Row 2 : champ texte — affiché uniquement après sélection d'une note */}
         {newRating > 0 && (
-          <textarea
-            className="w-full text-sm rounded-md border border-amber-200 bg-white px-3 py-2 text-gray-700 placeholder:text-gray-400 resize-none focus:outline-none focus:ring-1 focus:ring-amber-400"
+          <Textarea
+            className="text-sm rounded-md border-amber-200 px-3 focus:ring-1 focus:ring-amber-400 text-gray-700"
             rows={2}
             placeholder="Décrivez votre expérience…"
             value={reviewComment}

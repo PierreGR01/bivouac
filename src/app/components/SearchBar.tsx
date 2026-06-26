@@ -2,6 +2,8 @@ import React from 'react';
 import { Search, SlidersHorizontal, Tent, Plus, Lock, Settings, X, MapPin, Mountain, Loader2 } from 'lucide-react';
 import { useNominatim, NominatimResult } from '../hooks/useNominatim';
 import { PoiLocation } from '../types';
+import { BivouacButton } from './ui/bivouac-button';
+import { CountBadge } from './ui/bivouac-badge';
 
 interface SearchBarProps {
   searchTerm: string;
@@ -275,9 +277,7 @@ export function SearchBar({
               <SlidersHorizontal className="w-[17px] h-[17px] text-gray-600" />
               <span className="text-[15px] font-medium text-gray-600">Filtres</span>
               {activeFiltersCount > 0 && (
-                <div className="absolute -top-1 -right-1 bg-emerald-600 text-white text-xs font-bold rounded-full w-4 h-4 flex items-center justify-center shadow">
-                  {activeFiltersCount}
-                </div>
+                <CountBadge count={activeFiltersCount} className="absolute -top-1 -right-1 w-4 h-4" />
               )}
             </button>
 
@@ -390,21 +390,21 @@ export function SearchBar({
               <SlidersHorizontal className="w-[17px] h-[17px] text-gray-600" />
               <span className="text-[15px] font-medium text-gray-600">Filtres</span>
               {activeFiltersCount > 0 && (
-                <div className="absolute -top-1 -right-1 bg-emerald-600 text-white text-xs font-bold rounded-full w-4 h-4 flex items-center justify-center">
-                  {activeFiltersCount}
-                </div>
+                <CountBadge count={activeFiltersCount} className="absolute -top-1 -right-1 w-4 h-4" />
               )}
             </button>
 
             {/* Add spot */}
             {!isAddingMode && !isRoutingMode && (
-              <button
+              <BivouacButton
+                variant="primary"
+                size="sm"
+                icon={<Plus className="w-[17px] h-[17px]" />}
                 onClick={onAddSpotClick}
-                className="flex items-center gap-2 px-3 py-2 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700 transition-colors flex-shrink-0"
+                className="flex-shrink-0 py-2"
               >
-                <Plus className="w-[17px] h-[17px]" />
-                <span className="text-sm">Ajouter</span>
-              </button>
+                Ajouter
+              </BivouacButton>
             )}
           </div>
         </div>

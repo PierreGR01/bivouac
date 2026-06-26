@@ -1,5 +1,6 @@
 import React from 'react';
 import { cn } from './utils';
+import { Check } from 'lucide-react';
 
 export type BivouacButtonVariant =
   | 'primary'
@@ -29,6 +30,40 @@ const sizeClasses: Record<BivouacButtonSize, string> = {
   md: 'px-4 py-2 text-sm',
   lg: 'px-5 py-2.5 text-base',
 };
+
+interface FilterChipProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  active: boolean;
+  activeColor?: string;
+  showCheckmark?: boolean;
+  children: React.ReactNode;
+}
+
+export function FilterChip({
+  active,
+  activeColor = 'border-emerald-500 bg-emerald-50 text-emerald-800',
+  showCheckmark = true,
+  children,
+  className,
+  ...props
+}: FilterChipProps) {
+  return (
+    <button
+      className={cn(
+        'flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border-2 transition-all text-sm font-medium',
+        active ? activeColor : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50',
+        className
+      )}
+      {...props}
+    >
+      {children}
+      {active && showCheckmark && (
+        <div className="w-3.5 h-3.5 rounded-full bg-current flex items-center justify-center ml-1 opacity-70 flex-shrink-0">
+          <Check className="w-2 h-2 text-white" strokeWidth={3} />
+        </div>
+      )}
+    </button>
+  );
+}
 
 export function BivouacButton({
   variant = 'primary',

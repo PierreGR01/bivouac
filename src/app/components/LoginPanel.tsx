@@ -3,6 +3,7 @@ import { LogIn, LogOut } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { Panel } from './ui/bivouac-panel';
 import { BivouacButton } from './ui/bivouac-button';
+import { Input } from './ui/bivouac-input';
 
 interface LoginPanelProps {
   onClose: () => void;
@@ -68,30 +69,26 @@ export function LoginPanel({ onClose }: LoginPanelProps) {
         </div>
       ) : (
         <form onSubmit={handleLogin} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="admin@example.com"
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-              disabled={isLoading}
-              autoComplete="email"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Mot de passe</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-              disabled={isLoading}
-              autoComplete="current-password"
-            />
-          </div>
+          <Input
+            label="Email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="admin@example.com"
+            className="py-2.5"
+            disabled={isLoading}
+            autoComplete="email"
+          />
+          <Input
+            label="Mot de passe"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+            className="py-2.5"
+            disabled={isLoading}
+            autoComplete="current-password"
+          />
           {(error || localError) && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
               {error || localError}
