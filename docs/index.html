@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bivouac — Plateforme de médiation réglementaire</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --blanc:    #F7F6F2;
+      --noir:     #1A1A18;
+      --vert:     #2D5016;
+      --vert-clair: #4A7A28;
+      --pierre:   #8A8880;
+      --ligne:    #D4D0C8;
+      --orange:   #B85C1A;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: Calibri, 'Calibri', 'Segoe UI', sans-serif;
+      background: var(--blanc);
+      color: var(--noir);
+      font-size: 17px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── HEADER ─────────────────────────────────────── */
+    header {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      background: var(--blanc);
+      border-bottom: 1px solid var(--ligne);
+      padding: 0 40px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .logo {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--vert);
+    }
+
+    nav {
+      display: flex;
+      gap: 32px;
+    }
+
+    nav a {
+      font-size: 12px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--pierre);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    nav a:hover { color: var(--vert); }
+
+    .nav-cta {
+      background: var(--vert);
+      color: var(--blanc) !important;
+      padding: 7px 18px;
+      letter-spacing: 0.12em;
+      font-size: 12px;
+    }
+
+    .nav-cta:hover { background: var(--vert-clair); color: var(--blanc) !important; }
+
+    /* ── HERO ────────────────────────────────────────── */
+    .hero {
+      padding-top: 56px;
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+    }
+
+    .hero-text {
+      padding: 80px 64px 80px 40px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      border-right: 1px solid var(--ligne);
+    }
+
+    .eyebrow {
+      font-size: 11px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--pierre);
+      margin-bottom: 28px;
+    }
+
+    h1 {
+      font-size: clamp(2.4rem, 4vw, 3.6rem);
+      font-weight: 300;
+      line-height: 1.1;
+      color: var(--noir);
+      margin-bottom: 28px;
+    }
+
+    h1 strong {
+      font-weight: 700;
+      color: var(--vert);
+    }
+
+    .hero-desc {
+      font-size: 18px;
+      color: var(--pierre);
+      line-height: 1.7;
+      max-width: 480px;
+      margin-bottom: 48px;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .btn-primary {
+      background: var(--vert);
+      color: var(--blanc);
+      padding: 13px 28px;
+      font-size: 14px;
+      font-family: Calibri, sans-serif;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      border: none;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+      transition: background 0.2s;
+    }
+
+    .btn-primary:hover { background: var(--vert-clair); }
+
+    .btn-secondary {
+      background: transparent;
+      color: var(--vert);
+      padding: 13px 28px;
+      font-size: 14px;
+      font-family: Calibri, sans-serif;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      border: 1.5px solid var(--vert);
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+      transition: all 0.2s;
+    }
+
+    .btn-secondary:hover { background: var(--vert); color: var(--blanc); }
+
+    /* Carte topo SVG */
+    .hero-visual {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 80px 40px;
+      background: var(--blanc);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .topo-svg {
+      width: 100%;
+      max-width: 480px;
+      opacity: 0.85;
+    }
+
+    /* ── SECTION GÉNÉRIQUE ───────────────────────────── */
+    section {
+      padding: 96px 40px;
+      border-top: 1px solid var(--ligne);
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .section-label {
+      font-size: 11px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--pierre);
+      margin-bottom: 20px;
+    }
+
+    h2 {
+      font-size: clamp(1.8rem, 3vw, 2.6rem);
+      font-weight: 300;
+      line-height: 1.15;
+      color: var(--noir);
+      margin-bottom: 48px;
+    }
+
+    h2 strong { font-weight: 700; color: var(--vert); }
+
+    /* ── PROBLÈME ────────────────────────────────────── */
+    .problem-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 0;
+    }
+
+    .problem-item {
+      padding: 40px 36px;
+      border-left: 1px solid var(--ligne);
+    }
+
+    .problem-item:first-child { border-left: none; padding-left: 0; }
+
+    .problem-num {
+      font-size: 42px;
+      font-weight: 700;
+      color: var(--vert);
+      line-height: 1;
+      margin-bottom: 16px;
+      display: block;
+    }
+
+    .problem-item h3 {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      color: var(--noir);
+    }
+
+    .problem-item p {
+      font-size: 15px;
+      color: var(--pierre);
+      line-height: 1.65;
+    }
+
+    /* ── RÉPONSE / FONCTIONNEMENT ────────────────────── */
+    .response-bg {
+      background: var(--vert);
+      color: var(--blanc);
+    }
+
+    .response-bg .section-label { color: rgba(255,255,255,0.55); }
+    .response-bg h2 { color: var(--blanc); }
+    .response-bg h2 strong { color: #A8CC7A; }
+
+    .response-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 48px;
+      margin-top: 0;
+    }
+
+    .response-block {
+      padding-top: 40px;
+      border-top: 1px solid rgba(255,255,255,0.2);
+    }
+
+    .response-block h3 {
+      font-size: 17px;
+      font-weight: 700;
+      color: #A8CC7A;
+      margin-bottom: 14px;
+      letter-spacing: 0.03em;
+    }
+
+    .response-block p {
+      font-size: 15px;
+      line-height: 1.7;
+      color: rgba(255,255,255,0.82);
+    }
+
+    /* ── PARTENARIAT ─────────────────────────────────── */
+    .partner-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+      border: 1px solid var(--ligne);
+    }
+
+    .partner-card {
+      padding: 48px 44px;
+      border-right: 1px solid var(--ligne);
+    }
+
+    .partner-card:last-child { border-right: none; }
+
+    .partner-tag {
+      display: inline-block;
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--blanc);
+      background: var(--vert);
+      padding: 4px 12px;
+      margin-bottom: 24px;
+    }
+
+    .partner-tag.financeur { background: var(--orange); }
+
+    .partner-card h3 {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--noir);
+      margin-bottom: 16px;
+    }
+
+    .partner-card p {
+      font-size: 15px;
+      color: var(--pierre);
+      line-height: 1.7;
+      margin-bottom: 24px;
+    }
+
+    .partner-card ul {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .partner-card ul li {
+      font-size: 14px;
+      color: var(--noir);
+      padding-left: 18px;
+      position: relative;
+    }
+
+    .partner-card ul li::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 9px;
+      width: 8px;
+      height: 1.5px;
+      background: var(--vert);
+    }
+
+    .partner-card.financeur ul li::before { background: var(--orange); }
+
+    /* ── PROTOTYPE ───────────────────────────────────── */
+    .proto-section {
+      background: #F0EDE8;
+    }
+
+    .proto-inner {
+      display: grid;
+      grid-template-columns: 3fr 2fr;
+      gap: 80px;
+      align-items: center;
+    }
+
+    .proto-text h2 { margin-bottom: 24px; }
+
+    .proto-text p {
+      font-size: 16px;
+      color: var(--pierre);
+      line-height: 1.75;
+      margin-bottom: 16px;
+    }
+
+    .proto-stats {
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+    }
+
+    .proto-stat {
+      padding-bottom: 32px;
+      border-bottom: 1px solid var(--ligne);
+    }
+
+    .proto-stat:last-child { border-bottom: none; padding-bottom: 0; }
+
+    .proto-stat-num {
+      font-size: 36px;
+      font-weight: 700;
+      color: var(--vert);
+      line-height: 1;
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    .proto-stat p {
+      font-size: 14px;
+      color: var(--pierre);
+      margin-bottom: 0;
+    }
+
+    /* ── CONTACT ─────────────────────────────────────── */
+    .contact-section {
+      background: var(--noir);
+      color: var(--blanc);
+    }
+
+    .contact-section .section-label { color: rgba(255,255,255,0.4); }
+
+    .contact-inner {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 80px;
+      align-items: start;
+    }
+
+    .contact-left h2 {
+      color: var(--blanc);
+      margin-bottom: 20px;
+    }
+
+    .contact-left h2 strong { color: #A8CC7A; }
+
+    .contact-left p {
+      color: rgba(255,255,255,0.6);
+      font-size: 16px;
+      line-height: 1.7;
+      margin-bottom: 36px;
+    }
+
+    .contact-right {
+      padding-top: 12px;
+    }
+
+    .contact-line {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .contact-item {
+      padding-bottom: 24px;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .contact-item:last-child { border-bottom: none; }
+
+    .contact-item span {
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.4);
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .contact-item a, .contact-item p {
+      color: var(--blanc);
+      font-size: 16px;
+      text-decoration: none;
+    }
+
+    .contact-item a:hover { color: #A8CC7A; }
+
+    /* ── FOOTER ──────────────────────────────────────── */
+    footer {
+      background: var(--noir);
+      border-top: 1px solid rgba(255,255,255,0.08);
+      padding: 24px 40px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    footer p {
+      font-size: 12px;
+      color: rgba(255,255,255,0.3);
+      letter-spacing: 0.06em;
+    }
+
+    /* ── PERSPECTIVES ────────────────────────────────── */
+    .perspectives-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 0;
+      margin-top: 8px;
+      border: 1px solid var(--ligne);
+    }
+
+    .perspectives-item {
+      padding: 40px 36px;
+      border-right: 1px solid var(--ligne);
+      position: relative;
+    }
+
+    .perspectives-item:last-child { border-right: none; }
+
+    .persp-tag {
+      display: inline-block;
+      font-size: 10px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--pierre);
+      border: 1px solid var(--ligne);
+      padding: 3px 10px;
+      margin-bottom: 20px;
+    }
+
+    .perspectives-item h3 {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--noir);
+      margin-bottom: 14px;
+      line-height: 1.25;
+    }
+
+    .perspectives-item p {
+      font-size: 15px;
+      color: var(--pierre);
+      line-height: 1.7;
+    }
+
+    .persp-intro {
+      max-width: 640px;
+      margin-bottom: 40px;
+    }
+
+    .persp-intro p {
+      font-size: 16px;
+      color: var(--pierre);
+      line-height: 1.75;
+    }
+
+    /* ── SCREENSHOTS ────────────────────────────────────── */
+    .screenshots-section {
+      background: #F0EDE8;
+    }
+
+    .screenshots-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 48px;
+    }
+
+    .screenshot-block {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .screenshot-frame {
+      border: 1px solid var(--ligne);
+      overflow: hidden;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+      line-height: 0;
+    }
+
+    .screenshot-frame img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .screenshot-caption {
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+    }
+
+    .caption-num {
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      color: var(--pierre);
+      font-weight: 700;
+      padding-top: 3px;
+      flex-shrink: 0;
+    }
+
+    .screenshot-caption strong {
+      display: block;
+      font-size: 15px;
+      color: var(--noir);
+      margin-bottom: 8px;
+    }
+
+    .screenshot-caption p {
+      font-size: 14px;
+      color: var(--pierre);
+      line-height: 1.65;
+    }
+
+    /* ── RESPONSIVE ──────────────────────────────────── */
+    @media (max-width: 900px) {
+      header { padding: 0 20px; }
+      nav { display: none; }
+
+      .hero {
+        grid-template-columns: 1fr;
+        min-height: auto;
+      }
+
+      .hero-text {
+        padding: 60px 24px 48px;
+        border-right: none;
+        border-bottom: 1px solid var(--ligne);
+      }
+
+      .hero-visual {
+        padding: 40px 24px 56px;
+      }
+
+      section { padding: 64px 24px; }
+
+      .problem-grid {
+        grid-template-columns: 1fr;
+        gap: 0;
+      }
+
+      .problem-item {
+        border-left: none;
+        border-top: 1px solid var(--ligne);
+        padding: 32px 0;
+      }
+
+      .problem-item:first-child { border-top: none; padding-top: 0; }
+
+      .perspectives-grid { grid-template-columns: 1fr; }
+      .perspectives-item { border-right: none; border-bottom: 1px solid var(--ligne); }
+      .perspectives-item:last-child { border-bottom: none; }
+
+      .response-grid { grid-template-columns: 1fr; gap: 0; }
+      .response-block { padding-top: 32px; margin-top: 8px; }
+
+      .partner-grid { grid-template-columns: 1fr; }
+      .partner-card { border-right: none; border-bottom: 1px solid var(--ligne); }
+      .partner-card:last-child { border-bottom: none; }
+
+      .screenshots-grid { grid-template-columns: 1fr; gap: 40px; }
+
+      .proto-inner { grid-template-columns: 1fr; gap: 48px; }
+
+      .contact-inner { grid-template-columns: 1fr; gap: 48px; }
+
+      footer { flex-direction: column; gap: 8px; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header>
+    <span class="logo">Bivouac</span>
+    <nav>
+      <a href="#probleme">Le constat</a>
+      <a href="#fonctionnement">La réponse</a>
+      <a href="#perspectives">Perspectives</a>
+      <a href="#partenariat">Partenaires</a>
+      <a href="#contact" class="nav-cta">Nous contacter</a>
+    </nav>
+  </header>
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="hero-text">
+      <p class="eyebrow">Outil pédagogique & cartographique — Phase prototype</p>
+      <h1>Bivouac sauvage en France — <strong>naviguer dans un cadre réglementaire morcelé</strong></h1>
+      <p class="hero-desc">
+        Bivouac est une plateforme qui croise cartographie, données réglementaires institutionnelles et retours terrain pour orienter les pratiquants du bivouac en France vers une pratique responsable.
+      </p>
+      <div class="hero-actions">
+        <a href="#partenariat" class="btn-primary">Devenir partenaire</a>
+        <a href="#fonctionnement" class="btn-secondary">Comprendre le projet</a>
+      </div>
+    </div>
+
+    <div class="hero-visual">
+      <!-- Courbes de niveau topographiques — signature visuelle -->
+      <svg class="topo-svg" viewBox="0 0 480 440" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <!-- Fond subtil -->
+        <rect width="480" height="440" fill="#EAE8E3" rx="2"/>
+
+        <!-- Courbes de niveau — ton vert forêt, opacités décroissantes vers l'extérieur -->
+        <path d="M240,200 C280,175 340,162 380,172 C420,182 448,210 444,240 C440,270 412,292 376,298 C340,304 296,294 268,278 C240,262 210,240 200,218 C190,196 200,225 240,200 Z" stroke="#2D5016" stroke-width="1" fill="none" opacity="0.12"/>
+        <path d="M240,188 C285,160 352,144 398,156 C444,168 468,202 464,238 C460,274 428,300 388,308 C348,316 298,306 266,286 C234,266 198,240 188,212 C178,184 195,216 240,188 Z" stroke="#2D5016" stroke-width="1" fill="none" opacity="0.15"/>
+        <path d="M240,176 C290,144 364,124 416,140 C468,156 490,196 484,238 C478,280 442,310 398,320 C354,330 298,320 262,296 C226,272 184,242 174,208 C164,174 190,208 240,176 Z" stroke="#2D5016" stroke-width="1" fill="none" opacity="0.18"/>
+        <path d="M240,162 C296,126 378,102 436,122 C494,142 516,188 508,236 C500,284 458,320 408,332 C358,344 296,334 256,306 C216,278 168,244 158,202 C148,160 184,198 240,162 Z" stroke="#2D5016" stroke-width="1.2" fill="none" opacity="0.2"/>
+        <path d="M240,148 C302,108 392,80 456,104 C520,128 542,180 532,234 C522,288 474,328 418,344 C362,360 294,348 250,316 C206,284 152,246 142,196 C132,146 178,188 240,148 Z" stroke="#2D5016" stroke-width="1.2" fill="none" opacity="0.22"/>
+        <path d="M240,134 C308,90 406,58 476,86 C546,114 568,172 556,232 C544,292 490,336 428,354 C366,372 292,360 244,324 C196,288 136,248 126,190 C116,132 172,178 240,134 Z" stroke="#2D5016" stroke-width="1.4" fill="none" opacity="0.18"/>
+        <path d="M240,118 C314,70 420,34 496,66 C572,98 598,164 582,230 C566,296 506,344 438,366 C370,388 290,374 238,334 C186,294 120,250 110,184 C100,118 166,166 240,118 Z" stroke="#2D5016" stroke-width="1.4" fill="none" opacity="0.14"/>
+        <path d="M240,100 C322,48 436,6 518,44 C600,82 630,154 612,228 C594,302 524,354 448,378 C372,402 286,390 230,346 C174,302 102,252 92,178 C82,104 158,152 240,100 Z" stroke="#2D5016" stroke-width="1.6" fill="none" opacity="0.10"/>
+
+        <!-- Courbes internes — sommet -->
+        <path d="M240,212 C256,202 278,196 296,200 C314,204 326,218 322,234 C318,250 300,260 280,262 C260,264 240,258 228,246 C216,234 224,222 240,212 Z" stroke="#2D5016" stroke-width="0.8" fill="none" opacity="0.18"/>
+        <path d="M240,226 C252,218 268,214 282,218 C296,222 304,234 300,246 C296,258 282,264 268,264 C254,264 240,258 234,248 C228,238 228,234 240,226 Z" stroke="#2D5016" stroke-width="0.8" fill="#2D5016" fill-opacity="0.06" opacity="0.9"/>
+
+        <!-- Marqueur de bivouac -->
+        <g transform="translate(232, 218)">
+          <circle cx="8" cy="8" r="5" fill="#2D5016" opacity="0.9"/>
+          <circle cx="8" cy="8" r="9" stroke="#2D5016" stroke-width="1" fill="none" opacity="0.3"/>
+        </g>
+
+        <!-- Courbe d'altitude basse, horizontale -->
+        <path d="M28,340 C60,328 110,322 160,326 C210,330 260,336 310,332 C360,328 410,318 452,320" stroke="#2D5016" stroke-width="0.8" fill="none" opacity="0.12"/>
+        <path d="M28,360 C70,350 120,344 170,348 C220,352 270,358 320,354 C370,350 420,340 452,342" stroke="#2D5016" stroke-width="0.8" fill="none" opacity="0.09"/>
+        <path d="M28,380 C80,372 130,366 180,370 C230,374 280,380 330,376 C380,372 430,362 452,364" stroke="#2D5016" stroke-width="0.8" fill="none" opacity="0.07"/>
+
+        <!-- Ligne de crête -->
+        <path d="M80,280 L120,240 L160,258 L200,228 L240,218 L280,232 L320,248 L360,260 L400,252 L440,268" stroke="#2D5016" stroke-width="1" fill="none" stroke-dasharray="4 4" opacity="0.2"/>
+
+        <!-- Label altimétrique -->
+        <text x="256" y="244" font-family="Calibri, sans-serif" font-size="9" fill="#2D5016" opacity="0.6" letter-spacing="0.5">2 487 m</text>
+        <text x="28" y="410" font-family="Calibri, sans-serif" font-size="9" fill="#2D5016" opacity="0.35" letter-spacing="0.8">BIVOUAC — cartographie réglementaire</text>
+      </svg>
+    </div>
+  </div>
+
+  <!-- SECTION PROBLÈME -->
+  <section id="probleme">
+    <div class="container">
+      <p class="section-label">Le constat</p>
+      <h2>Une pratique en forte croissance,<br><strong>une réglementation invisible</strong></h2>
+      <div class="problem-grid">
+        <div class="problem-item">
+          <span class="problem-num">Complexe</span>
+          <h3>Un paysage réglementaire que personne ne maîtrise vraiment</h3>
+          <p>Parc national, parc naturel régional, réserve naturelle gérée par l'ONF ou un syndicat mixte, arrêté préfectoral d'une commune, zone Natura 2000… La superposition des régimes est réelle. Un même massif peut combiner plusieurs statuts, chacun portant ses propres règles sur le bivouac. Aucun outil ne les agrège.</p>
+        </div>
+        <div class="problem-item">
+          <span class="problem-num">Trop tard</span>
+          <h3>Une information publiée, mais qui arrive au mauvais moment</h3>
+          <p>Les institutions ont l'obligation légale de rendre leurs arrêtés et réglementations accessibles — et elles s'y conforment. Mais l'affichage sur un panneau de parking ne suffit pas quand le sac à dos est déjà bouclé et que le départ est dans une heure. Le biais est connu : <em>« On l'a vu trop tard, on n'a pas pu faire autrement que d'y aller. »</em> Bivouac intervient en amont, en renfort des efforts de communication existants, pour rendre l'information incontournable avant le départ.</p>
+        </div>
+        <div class="problem-item">
+          <span class="problem-num">Dispersé</span>
+          <h3>Des communications sans réceptacle commun</h3>
+          <p>Les gestionnaires de territoires communiquent — sites web, bulletins, signalétique. Les offices de tourisme jouent souvent ce rôle de relais, mais l'information réglementaire y est fréquemment incomplète ou approximative : les agents ne peuvent pas maîtriser la totalité des subtilités propres à chaque statut de protection. Et dans tous les cas, aucun canal ne rassemble l'ensemble de ces réglementations dans un espace commun, cartographique, directement utilisable par le pratiquant.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION RÉPONSE -->
+  <section id="fonctionnement" class="response-bg">
+    <div class="container">
+      <p class="section-label">La réponse</p>
+      <h2>Un outil d'orientation, pas<br><strong>un substitut juridique</strong></h2>
+      <div class="response-grid">
+        <div class="response-block">
+          <h3>Données institutionnelles</h3>
+          <p>Les gestionnaires de territoires (parcs nationaux, PNRs, réserves naturelles) administrent directement leurs zones réglementées dans la plateforme. L'information est sourcée à la racine, à jour, et attribuée à son émetteur légitime.</p>
+        </div>
+        <div class="response-block">
+          <h3>Données calculées automatiquement</h3>
+          <p>Zones protégées, points d'eau, périmètres de protection : ces données sont extraites et recalculées en temps réel depuis OpenStreetMap via l'API Overpass. Elles complètent l'information institutionnelle sans mobiliser les partenaires.</p>
+        </div>
+        <div class="response-block">
+          <h3>Contributions empiriques des pratiquants</h3>
+          <p>Conditions de terrain, saisonnalité, accès réels — les utilisateurs complètent l'information cartographique par une connaissance de terrain que les données ouvertes ne capturent pas. Un système de gouvernance limite les dérives et protège les lieux sensibles.</p>
+        </div>
+        <div class="response-block">
+          <h3>Posture pédagogique assumée</h3>
+          <p>Bivouac n'est pas un outil d'autorisation. Il oriente et informe. La responsabilité de vérifier la réalité terrain appartient au pratiquant. Cette posture protège les partenaires institutionnels et crédibilise l'outil auprès des régulateurs.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION SCREENSHOTS -->
+  <section class="screenshots-section">
+    <div class="container">
+      <p class="section-label">Le prototype</p>
+      <h2>Une interface cartographique<br><strong>pensée pour le terrain</strong></h2>
+      <div class="screenshots-grid">
+        <div class="screenshot-block">
+          <div class="screenshot-frame">
+            <img src="screenshots/map-zones.png" alt="Carte des zones réglementées — massif de la Chartreuse" loading="lazy" />
+          </div>
+          <div class="screenshot-caption">
+            <span class="caption-num">01</span>
+            <div>
+              <strong>Cartographie réglementaire en temps réel</strong>
+              <p>Les zones réglementées — réserves naturelles, zones de protection, périmètres spéciaux — sont superposées à la carte topographique IGN. Ici, le massif de la Chartreuse avec la Réserve naturelle des Hauts de Chartreuse.</p>
+            </div>
+          </div>
+        </div>
+        <div class="screenshot-block">
+          <div class="screenshot-frame">
+            <img src="screenshots/zone-info.png" alt="Panneau d'information d'une zone réglementée" loading="lazy" />
+          </div>
+          <div class="screenshot-caption">
+            <span class="caption-num">02</span>
+            <div>
+              <strong>Réglementation détaillée par zone</strong>
+              <p>Un clic sur une zone affiche la réglementation applicable : statut de protection, règles spécifiques (bivouac interdit, camping interdit), règles communes et source institutionnelle de l'information.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION PERSPECTIVES -->
+  <section id="perspectives">
+    <div class="container">
+      <p class="section-label">Perspectives</p>
+      <h2>Des modules à construire<br><strong>avec les territoires</strong></h2>
+      <div class="persp-intro">
+        <p>Le socle cartographique et réglementaire de Bivouac est conçu pour accueillir des modules complémentaires, développés en co-construction avec les gestionnaires de terrain. Trois directions sont déjà identifiées.</p>
+      </div>
+      <div class="perspectives-grid">
+        <div class="perspectives-item">
+          <span class="persp-tag">Module futur</span>
+          <h3>Accompagner les décisions de régulation par quotas</h3>
+          <p>Sur certains sites à forte pression — le lac Blanc à Chamonix, le lac de la Muzelle en Oisans — des réflexions sont déjà engagées par les administrations compétentes autour de systèmes de quota ou d'accès régulé. Bivouac se positionne comme l'outil capable d'en accompagner la mise en œuvre, d'intégrer ces décisions dans la plateforme et de les rendre lisibles pour les pratiquants.</p>
+        </div>
+        <div class="perspectives-item">
+          <span class="persp-tag">Module futur</span>
+          <h3>Zones de chasse actives et programmées</h3>
+          <p>L'ouverture de la chasse transforme radicalement les conditions de sécurité d'un bivouac. Intégrer les calendriers des zones chassées — y compris les ouvertures prévues dans les prochains jours — permettrait aux pratiquants d'anticiper et aux fédérations de chasse d'assurer une meilleure cohabitation des usages.</p>
+        </div>
+        <div class="perspectives-item">
+          <span class="persp-tag">Module futur</span>
+          <h3>Zones sensibles liées aux espèces</h3>
+          <p>Certains secteurs sont critiques à des périodes précises, sans que la réglementation formelle ne le signale toujours suffisamment. Les zones de nidification du tétras-lyre sur les sommets chartrousins en sont un exemple concret. Bivouac pourrait accueillir ces données saisonnières en lien direct avec les gestionnaires naturalistes concernés.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION PARTENAIRES -->
+  <section id="partenariat">
+    <div class="container">
+      <p class="section-label">Partenariat</p>
+      <h2>Deux formes d'engagement,<br><strong>selon votre rôle</strong></h2>
+      <div class="partner-grid">
+        <div class="partner-card">
+          <span class="partner-tag">Partenaire réglementaire</span>
+          <h3>Parcs, PNRs, réserves naturelles</h3>
+          <p>Vous gérez un territoire réglementé. Bivouac vous offre un canal direct pour que vos règles atteignent réellement les pratiquants — sur le terrain, au moment où ils en ont besoin.</p>
+          <ul>
+            <li>Administration autonome de vos zones dans la plateforme</li>
+            <li>Diffusion pédagogique de vos réglementations spécifiques</li>
+            <li>Attribution claire et sourcée de l'information réglementaire</li>
+            <li>Aucune délégation de responsabilité juridique</li>
+            <li>Co-construction des règles de gouvernance des contributions</li>
+          </ul>
+        </div>
+        <div class="partner-card financeur">
+          <span class="partner-tag financeur">Financeur territorial</span>
+          <h3>Départements, régions</h3>
+          <p>Bivouac est un projet numérique en phase de structuration, à la croisée des enjeux de tourisme de nature, de sensibilisation environnementale et de valorisation des territoires.</p>
+          <ul>
+            <li>Soutien à un outil de médiation réglementaire inédit</li>
+            <li>Alignement avec les politiques d'éducation à l'environnement</li>
+            <li>Valorisation des espaces naturels de votre territoire</li>
+            <li>Visibilité institutionnelle dans la plateforme</li>
+            <li>Pilotage d'un site de bivouac supervisé en partenariat</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION PROTOTYPE -->
+  <section class="proto-section">
+    <div class="container">
+      <div class="proto-inner">
+        <div class="proto-text">
+          <p class="section-label">État du projet</p>
+          <h2>Un prototype <strong>fonctionnel</strong>,<br>une industrialisation à construire</h2>
+          <p>
+            Bivouac existe depuis près de dix ans sous forme de maquette. Avec l'émergence des outils de prototypage augmentés, le projet a franchi une étape décisive : un prototype dynamique intégrant des données réelles a été construit et éprouvé.
+          </p>
+          <p>
+            Ce prototype a permis de valider la cohérence du modèle — cartographie réglementaire, trois types de données, gouvernance des contributions — et d'identifier les conditions d'une industrialisation sérieuse.
+          </p>
+          <p>
+            La phase suivante est un développement complet, conditionné à l'engagement de premiers partenaires institutionnels.
+          </p>
+        </div>
+        <div class="proto-stats">
+          <div class="proto-stat">
+            <span class="proto-stat-num">3</span>
+            <p>Types de données articulés : institutionnelles, calculées, empiriques</p>
+          </div>
+          <div class="proto-stat">
+            <span class="proto-stat-num">10 ans</span>
+            <p>De maturation du concept, depuis les études jusqu'au prototype fonctionnel</p>
+          </div>
+          <div class="proto-stat">
+            <span class="proto-stat-num">Phase 0</span>
+            <p>Recherche de partenaires fondateurs pour structurer le développement</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION CONTACT -->
+  <section id="contact" class="contact-section">
+    <div class="container">
+      <div class="contact-inner">
+        <div class="contact-left">
+          <p class="section-label">Prendre contact</p>
+          <h2>Discutons de <strong>votre territoire</strong></h2>
+          <p>
+            Vous gérez un espace naturel réglementé ou vous pilotez des politiques de tourisme de nature ? Prenons trente minutes pour évaluer ensemble ce que Bivouac peut apporter à votre contexte.
+          </p>
+          <a href="mailto:pierre.grambert@gmail.com" class="btn-primary">Écrire un message</a>
+        </div>
+        <div class="contact-right">
+          <div class="contact-line">
+            <div class="contact-item">
+              <span>Porteur du projet</span>
+              <p>Pierre — Designer produit, initiateur de Bivouac</p>
+            </div>
+            <div class="contact-item">
+              <span>Contact</span>
+              <a href="mailto:pierre.grambert@gmail.com">pierre.grambert@gmail.com</a>
+            </div>
+            <div class="contact-item">
+              <span>Phase actuelle</span>
+              <p>Prospection de partenaires institutionnels fondateurs</p>
+            </div>
+            <div class="contact-item">
+              <span>Territoire prioritaire</span>
+              <p>Alpes françaises — ouvert à d'autres massifs</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer>
+    <p>Bivouac — Plateforme de médiation réglementaire pour le bivouac en France</p>
+    <p>Prototype 2025 — Tous droits réservés</p>
+  </footer>
+
+</body>
+</html>

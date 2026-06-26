@@ -55,6 +55,7 @@
   "devDependencies": {
     "@tailwindcss/vite": "4.1.12",
     "@vitejs/plugin-react": "4.7.0",
+    "puppeteer-core": "^25.2.1",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "supabase": "^2.96.0",
