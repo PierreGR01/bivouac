@@ -164,21 +164,82 @@
 
     .btn-secondary:hover { background: var(--vert); color: var(--blanc); }
 
-    /* Carte topo SVG */
+    /* Hero phones */
     .hero-visual {
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 80px 40px;
+      padding: 56px 32px;
       background: var(--blanc);
       position: relative;
       overflow: hidden;
     }
 
-    .topo-svg {
+    .phones-duo {
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+    }
+
+    /* Phone mockup frame */
+    .phone {
+      position: relative;
+      width: 188px;
+      padding: 9px;
+      background: #F1F2F4;
+      border-radius: 48px;
+      border: 1.5px solid #C2C6CC;
+      flex-shrink: 0;
+    }
+
+    .phone-btn {
+      position: absolute;
+      width: 3px;
+      background: #F1F2F4;
+      border: 1.5px solid #C2C6CC;
+      box-sizing: border-box;
+    }
+
+    .phone-btn-left {
+      left: -3px;
+      border-right: none;
+      border-radius: 3px 0 0 3px;
+    }
+
+    .phone-btn-right {
+      right: -3px;
+      border-left: none;
+      border-radius: 0 3px 3px 0;
+    }
+
+    .phone-screen {
+      border-radius: 38px;
+      overflow: hidden;
+      background: #fff;
+      border: 1.5px solid #D4D7DC;
+      line-height: 0;
+    }
+
+    .phone-notch {
+      height: 22px;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .phone-notch-pill {
+      width: 76px;
+      height: 18px;
+      background: #F1F2F4;
+      border: 1.5px solid #C2C6CC;
+      border-radius: 12px;
+    }
+
+    .phone-screen img {
       width: 100%;
-      max-width: 480px;
-      opacity: 0.85;
+      height: auto;
+      display: block;
     }
 
     /* ── SECTION GÉNÉRIQUE ───────────────────────────── */
@@ -542,6 +603,23 @@
       gap: 48px;
     }
 
+    .screenshots-grid--3 {
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 32px;
+    }
+
+    .screenshot-frame--mobile {
+      aspect-ratio: 9 / 19;
+      overflow: hidden;
+    }
+
+    .screenshot-frame--mobile img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: top;
+    }
+
     .screenshot-block {
       display: flex;
       flex-direction: column;
@@ -636,6 +714,10 @@
       .partner-card:last-child { border-bottom: none; }
 
       .screenshots-grid { grid-template-columns: 1fr; gap: 40px; }
+      .screenshots-grid--3 { grid-template-columns: 1fr; }
+      .phones-duo { gap: 14px; }
+      .phone { width: 148px; }
+      .screenshot-frame--mobile { aspect-ratio: 9 / 16; }
 
       .proto-inner { grid-template-columns: 1fr; gap: 48px; }
 
@@ -674,43 +756,33 @@
     </div>
 
     <div class="hero-visual">
-      <!-- Courbes de niveau topographiques — signature visuelle -->
-      <svg class="topo-svg" viewBox="0 0 480 440" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-        <!-- Fond subtil -->
-        <rect width="480" height="440" fill="#EAE8E3" rx="2"/>
+      <div class="phones-duo">
 
-        <!-- Courbes de niveau — ton vert forêt, opacités décroissantes vers l'extérieur -->
-        <path d="M240,200 C280,175 340,162 380,172 C420,182 448,210 444,240 C440,270 412,292 376,298 C340,304 296,294 268,278 C240,262 210,240 200,218 C190,196 200,225 240,200 Z" stroke="#2D5016" stroke-width="1" fill="none" opacity="0.12"/>
-        <path d="M240,188 C285,160 352,144 398,156 C444,168 468,202 464,238 C460,274 428,300 388,308 C348,316 298,306 266,286 C234,266 198,240 188,212 C178,184 195,216 240,188 Z" stroke="#2D5016" stroke-width="1" fill="none" opacity="0.15"/>
-        <path d="M240,176 C290,144 364,124 416,140 C468,156 490,196 484,238 C478,280 442,310 398,320 C354,330 298,320 262,296 C226,272 184,242 174,208 C164,174 190,208 240,176 Z" stroke="#2D5016" stroke-width="1" fill="none" opacity="0.18"/>
-        <path d="M240,162 C296,126 378,102 436,122 C494,142 516,188 508,236 C500,284 458,320 408,332 C358,344 296,334 256,306 C216,278 168,244 158,202 C148,160 184,198 240,162 Z" stroke="#2D5016" stroke-width="1.2" fill="none" opacity="0.2"/>
-        <path d="M240,148 C302,108 392,80 456,104 C520,128 542,180 532,234 C522,288 474,328 418,344 C362,360 294,348 250,316 C206,284 152,246 142,196 C132,146 178,188 240,148 Z" stroke="#2D5016" stroke-width="1.2" fill="none" opacity="0.22"/>
-        <path d="M240,134 C308,90 406,58 476,86 C546,114 568,172 556,232 C544,292 490,336 428,354 C366,372 292,360 244,324 C196,288 136,248 126,190 C116,132 172,178 240,134 Z" stroke="#2D5016" stroke-width="1.4" fill="none" opacity="0.18"/>
-        <path d="M240,118 C314,70 420,34 496,66 C572,98 598,164 582,230 C566,296 506,344 438,366 C370,388 290,374 238,334 C186,294 120,250 110,184 C100,118 166,166 240,118 Z" stroke="#2D5016" stroke-width="1.4" fill="none" opacity="0.14"/>
-        <path d="M240,100 C322,48 436,6 518,44 C600,82 630,154 612,228 C594,302 524,354 448,378 C372,402 286,390 230,346 C174,302 102,252 92,178 C82,104 158,152 240,100 Z" stroke="#2D5016" stroke-width="1.6" fill="none" opacity="0.10"/>
+        <!-- Phone 1 — Spot de bivouac -->
+        <div class="phone">
+          <div class="phone-btn phone-btn-left" style="top:66px;height:17px;"></div>
+          <div class="phone-btn phone-btn-left" style="top:93px;height:30px;"></div>
+          <div class="phone-btn phone-btn-left" style="top:133px;height:30px;"></div>
+          <div class="phone-btn phone-btn-right" style="top:104px;height:42px;"></div>
+          <div class="phone-screen">
+            <div class="phone-notch"><div class="phone-notch-pill"></div></div>
+            <img src="screenshots/mobile-spot.png" alt="Joli spot au dessus des Doménons" loading="lazy" />
+          </div>
+        </div>
 
-        <!-- Courbes internes — sommet -->
-        <path d="M240,212 C256,202 278,196 296,200 C314,204 326,218 322,234 C318,250 300,260 280,262 C260,264 240,258 228,246 C216,234 224,222 240,212 Z" stroke="#2D5016" stroke-width="0.8" fill="none" opacity="0.18"/>
-        <path d="M240,226 C252,218 268,214 282,218 C296,222 304,234 300,246 C296,258 282,264 268,264 C254,264 240,258 234,248 C228,238 228,234 240,226 Z" stroke="#2D5016" stroke-width="0.8" fill="#2D5016" fill-opacity="0.06" opacity="0.9"/>
+        <!-- Phone 2 — Point d'eau -->
+        <div class="phone">
+          <div class="phone-btn phone-btn-left" style="top:66px;height:17px;"></div>
+          <div class="phone-btn phone-btn-left" style="top:93px;height:30px;"></div>
+          <div class="phone-btn phone-btn-left" style="top:133px;height:30px;"></div>
+          <div class="phone-btn phone-btn-right" style="top:104px;height:42px;"></div>
+          <div class="phone-screen">
+            <div class="phone-notch"><div class="phone-notch-pill"></div></div>
+            <img src="screenshots/mobile-water.png" alt="Spot avec point d'eau à proximité" loading="lazy" />
+          </div>
+        </div>
 
-        <!-- Marqueur de bivouac -->
-        <g transform="translate(232, 218)">
-          <circle cx="8" cy="8" r="5" fill="#2D5016" opacity="0.9"/>
-          <circle cx="8" cy="8" r="9" stroke="#2D5016" stroke-width="1" fill="none" opacity="0.3"/>
-        </g>
-
-        <!-- Courbe d'altitude basse, horizontale -->
-        <path d="M28,340 C60,328 110,322 160,326 C210,330 260,336 310,332 C360,328 410,318 452,320" stroke="#2D5016" stroke-width="0.8" fill="none" opacity="0.12"/>
-        <path d="M28,360 C70,350 120,344 170,348 C220,352 270,358 320,354 C370,350 420,340 452,342" stroke="#2D5016" stroke-width="0.8" fill="none" opacity="0.09"/>
-        <path d="M28,380 C80,372 130,366 180,370 C230,374 280,380 330,376 C380,372 430,362 452,364" stroke="#2D5016" stroke-width="0.8" fill="none" opacity="0.07"/>
-
-        <!-- Ligne de crête -->
-        <path d="M80,280 L120,240 L160,258 L200,228 L240,218 L280,232 L320,248 L360,260 L400,252 L440,268" stroke="#2D5016" stroke-width="1" fill="none" stroke-dasharray="4 4" opacity="0.2"/>
-
-        <!-- Label altimétrique -->
-        <text x="256" y="244" font-family="Calibri, sans-serif" font-size="9" fill="#2D5016" opacity="0.6" letter-spacing="0.5">2 487 m</text>
-        <text x="28" y="410" font-family="Calibri, sans-serif" font-size="9" fill="#2D5016" opacity="0.35" letter-spacing="0.8">BIVOUAC — cartographie réglementaire</text>
-      </svg>
+      </div>
     </div>
   </div>
 
@@ -770,28 +842,40 @@
     <div class="container">
       <p class="section-label">Le prototype</p>
       <h2>Une interface cartographique<br><strong>pensée pour le terrain</strong></h2>
-      <div class="screenshots-grid">
+      <div class="screenshots-grid screenshots-grid--3">
         <div class="screenshot-block">
-          <div class="screenshot-frame">
-            <img src="screenshots/map-zones.png" alt="Carte des zones réglementées — massif de la Chartreuse" loading="lazy" />
+          <div class="screenshot-frame screenshot-frame--mobile">
+            <img src="screenshots/proto-layers.png" alt="Données météo — précipitations au col de Maure" loading="lazy" />
           </div>
           <div class="screenshot-caption">
             <span class="caption-num">01</span>
             <div>
-              <strong>Cartographie réglementaire en temps réel</strong>
-              <p>Les zones réglementées — réserves naturelles, zones de protection, périmètres spéciaux — sont superposées à la carte topographique IGN. Ici, le massif de la Chartreuse avec la Réserve naturelle des Hauts de Chartreuse.</p>
+              <strong>Données météo en temps réel</strong>
+              <p>Le radar précipitations et le mode hiver s'activent en un clic. Ici, des précipitations visibles au col de Maure — une information directement utile avant de poser sa tente.</p>
             </div>
           </div>
         </div>
         <div class="screenshot-block">
-          <div class="screenshot-frame">
-            <img src="screenshots/zone-info.png" alt="Panneau d'information d'une zone réglementée" loading="lazy" />
+          <div class="screenshot-frame screenshot-frame--mobile">
+            <img src="screenshots/proto-ecrins.png" alt="Zone réglementée — Parc national des Écrins" loading="lazy" />
           </div>
           <div class="screenshot-caption">
             <span class="caption-num">02</span>
             <div>
-              <strong>Réglementation détaillée par zone</strong>
-              <p>Un clic sur une zone affiche la réglementation applicable : statut de protection, règles spécifiques (bivouac interdit, camping interdit), règles communes et source institutionnelle de l'information.</p>
+              <strong>Réglementation Parc national des Écrins</strong>
+              <p>La fiche de zone affiche la réglementation précise : bivouac interdit du 01/01 au 31/12 dans le cœur du parc, avec les nuances propres aux zones de tranquillité et d'héliportage.</p>
+            </div>
+          </div>
+        </div>
+        <div class="screenshot-block">
+          <div class="screenshot-frame screenshot-frame--mobile">
+            <img src="screenshots/mobile-spot.png" alt="Fiche spot — Joli spot au dessus des Doménons" loading="lazy" />
+          </div>
+          <div class="screenshot-caption">
+            <span class="caption-num">03</span>
+            <div>
+              <strong>Fiche spot détaillée</strong>
+              <p>Chaque spot affiche altitude, saison, accès à l'eau, capacité, difficulté et prévision de précipitations. Les contributions de la communauté complètent ce que les données institutionnelles ne capturent pas.</p>
             </div>
           </div>
         </div>
