@@ -1,5 +1,5 @@
 import React from 'react';
-import { Droplet, BanIcon, Route, Plus, Minus, Ruler, Snowflake, Locate, Settings, CloudRain, Zap } from 'lucide-react';
+import { Droplet, BanIcon, Route, Plus, Minus, Ruler, Snowflake, Locate, Settings, CloudRain } from 'lucide-react';
 
 interface MapControlsProps {
   showWaterPoints: boolean;
@@ -10,10 +10,8 @@ interface MapControlsProps {
   isRoutingMode: boolean;
   isMeasuringMode: boolean;
   onMeasureClick: () => void;
-  showRainRadar?: boolean;
-  onRainRadarToggle?: () => void;
-  showLightning?: boolean;
-  onLightningToggle?: () => void;
+  showWeather?: boolean;
+  onWeatherToggle?: () => void;
   satelliteMode: boolean;
   onSatelliteModeToggle: () => void;
   winterMode?: boolean;
@@ -33,10 +31,8 @@ export function MapControls({
   isMeasuringMode,
   onMeasureClick,
   satelliteMode,
-  showRainRadar = false,
-  onRainRadarToggle,
-  showLightning = false,
-  onLightningToggle,
+  showWeather = false,
+  onWeatherToggle,
   onSatelliteModeToggle,
   winterMode = false,
   onWinterModeToggle,
@@ -130,30 +126,17 @@ export function MapControls({
       {/* Séparateur */}
       <div className="h-px bg-gray-200 my-1"></div>
 
-      {/* Météo — radar pluie */}
+      {/* Météo — radar, foudre, vent, nivoses */}
       <button
-        onClick={onRainRadarToggle}
+        onClick={onWeatherToggle}
         className={`w-10 h-10 rounded-lg transition-all flex items-center justify-center ${
-          showRainRadar
+          showWeather
             ? 'bg-cyan-600 text-white'
             : 'text-gray-700 hover:bg-gray-100'
         }`}
-        title="Radar précipitations"
+        title="Météo (radar, foudre, vent, nivoses)"
       >
         <CloudRain className="w-5 h-5" />
-      </button>
-
-      {/* Météo — foudre */}
-      <button
-        onClick={onLightningToggle}
-        className={`w-10 h-10 rounded-lg transition-all flex items-center justify-center ${
-          showLightning
-            ? 'bg-amber-500 text-white'
-            : 'text-gray-700 hover:bg-gray-100'
-        }`}
-        title="Points de foudre"
-      >
-        <Zap className="w-5 h-5" />
       </button>
 
       {/* Séparateur */}

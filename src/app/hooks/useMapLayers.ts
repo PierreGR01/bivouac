@@ -19,8 +19,7 @@ export function useMapLayers() {
   const [isLoadingWaterPoints, setIsLoadingWaterPoints] = useState(false);
   const [waterPoints, setWaterPoints] = useState<any[]>([]);
 
-  const [showRainRadar, setShowRainRadar] = useState(false);
-  const [showLightning, setShowLightning] = useState(false);
+  const [showWeather, setShowWeather] = useState(false);
 
   const [showProtectedAreas, setShowProtectedAreas] = useState(true);
   const [showProtectedAreasButton, setShowProtectedAreasButton] = useState(false);
@@ -116,8 +115,7 @@ export function useMapLayers() {
     });
   };
 
-  const toggleRainRadar = () => setShowRainRadar(prev => !prev);
-  const toggleLightning = () => setShowLightning(prev => !prev);
+  const toggleWeather = () => setShowWeather(prev => !prev);
 
   const toggleProtectedAreas = useCallback(() => {
     if (!showProtectedAreas) {
@@ -137,10 +135,8 @@ export function useMapLayers() {
     winterMode,
     toggleSatellite,
     toggleWinter,
-    showRainRadar,
-    toggleRainRadar,
-    showLightning,
-    toggleLightning,
+    showWeather,
+    toggleWeather,
     showWaterPoints,
     toggleWaterPoints,
     showWaterPointsInfo,

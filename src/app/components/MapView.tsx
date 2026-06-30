@@ -1,8 +1,9 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import L from 'leaflet';
 import 'leaflet-draw';
 import 'leaflet-draw/dist/leaflet.draw.css';
-import { Trash2, ChevronDown, ChevronUp, Info } from 'lucide-react';
+import { Trash2, ChevronDown, ChevronUp, Info, X } from 'lucide-react';
+import { NIVOSES, NivoseStation } from '../data/nivoses';
 import { PoiLocation } from '../types';
 import { fetchWaterPoints, WaterPoint, getWaterPointLabel, getWaterPointInfo, RateLimitError, filterAndSortWaterPoints } from '../services/overpass';
 import { ProtectedArea, getProtectedAreaLabel, getProtectedAreaInfo, shouldDisplayOnMap } from '../services/protected-areas';
@@ -25,6 +26,32 @@ function makeCrosshairIcon(color: string, size: number): L.DivIcon {
     iconSize: [size, size],
     iconAnchor: [h, h],
   });
+}
+
+interface WindGridData {
+  rows: number; cols: number;
+  lats: number[]; lons: number[];
+  U: number[]; V: number[];
+}
+
+function interpolateWindGrid(grid: WindGridData, lat: number, lon: number): { u: number; v: number } {
+  const { rows, cols, lats, lons, U, V } = grid;
+  const clat = Math.max(lats[0], Math.min(lats[rows - 1], lat));
+  const clon = Math.max(lons[0], Math.min(lons[cols - 1], lon));
+  let r0 = 0;
+  for (let i = 0; i < rows - 1; i++) { if (lats[i] <= clat) r0 = i; }
+  r0 = Math.min(r0, rows - 2);
+  let c0 = 0;
+  for (let j = 0; j < cols - 1; j++) { if (lons[j] <= clon) c0 = j; }
+  c0 = Math.min(c0, cols - 2);
+  const r1 = r0 + 1, c1 = c0 + 1;
+  const fy = (clat - lats[r0]) / (lats[r1] - lats[r0]);
+  const fx = (clon - lons[c0]) / (lons[c1] - lons[c0]);
+  const idx = (r: number, c: number) => r * cols + c;
+  return {
+    u: U[idx(r0,c0)]*(1-fx)*(1-fy) + U[idx(r0,c1)]*fx*(1-fy) + U[idx(r1,c0)]*(1-fx)*fy + U[idx(r1,c1)]*fx*fy,
+    v: V[idx(r0,c0)]*(1-fx)*(1-fy) + V[idx(r0,c1)]*fx*(1-fy) + V[idx(r1,c0)]*(1-fx)*fy + V[idx(r1,c1)]*fx*fy,
+  };
 }
 
 interface MapViewProps {
@@ -54,10 +81,8 @@ interface MapViewProps {
   onMeasureClick?: () => void;
   onWaterStateChange?: (state: { isLoading: boolean; showButton: boolean }) => void;
   onWaterPointsLoaded?: (points: WaterPoint[]) => void;
-  showRainRadar?: boolean;
-  onRainRadarToggle?: () => void;
-  showLightning?: boolean;
-  onLightningToggle?: () => void;
+  showWeather?: boolean;
+  onWeatherToggle?: () => void;
   satelliteMode?: boolean;
   onSatelliteModeToggle?: () => void;
   winterMode?: boolean;
@@ -123,10 +148,8 @@ export function MapView({
   onMeasureClick,
   onWaterStateChange,
   onWaterPointsLoaded,
-  showRainRadar = false,
-  onRainRadarToggle,
-  showLightning = false,
-  onLightningToggle,
+  showWeather = false,
+  onWeatherToggle,
   satelliteMode = false,
   onSatelliteModeToggle,
   winterMode = false,
@@ -162,6 +185,23 @@ export function MapView({
   const [nowcastDurationMin, setNowcastDurationMin] = useState(0);
   const lightningEsRef = useRef<EventSource | null>(null);
   const lightningMarkersRef = useRef<{ marker: L.CircleMarker; timeout: ReturnType<typeof setTimeout> }[]>([]);
+  // Wind animation
+  const windRafRef = useRef<number | null>(null);
+  const windParticlesRef = useRef<{ x: number; y: number; px: number; py: number; age: number; maxAge: number }[]>([]);
+  const windGridRef = useRef<WindGridData | null>(null);
+  // Nivoses
+  const nivoseMarkersRef = useRef<L.Marker[]>([]);
+  const [selectedNivose, setSelectedNivose] = useState<NivoseStation | null>(null);
+  const [nivoObs, setNivoObs] = useState<{
+    date: string;
+    tempC: number | null;
+    windKph: number | null;
+    windDir: number | null;
+    snowCm: number | null;
+    rainMm: number | null;
+  }[] | null>(null);
+  const [nivoLoading, setNivoLoading] = useState(false);
+  const [nivoError, setNivoError] = useState<string | null>(null);
   
   const [waterPoints, setWaterPoints] = useState<WaterPoint[]>([]);
   const [isLoadingWater, setIsLoadingWater] = useState(false);
@@ -442,7 +482,7 @@ export function MapView({
       rainRadarIndexRef.current = 0;
     };
 
-    if (!showRainRadar) {
+    if (!showWeather) {
       cleanup();
       return;
     }
@@ -450,7 +490,6 @@ export function MapView({
     const pane = map.getPane('rainRadarPane') ?? map.createPane('rainRadarPane');
     pane.style.zIndex = '250';
     pane.style.pointerEvents = 'none';
-    (pane.style as any).mixBlendMode = 'multiply';
 
     const owmKey = import.meta.env.VITE_OWM_API_KEY as string | undefined;
 
@@ -458,7 +497,7 @@ export function MapView({
       if (!mapInstanceRef.current || !owmKey) return;
       const layer = L.tileLayer(
         `https://tile.openweathermap.org/map/precipitation_new/{z}/{x}/{y}.png?appid=${owmKey}`,
-        { opacity: 0.8, pane: 'rainRadarPane', zIndex: 250, attribution: '© OpenWeatherMap' }
+        { opacity: 0.6, pane: 'rainRadarPane', zIndex: 250, attribution: '© OpenWeatherMap' }
       ).addTo(mapInstanceRef.current);
       rainRadarLayersRef.current = [layer];
     };
@@ -474,7 +513,7 @@ export function MapView({
         setNowcastDurationMin(nowcast.length * 10);
 
         const makeLayer = (path: string) => L.tileLayer(`${host}${path}/256/{z}/{x}/{y}/2/1_1.png`, {
-          opacity: 0.8, pane: 'rainRadarPane', zIndex: 250,
+          opacity: 0.6, pane: 'rainRadarPane', zIndex: 250,
           attribution: 'RainViewer', maxNativeZoom: 7, maxZoom: 20,
         });
 
@@ -497,7 +536,7 @@ export function MapView({
       .catch(() => loadOWM());
 
     return cleanup;
-  }, [showRainRadar, forecastMode]);
+  }, [showWeather, forecastMode]);
 
   // Points de foudre — SSE via Edge Function (proxy MQTT Blitzortung)
   useEffect(() => {
@@ -525,7 +564,7 @@ export function MapView({
       clearMarkers();
     };
 
-    if (!showLightning) {
+    if (!showWeather) {
       cleanup();
       return;
     }
@@ -588,7 +627,242 @@ export function MapView({
     connect();
 
     return cleanup;
-  }, [showLightning]);
+  }, [showWeather]);
+
+  // Animation vent — canvas impératif + grille spatiale 4×4 Open-Meteo
+  // Chaque particule est interpolée bilinéairement sur la grille → données réelles, pas de simulation
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    if (!showWeather) return;
+
+    const N_PARTICLES = 300;
+    // PIXEL_SCALE est calculé dynamiquement dans animate() en fonction du zoom
+    const mapContainer = map.getContainer();
+
+    const canvas = document.createElement('canvas');
+    canvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:450;';
+    canvas.width = mapContainer.offsetWidth;
+    canvas.height = mapContainer.offsetHeight;
+    mapContainer.appendChild(canvas);
+
+    const ctx = canvas.getContext('2d')!;
+
+    const spawnParticle = (w: number, h: number) => {
+      const x = Math.random() * w;
+      const y = Math.random() * h;
+      return { x, y, px: x, py: y, age: 0, maxAge: 80 + Math.floor(Math.random() * 120) };
+    };
+
+    const initParticles = () => {
+      const w = canvas.width, h = canvas.height;
+      windParticlesRef.current = Array.from({ length: N_PARTICLES }, () => spawnParticle(w, h));
+    };
+    initParticles();
+
+    const fetchWindGrid = async () => {
+      const bounds = map.getBounds();
+      const buf = 0.2;
+      const dLat = (bounds.getNorth() - bounds.getSouth()) * buf;
+      const dLon = (bounds.getEast() - bounds.getWest()) * buf;
+      const south = bounds.getSouth() - dLat;
+      const north = bounds.getNorth() + dLat;
+      const west = bounds.getWest() - dLon;
+      const east = bounds.getEast() + dLon;
+      const ROWS = 6, COLS = 6;
+      const lats = Array.from({ length: ROWS }, (_, i) => south + (i / (ROWS - 1)) * (north - south));
+      const lons = Array.from({ length: COLS }, (_, j) => west + (j / (COLS - 1)) * (east - west));
+      const allLats: number[] = [];
+      const allLons: number[] = [];
+      for (const lat of lats) for (const lon of lons) {
+        allLats.push(parseFloat(lat.toFixed(4)));
+        allLons.push(parseFloat(lon.toFixed(4)));
+      }
+      try {
+        const res = await fetch(
+          `https://api.open-meteo.com/v1/forecast?` +
+          `latitude=${allLats.join(',')}&longitude=${allLons.join(',')}&` +
+          `current=wind_speed_10m,wind_direction_10m`
+        );
+        const data: Array<{ current?: { wind_speed_10m?: number; wind_direction_10m?: number } }> = await res.json();
+        if (!Array.isArray(data) || data.length !== ROWS * COLS) return;
+        const U: number[] = [], V: number[] = [];
+        data.forEach(pt => {
+          const speed = pt.current?.wind_speed_10m ?? 0;
+          const rad = ((pt.current?.wind_direction_10m ?? 0) * Math.PI) / 180;
+          // convention météo : la direction est DEPUIS laquelle souffle le vent
+          U.push(-speed * Math.sin(rad)); // composante est
+          V.push(-speed * Math.cos(rad)); // composante nord
+        });
+        windGridRef.current = { rows: ROWS, cols: COLS, lats, lons, U, V };
+        const speeds = data.map(pt => pt.current?.wind_speed_10m ?? 0);
+        const dirs = data.map(pt => pt.current?.wind_direction_10m ?? 0);
+        console.log('[wind] grid fetched — speeds (km/h):', speeds.map(s => s.toFixed(1)), 'dirs (°):', dirs.map(d => d.toFixed(0)));
+      } catch { /* garde l'ancienne grille */ }
+    };
+
+    fetchWindGrid();
+
+    // Clear uniquement sur pan — le zoom garde les particules existantes
+    const onMoveStart = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      initParticles();
+    };
+    const onMoveEnd = () => { fetchWindGrid(); };
+
+    map.on('movestart', onMoveStart);
+    map.on('moveend', onMoveEnd);
+
+    let destroyed = false;
+
+    const animate = () => {
+      if (destroyed) return;
+
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.fillStyle = 'rgba(0,0,0,0.04)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.globalCompositeOperation = 'source-over';
+
+      const w = canvas.width, h = canvas.height;
+      const grid = windGridRef.current;
+
+      // Échelle dynamique : km/h → px/frame, dépend du zoom
+      // metersPerPixel (WebMercator) = 156543 × cos(lat) / 2^zoom
+      // Facteur 150 avec clamp : zoom-cohérent mais plafonné pour éviter l'excès au zoom élevé
+      const center = map.getCenter();
+      const metersPerPixel = 156543.03392 * Math.cos(center.lat * Math.PI / 180) / Math.pow(2, map.getZoom());
+      const PIXEL_SCALE = Math.max(0.015, Math.min(0.08, 150 / (metersPerPixel * 3.6 * 60)));
+
+      ctx.strokeStyle = 'rgba(255,255,255,0.80)';
+      ctx.lineWidth = 1.4;
+      ctx.lineCap = 'round';
+
+      for (const p of windParticlesRef.current) {
+        let newX = p.x, newY = p.y;
+
+        if (grid) {
+          const ll = map.containerPointToLatLng(L.point(p.x, p.y));
+          const { u, v } = interpolateWindGrid(grid, ll.lat, ll.lng);
+          // u = est → +px, v = nord → -py (y croît vers le bas)
+          newX = p.x + u * PIXEL_SCALE;
+          newY = p.y - v * PIXEL_SCALE;
+        }
+
+        p.age++;
+        const expired = p.age >= p.maxAge;
+        const wrapped = newX < -5 || newX > w + 5 || newY < -5 || newY > h + 5;
+
+        if (!wrapped && !expired) {
+          // Ligne de l'ancienne position vers la nouvelle → direction + longueur ∝ vitesse
+          ctx.beginPath();
+          ctx.moveTo(p.x, p.y);
+          ctx.lineTo(newX, newY);
+          ctx.stroke();
+          p.px = p.x; p.py = p.y;
+          p.x = newX; p.y = newY;
+        } else {
+          // Respawn aléatoire (fin de vie ou sortie d'écran)
+          const fresh = spawnParticle(w, h);
+          p.x = fresh.x; p.y = fresh.y; p.px = fresh.px; p.py = fresh.py;
+          p.age = 0; p.maxAge = fresh.maxAge;
+        }
+      }
+
+      windRafRef.current = requestAnimationFrame(animate);
+    };
+    animate();
+
+    return () => {
+      destroyed = true;
+      if (windRafRef.current) { cancelAnimationFrame(windRafRef.current); windRafRef.current = null; }
+      map.off('movestart', onMoveStart);
+      map.off('moveend', onMoveEnd);
+      if (canvas.parentNode) canvas.parentNode.removeChild(canvas);
+      windGridRef.current = null;
+    };
+  }, [showWeather]);
+
+  // Fetch données horaires capteur via nivo-proxy (Météo-France DPObs)
+  useEffect(() => {
+    if (!selectedNivose?.meteofId) {
+      setNivoObs(null);
+      setNivoError(null);
+      return;
+    }
+    setNivoObs(null);
+    setNivoError(null);
+    setNivoLoading(true);
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+    fetch(`${supabaseUrl}/functions/v1/nivo-proxy`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${supabaseAnonKey}`,
+      },
+      body: JSON.stringify({ stationId: selectedNivose.meteofId, days: 7 }),
+    })
+      .then(r => r.json())
+      .then((data: { observations?: typeof nivoObs; error?: string }) => {
+        if (data.error) { setNivoError(data.error); }
+        else { setNivoObs(data.observations ?? []); }
+      })
+      .catch(err => setNivoError(String(err)))
+      .finally(() => setNivoLoading(false));
+  }, [selectedNivose]);
+
+  // Marqueurs Nivoses Météo-France
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    const removeMarkers = () => {
+      nivoseMarkersRef.current.forEach(m => map.removeLayer(m));
+      nivoseMarkersRef.current = [];
+    };
+
+    if (!showWeather) {
+      removeMarkers();
+      setSelectedNivose(null);
+      return;
+    }
+
+    // Icône thermomètre (stroke Lucide) sur fond gris anthracite
+    const iconHtml = `
+      <div style="
+        width:28px;height:28px;
+        background:#374151;
+        border-radius:50%;
+        border:2px solid white;
+        box-shadow:0 2px 6px rgba(0,0,0,0.35);
+        display:flex;align-items:center;justify-content:center;
+      ">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+             stroke="white" stroke-width="2.2"
+             stroke-linecap="round" stroke-linejoin="round"
+             xmlns="http://www.w3.org/2000/svg">
+          <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>
+        </svg>
+      </div>`;
+
+    const icon = L.divIcon({
+      html: iconHtml,
+      className: '',
+      iconSize: [28, 28],
+      iconAnchor: [14, 14],
+    });
+
+    NIVOSES.forEach(station => {
+      const marker = L.marker([station.lat, station.lon], { icon, zIndexOffset: 200 });
+      marker.on('click', () => setSelectedNivose(station));
+      marker.addTo(map);
+      nivoseMarkersRef.current.push(marker);
+    });
+
+    return removeMarkers;
+  }, [showWeather]);
+
 
   // Gérer le mode dessin (Leaflet Draw)
   useEffect(() => {
@@ -1410,7 +1684,7 @@ export function MapView({
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
-      
+
       {/* Message d'erreur ou d'info - s'affiche au-dessus du bouton si nécessaire */}
       {showWaterPoints && waterError && (
         <div className={`absolute left-1/2 transform -translate-x-1/2 top-6 z-[1050] ${waterError.includes('🔍') ? 'bg-blue-50 border-l-4 border-blue-400' : 'bg-yellow-50 border-l-4 border-yellow-400'} rounded-r-lg shadow-lg px-4 py-2 max-w-md`}>
@@ -1476,8 +1750,166 @@ export function MapView({
         );
       })()}
       
+      {/* Carte info Nivose sélectionnée — données capteur réelles Météo-France */}
+      {selectedNivose && (
+        <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-[450] bg-white rounded-xl shadow-2xl overflow-hidden pointer-events-auto" style={{ width: 320 }}>
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-full bg-[#374151] border-2 border-white flex items-center justify-center flex-shrink-0" style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.25)' }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>
+                </svg>
+              </div>
+              <div>
+                <div className="text-sm font-semibold text-gray-800">{selectedNivose.name}</div>
+                <div className="text-xs text-gray-400">{selectedNivose.altitude} m · {selectedNivose.region}</div>
+              </div>
+            </div>
+            <button onClick={() => setSelectedNivose(null)} className="p-1 rounded-lg hover:bg-gray-100 transition-colors text-gray-400">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="px-3 py-3 space-y-3">
+            {(() => {
+              // ── helper : graphique SVG sparkline avec axes ──────────────────
+              const NivoChart = ({
+                pts, color, label, unit, yMin, yMax, showZero,
+              }: {
+                pts: (number | null)[]; color: string; label: string; unit: string;
+                yMin: number; yMax: number; showZero?: boolean;
+              }) => {
+                const W = 292, H = 60, PAD = 4;
+                const range = yMax - yMin || 1;
+                const valid = pts.filter((v): v is number => v !== null);
+                if (valid.length < 2) return null;
+                const latest = valid[valid.length - 1];
+                const toY = (v: number) => PAD + (1 - (v - yMin) / range) * (H - PAD * 2);
+                const polyPts = pts
+                  .map((v, i) => v !== null ? `${(i / (pts.length - 1)) * W},${toY(v)}` : null)
+                  .filter(Boolean).join(' ');
+                const zeroY = toY(0);
+                return (
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-medium text-gray-500">{label}</span>
+                      <span className="text-xs font-semibold" style={{ color }}>
+                        {latest % 1 === 0 ? latest : latest.toFixed(1)} {unit}
+                      </span>
+                    </div>
+                    <div className="rounded-lg overflow-hidden bg-gray-50">
+                      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: H }} preserveAspectRatio="none">
+                        {/* grid lines */}
+                        <line x1="0" y1={toY(yMax)} x2={W} y2={toY(yMax)} stroke="#f3f4f6" strokeWidth="1" />
+                        <line x1="0" y1={toY((yMax + yMin) / 2)} x2={W} y2={toY((yMax + yMin) / 2)} stroke="#f3f4f6" strokeWidth="1" />
+                        <line x1="0" y1={toY(yMin)} x2={W} y2={toY(yMin)} stroke="#f3f4f6" strokeWidth="1" />
+                        {/* zero line for temp */}
+                        {showZero && yMin < 0 && yMax > 0 && (
+                          <line x1="0" y1={zeroY} x2={W} y2={zeroY} stroke="#e5e7eb" strokeWidth="1" strokeDasharray="3,2" />
+                        )}
+                        {/* data */}
+                        <polyline points={polyPts} fill="none" stroke={color} strokeWidth="1.8"
+                          strokeLinejoin="round" strokeLinecap="round" />
+                        {/* now marker */}
+                        <line x1={W - 1} y1="0" x2={W - 1} y2={H} stroke="#cbd5e1" strokeWidth="1" strokeDasharray="3,2" />
+                      </svg>
+                    </div>
+                    <div className="flex justify-between text-[10px] text-gray-300 mt-0.5 px-0.5">
+                      <span>−24 h</span><span>maintenant</span>
+                    </div>
+                  </div>
+                );
+              };
+
+              // ── données disponibles via API ─────────────────────────────────
+              if (nivoLoading) {
+                return (
+                  <div className="flex items-center gap-2 text-sm text-gray-400 py-2">
+                    <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin flex-shrink-0" />
+                    Chargement des observations…
+                  </div>
+                );
+              }
+
+              if (nivoObs && nivoObs.length > 0) {
+                const temps  = nivoObs.map(o => o.tempC);
+                const winds  = nivoObs.map(o => o.windKph);
+                const snows  = nivoObs.map(o => o.snowCm);
+                const validTemps = temps.filter((v): v is number => v !== null);
+                const validWinds = winds.filter((v): v is number => v !== null);
+                const validSnows = snows.filter((v): v is number => v !== null);
+                const hasSnow = validSnows.some(v => v > 0);
+                return (
+                  <>
+                    {validTemps.length >= 2 && (
+                      <NivoChart pts={temps} color="#3b82f6" label="Température" unit="°C"
+                        yMin={Math.floor(Math.min(...validTemps) - 1)}
+                        yMax={Math.ceil(Math.max(...validTemps) + 1)}
+                        showZero />
+                    )}
+                    {validWinds.length >= 2 && (
+                      <NivoChart pts={winds} color="#0891b2" label="Vent" unit="km/h"
+                        yMin={0}
+                        yMax={Math.ceil(Math.max(...validWinds, 10) * 1.15)} />
+                    )}
+                    {hasSnow && (
+                      <NivoChart pts={snows} color="#94a3b8" label="Enneigement" unit="cm"
+                        yMin={0}
+                        yMax={Math.ceil(Math.max(...validSnows) * 1.15)} />
+                    )}
+                    <div className="text-[10px] text-green-600 bg-green-50 rounded px-2 py-1 leading-tight">
+                      ✓ Données capteur réelles · Météo-France DPObs
+                    </div>
+                  </>
+                );
+              }
+
+              // ── fallback GIF Météo-France ───────────────────────────────────
+              if (selectedNivose.meteofCode) {
+                return (
+                  <>
+                    <img
+                      src={`https://rwg.meteofrance.com/internet2018client/2.0/files/mountain/observations/${selectedNivose.meteofCode}.gif`}
+                      alt={`Observations nivose ${selectedNivose.name}`}
+                      className="w-full rounded-lg"
+                      style={{ display: 'block' }}
+                    />
+                    <div className="text-[10px] text-gray-400 text-center mt-1">
+                      Source : Météo-France · capteur réel · mise à jour ~3 h
+                    </div>
+                    {nivoError && nivoError.includes('METEOFRANCE_OBS_KEY') && (
+                      <div className="text-[10px] text-amber-500 bg-amber-50 rounded px-2 py-1 mt-1 leading-tight">
+                        Graphiques désactivés — clé DPObs non configurée.{' '}
+                        <a href="https://portail-api.meteofrance.fr/" target="_blank" rel="noopener noreferrer" className="underline">Obtenir une clé gratuite</a>
+                      </div>
+                    )}
+                  </>
+                );
+              }
+
+              return (
+                <div className="py-4 text-center">
+                  <div className="text-sm text-gray-500 mb-1">Données capteur non disponibles</div>
+                  <div className="text-xs text-gray-400">Station non référencée dans la base Météo-France.</div>
+                </div>
+              );
+            })()}
+          </div>
+          <a
+            href="https://donneespubliques.meteofrance.fr/?fond=produit&id_produit=93&id_rubrique=34"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-between text-xs text-gray-400 hover:text-blue-500 transition-colors px-4 py-2 border-t border-gray-50"
+          >
+            Voir les données Météo-France
+            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+          </a>
+        </div>
+      )}
+
       {/* Légende radar précipitations — desktop (bottom-left) */}
-      {showRainRadar && (
+      {showWeather && (
         <div className="hidden md:block absolute bottom-11 left-6 z-[400] bg-white/90 backdrop-blur-sm rounded-xl shadow-xl w-52 overflow-hidden">
           <button
             onClick={() => setLegendOpen(o => !o)}
@@ -1491,7 +1923,7 @@ export function MapView({
       )}
 
       {/* Légende radar précipitations — mobile (top-left, icône seule) */}
-      {showRainRadar && (
+      {showWeather && (
         <div className="md:hidden absolute top-[70px] left-3 z-[400]">
           <button
             onClick={() => setLegendOpen(o => !o)}
@@ -1543,10 +1975,8 @@ export function MapView({
           isRoutingMode={isRoutingMode}
           isMeasuringMode={isMeasuringMode}
           onMeasureClick={onMeasureClick}
-          showRainRadar={showRainRadar}
-          onRainRadarToggle={onRainRadarToggle}
-          showLightning={showLightning}
-          onLightningToggle={onLightningToggle}
+          showWeather={showWeather}
+          onWeatherToggle={onWeatherToggle}
           satelliteMode={satelliteMode}
           onSatelliteModeToggle={onSatelliteModeToggle || (() => {})}
           winterMode={winterMode}
