@@ -1,10 +1,11 @@
 import React, { useState, useRef, useMemo } from 'react';
-import { MapPin, Upload, Snowflake, SunSnow, AlertCircle, AlertTriangle, Camera, Mountain, Tent, Locate, Loader2, X } from 'lucide-react';
+import { MapPin, Upload, Snowflake, SunSnow, AlertCircle, AlertTriangle, Camera, Image as ImageIcon, Mountain, Tent, Locate, Loader2, X } from 'lucide-react';
 import { Panel } from './ui/bivouac-panel';
 import { BivouacButton, FilterChip } from './ui/bivouac-button';
 import { AlertCard } from './ui/bivouac-card';
 import { DifficultySelector, Input, Textarea } from './ui/bivouac-input';
 import { useIsMobile } from './ui/use-mobile';
+import { PhotoCaptureModal } from './PhotoCaptureModal';
 import { CustomZone, getZoneRestrictionStatus, formatZoneConstraints } from '../../utils/supabase/custom-zones-api';
 import { ProtectedArea, findAreasContainingPoint, getProtectedAreaInfo } from '../services/protected-areas';
 
@@ -61,7 +62,9 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
   const [capacity, setCapacity] = useState<'1' | '2-3' | '4-5' | '5+'>('2-3');
   const [difficulty, setDifficulty] = useState<number>(2);
   const [isGeolocating, setIsGeolocating] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pendingPhoto, setPendingPhoto] = useState<{ dataUrl: string; source: 'camera' | 'gallery' } | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   const isBlocked = zoneStatus.blocked.length > 0 || osmZoneStatus.blocked.length > 0;
   const isFormValid = Boolean(selectedPosition && title.trim() && description.trim() && !isBlocked);
@@ -94,22 +97,33 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
     }
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handleFileSelect = (source: 'camera' | 'gallery') => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const inputEl = e.target;
+    const file = inputEl.files?.[0];
     if (file && file.type.startsWith('image/')) {
       if (file.size > 2 * 1024 * 1024) {
         alert('Photo trop volumineuse (maximum 2 Mo). Veuillez choisir une image plus petite.');
-        if (fileInputRef.current) fileInputRef.current.value = '';
+        inputEl.value = '';
         return;
       }
       const reader = new FileReader();
       reader.onload = (event) => {
         const dataUrl = event.target?.result as string;
-        if (dataUrl) setPhotoUrls([...photoUrls, dataUrl]);
+        if (dataUrl) setPendingPhoto({ dataUrl, source });
       };
       reader.readAsDataURL(file);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      inputEl.value = '';
     }
+  };
+
+  const handleRetakePhoto = () => {
+    if (pendingPhoto?.source === 'camera') cameraInputRef.current?.click();
+    else galleryInputRef.current?.click();
+  };
+
+  const handleConfirmPhoto = (finalImageUrl: string) => {
+    setPhotoUrls((prev) => [...prev, finalImageUrl]);
+    setPendingPhoto(null);
   };
 
   const handleRemovePhoto = (index: number) => {
@@ -163,6 +177,7 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
   };
 
   return (
+    <>
     <Panel onClose={onClose} title="Ajouter un spot" mobileMaxHeight="50vh">
       <form onSubmit={handleSubmit}>
         {/* Position */}
@@ -323,28 +338,47 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
             </div>
           )}
 
-          {isMobile ? (
-            <>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={handleFileSelect}
-                className="hidden"
-              />
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={handleFileSelect('camera')}
+            className="hidden"
+          />
+          <input
+            ref={galleryInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleFileSelect('gallery')}
+            className="hidden"
+          />
+
+          <div className="flex gap-2">
+            {isMobile && (
               <BivouacButton
                 type="button"
                 variant="outline"
                 icon={<Camera className="w-4 h-4" />}
-                onClick={() => fileInputRef.current?.click()}
-                className="w-full text-sm"
+                onClick={() => cameraInputRef.current?.click()}
+                className="flex-1 text-sm"
               >
                 Prendre une photo
               </BivouacButton>
-            </>
-          ) : (
-            <div className="flex gap-2">
+            )}
+            <BivouacButton
+              type="button"
+              variant="outline"
+              icon={<ImageIcon className="w-4 h-4" />}
+              onClick={() => galleryInputRef.current?.click()}
+              className="flex-1 text-sm"
+            >
+              Choisir une image
+            </BivouacButton>
+          </div>
+
+          {!isMobile && (
+            <div className="flex gap-2 mt-2">
               <Input
                 type="url"
                 value={newPhotoUrl}
@@ -484,5 +518,16 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
         </div>
       </form>
     </Panel>
+
+    {pendingPhoto && (
+      <PhotoCaptureModal
+        key={pendingPhoto.dataUrl}
+        imageUrl={pendingPhoto.dataUrl}
+        onConfirm={handleConfirmPhoto}
+        onRetake={handleRetakePhoto}
+        onCancel={() => setPendingPhoto(null)}
+      />
+    )}
+    </>
   );
 }
