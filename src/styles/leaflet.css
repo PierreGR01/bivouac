@@ -69,6 +69,11 @@
   cursor: pointer;
 }
 
+/* Spot temporairement désactivé — opacité réduite (visible admin/admin de zone uniquement) */
+.custom-marker-disabled {
+  opacity: 0.5;
+}
+
 /* Leaflet popup customization */
 .leaflet-popup-content-wrapper {
   border-radius: 8px;

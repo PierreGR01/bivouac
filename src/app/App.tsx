@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, Suspense } from 'react';
+import React, { useState, useEffect, useRef, useMemo, Suspense } from 'react';
 import { toast, Toaster } from 'sonner';
 import { devLog } from './utils/logger';
 import { MapView } from './components/MapView';
@@ -7,12 +7,15 @@ import { FilterOptions } from './components/FilterPanel';
 import { NewPoi } from './components/AddPoiPanel';
 import { MOBILE_BREAKPOINT_PX } from './constants';
 import { useAuth } from './contexts/AuthContext';
-import { Tent, Plus, Loader2, AlertCircle, Settings, Search, BanIcon, Droplet, ChevronUp, ChevronDown, Snowflake, Locate, Lock, CloudRain } from 'lucide-react';
+import { isSpotDisabled } from './utils/spot-status';
+import { Tent, Plus, Loader2, AlertCircle, Settings, Search, BanIcon, Droplet, ChevronUp, ChevronDown, Snowflake, Locate, CloudRain } from 'lucide-react';
 import { usePois } from './hooks/usePois';
 import { useMapLayers } from './hooks/useMapLayers';
 import { useFilters } from './hooks/useFilters';
 import { CustomZone } from '../utils/supabase/custom-zones-api';
+import { AdminZone } from '../utils/supabase/admin-zones-api';
 import { ProtectedArea } from './services/protected-areas';
+import { PoiLocation } from './types';
 
 const PoiDetailsPanel = React.lazy(() => import('./components/PoiDetailsPanel').then(m => ({ default: m.PoiDetailsPanel })));
 const AddPoiPanel = React.lazy(() => import('./components/AddPoiPanel').then(m => ({ default: m.AddPoiPanel })));
@@ -20,35 +23,63 @@ const RoutePanel = React.lazy(() => import('./components/RoutePanel').then(m => 
 const FilterPanel = React.lazy(() => import('./components/FilterPanel').then(m => ({ default: m.FilterPanel })));
 const LoginPanel = React.lazy(() => import('./components/LoginPanel').then(m => ({ default: m.LoginPanel })));
 const CustomZonesEditor = React.lazy(() => import('./components/CustomZonesEditor').then(m => ({ default: m.CustomZonesEditor })));
+const AdminDashboard = React.lazy(() => import('./components/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
 const ServerStatus = React.lazy(() => import('./components/ServerStatus').then(m => ({ default: m.ServerStatus })));
 const WaterPointsInfo = React.lazy(() => import('./components/WaterPointsInfo').then(m => ({ default: m.WaterPointsInfo })));
 const ZoneInfoPanel = React.lazy(() => import('./components/ZoneInfoPanel').then(m => ({ default: m.ZoneInfoPanel })));
 
 export default function App() {
-  const { currentUser, isAdmin } = useAuth();
+  const { currentUser, isAdmin, isSuperAdmin, zoneAdminIds } = useAuth();
 
   const pois = usePois();
   const map = useMapLayers();
-  const filters = useFilters(pois.locations, map.winterMode);
+  const visibleLocations = useMemo(
+    () => isAdmin ? pois.locations : pois.locations.filter(l => !isSpotDisabled(l)),
+    [pois.locations, isAdmin]
+  );
+  const filters = useFilters(visibleLocations, map.winterMode);
 
   // UI mode state (stays in App — pure UI concerns)
   const [isAddingMode, setIsAddingMode] = useState(false);
   const [temporaryPosition, setTemporaryPosition] = useState<{ lat: number; lng: number } | null>(null);
   const [isMeasuringMode, setIsMeasuringMode] = useState(false);
   const [isDrawingMode, setIsDrawingMode] = useState(false);
-  const [drawTool, setDrawTool] = useState<'polygon' | 'rectangle'>('polygon');
   const [drawnGeometry, setDrawnGeometry] = useState<GeoJSON.Feature | null>(null);
   const [showDiagnostic, setShowDiagnostic] = useState(false);
   const [showLoginPanel, setShowLoginPanel] = useState(false);
   const [showCustomZonesEditor, setShowCustomZonesEditor] = useState(false);
   const [editingZone, setEditingZone] = useState<CustomZone | null>(null);
   const [editingOsmZone, setEditingOsmZone] = useState<ProtectedArea | null>(null);
+  const [showAdminDashboard, setShowAdminDashboard] = useState(false);
+  const [showAdminZoneEditor, setShowAdminZoneEditor] = useState(false);
+  const [editingAdminZone, setEditingAdminZone] = useState<AdminZone | null>(null);
+  const [previewGeometry, setPreviewGeometry] = useState<GeoJSON.Feature | null>(null);
   const [showMobileOptions, setShowMobileOptions] = useState(false);
   const [attribOpen, setAttribOpen] = useState(false);
   const [userPosition, setUserPosition] = useState<{ lat: number; lng: number } | null>(null);
   const [selectedZone, setSelectedZone] = useState<CustomZone | null>(null);
   const [selectedProtectedArea, setSelectedProtectedArea] = useState<ProtectedArea | null>(null);
   const requestCloseZoneForm = useRef<(() => void) | null>(null);
+
+  // Le dashboard n'est réellement affiché que pour un compte admin — évite un état
+  // "showAdminDashboard=true" orphelin (header masqué, rien affiché à la place) pour un
+  // utilisateur connecté non-admin.
+  const dashboardActive = isAdmin && showAdminDashboard;
+
+  // Le dashboard est l'outil principal d'administration : dès qu'une session admin est
+  // active (connexion ou session restaurée), on y arrive par défaut. hasAutoOpenedDashboard
+  // évite de le rouvrir de force si l'admin le ferme ensuite pour consulter la carte.
+  const hasAutoOpenedDashboard = useRef(false);
+  useEffect(() => {
+    if (isAdmin && !hasAutoOpenedDashboard.current) {
+      hasAutoOpenedDashboard.current = true;
+      setShowAdminDashboard(true);
+      setShowLoginPanel(false);
+    }
+    if (!isAdmin) {
+      hasAutoOpenedDashboard.current = false;
+    }
+  }, [isAdmin]);
 
   // --- Composed handlers ---
 
@@ -94,6 +125,8 @@ export default function App() {
       filters.setRoutePoints(prev => [...prev, { lat, lng }]);
     } else if (showCustomZonesEditor && (editingZone || editingOsmZone)) {
       requestCloseZoneForm.current?.();
+    } else if (showAdminZoneEditor && editingAdminZone) {
+      requestCloseZoneForm.current?.();
     }
   };
 
@@ -110,18 +143,90 @@ export default function App() {
       setIsDrawingMode(false);
       setEditingZone(null);
     } else {
+      setShowAdminZoneEditor(false);
+      setEditingAdminZone(null);
       setShowCustomZonesEditor(true);
       setIsDrawingMode(true);
-      setDrawTool('polygon');
     }
   };
 
   const handleZoneClick = (zone: CustomZone) => {
     if (!isAdmin) return;
+    // Un admin de zone qui n'administre pas le territoire de rattachement de cette zone
+    // n'a accès qu'à la vue info, pas au formulaire d'édition (refusé de toute façon côté RLS).
+    if (!isSuperAdmin && !(zone.admin_zone_id && zoneAdminIds.includes(zone.admin_zone_id))) {
+      handleZoneInfoClick(zone);
+      return;
+    }
     setEditingZone(zone);
     setEditingOsmZone(null);
     setShowCustomZonesEditor(true);
     setIsDrawingMode(false);
+  };
+
+  const handleOpenAdminDashboard = () => {
+    setShowCustomZonesEditor(false);
+    setIsDrawingMode(false);
+    setEditingZone(null);
+    setShowAdminZoneEditor(false);
+    setEditingAdminZone(null);
+    setShowAdminDashboard(true);
+  };
+
+  // Anciens boutons flottants "Zones"/"Territoires" — intégrés au dashboard, celui-ci se
+  // ferme donc pour laisser place au flux existant (dessin sur la carte, gestion des zones).
+  const handleOpenZonesFromDashboard = () => {
+    setShowAdminDashboard(false);
+    handleToggleCustomZones();
+  };
+
+  // Dessiner/modifier un territoire nécessite la carte plein écran (contrairement à la
+  // simple consultation "qui administre quelle zone", intégrée au dashboard) — on ferme
+  // donc le dashboard uniquement pour ces deux actions.
+  const handleOpenTerritoryEditorFromDashboard = (zone?: AdminZone) => {
+    setShowAdminDashboard(false);
+    if (zone) {
+      handleEditAdminZone(zone);
+    } else {
+      handleCreateAdminZone();
+    }
+  };
+
+  // Action "Carte" du tableau du dashboard : le pin passe en état sélectionné et la carte
+  // s'anime vers lui. Sur desktop, le dashboard reste ouvert (vue scindée) — le spot est donc
+  // centré dans la portion de carte encore visible, pas au centre géométrique (caché sous le
+  // dashboard). Sur mobile, il n'y a pas la place pour les deux, donc on le referme.
+  const handleViewSpotOnMap = (poi: PoiLocation) => {
+    pois.setSelectedLocation(poi);
+    if (window.innerWidth < MOBILE_BREAKPOINT_PX) {
+      setShowAdminDashboard(false);
+      (window as any).__mapFlyToSpot?.(poi.position.lat, poi.position.lng);
+    } else {
+      const panelWidth = window.innerWidth / 2;
+      (window as any).__mapFlyToSpotSplit?.(poi.position.lat, poi.position.lng, panelWidth);
+    }
+  };
+
+  const handleCreateAdminZone = () => {
+    setEditingAdminZone(null);
+    setShowAdminZoneEditor(true);
+    setIsDrawingMode(true);
+  };
+
+  const handleEditAdminZone = (zone: AdminZone) => {
+    setEditingAdminZone(zone);
+    setShowAdminZoneEditor(true);
+    setIsDrawingMode(false);
+  };
+
+  // Retour au dashboard (et non à un panneau "territoires" séparé) une fois le tracé
+  // créé/modifié — la gestion des territoires vit désormais dans le dashboard.
+  const handleCloseAdminZoneEditor = () => {
+    setShowAdminZoneEditor(false);
+    setIsDrawingMode(false);
+    setDrawnGeometry(null);
+    setEditingAdminZone(null);
+    setShowAdminDashboard(true);
   };
 
   const handleOsmZoneClick = (area: ProtectedArea) => {
@@ -156,36 +261,36 @@ export default function App() {
   return (
     <div className="relative w-screen overflow-hidden" style={{ height: '100dvh' }}>
 
-      {/* Search bar */}
-      <div>
-        <SearchBar
-          searchTerm={filters.searchTerm}
-          onSearchChange={filters.setSearchTerm}
-          onFilterClick={() => filters.setShowFilters(!filters.showFilters)}
-          onAddSpotClick={handleOpenAddPanel}
-          activeFiltersCount={filters.activeFiltersCount}
-          isAddingMode={isAddingMode}
-          isRoutingMode={filters.isRoutingMode}
-          isPanelOpen={isPanelOpen}
-          isAdmin={isAdmin}
-          currentUser={currentUser}
-          onLoginClick={() => setShowLoginPanel(!showLoginPanel)}
-          onToggleZones={handleToggleCustomZones}
-          showCustomZonesEditor={showCustomZonesEditor}
-          allLocations={pois.locations}
-          onGeoSelect={(lat, lng, bbox) => {
-            (window as any).__mapFitBounds?.(bbox, lat, lng);
-          }}
-          onSpotSelect={(spot) => {
-            handleLocationClick(spot);
-            (window as any).__mapPanToSpot?.(spot.position.lat, spot.position.lng);
-          }}
-        />
-      </div>
+      {/* Search bar — masquée quand le dashboard admin est actif (page dédiée) */}
+      {!dashboardActive && (
+        <div>
+          <SearchBar
+            searchTerm={filters.searchTerm}
+            onSearchChange={filters.setSearchTerm}
+            onFilterClick={() => filters.setShowFilters(!filters.showFilters)}
+            onAddSpotClick={handleOpenAddPanel}
+            activeFiltersCount={filters.activeFiltersCount}
+            isAddingMode={isAddingMode}
+            isRoutingMode={filters.isRoutingMode}
+            isPanelOpen={isPanelOpen}
+            currentUser={currentUser}
+            onLoginClick={() => setShowLoginPanel(!showLoginPanel)}
+            onOpenDashboard={handleOpenAdminDashboard}
+            allLocations={visibleLocations}
+            onGeoSelect={(lat, lng, bbox) => {
+              (window as any).__mapFitBounds?.(bbox, lat, lng);
+            }}
+            onSpotSelect={(spot) => {
+              handleLocationClick(spot);
+              (window as any).__mapPanToSpot?.(spot.position.lat, spot.position.lng);
+            }}
+          />
+        </div>
+      )}
 
-      {/* Top-right buttons — desktop only */}
-      <div className="hidden md:flex absolute top-6 right-6 z-[600] items-center gap-3">
-        {!pois.serverAvailable && !isAddingMode && (
+      {/* Diagnostic serveur — désormais seul bouton flottant desktop, indépendant de l'admin */}
+      {!dashboardActive && !pois.serverAvailable && !isAddingMode && (
+        <div className="hidden md:flex absolute top-6 right-6 z-[600] items-center gap-3">
           <button
             onClick={() => setShowDiagnostic(!showDiagnostic)}
             className="flex items-center gap-2 px-3 py-2 bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200 transition-colors shadow-lg"
@@ -193,36 +298,8 @@ export default function App() {
           >
             <Settings className="w-5 h-5" />
           </button>
-        )}
-
-        {isAdmin && (
-          <button
-            onClick={handleToggleCustomZones}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors shadow-lg ${
-              showCustomZonesEditor
-                ? 'bg-purple-600 text-white hover:bg-purple-700'
-                : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
-            }`}
-            title="Créer une zone réglementée"
-          >
-            <Settings className="w-5 h-5" />
-            <span className="text-sm font-medium">Zones</span>
-          </button>
-        )}
-
-        <button
-          onClick={() => setShowLoginPanel(!showLoginPanel)}
-          className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors shadow-lg ${
-            currentUser
-              ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-              : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-          }`}
-          title={currentUser ? 'Profil' : 'Connexion'}
-        >
-          <Lock className="w-5 h-5" />
-          {currentUser && <span className="text-sm font-medium">Admin</span>}
-        </button>
-      </div>
+        </div>
+      )}
 
       {/* Loading overlay */}
       {pois.isLoading && (
@@ -277,12 +354,12 @@ export default function App() {
           isRoutingMode={filters.isRoutingMode}
           isMeasuringMode={isMeasuringMode}
           isDrawingMode={isDrawingMode}
-          drawTool={drawTool}
           onMapClick={handleMapClick}
           onGeometryDrawn={(geometry) => {
             setDrawnGeometry(geometry);
             setIsDrawingMode(false);
           }}
+          previewGeometry={previewGeometry}
           temporaryMarkerPosition={temporaryPosition}
           routePoints={filters.routePoints}
           isSmartRouting={filters.isSmartRouting}
@@ -368,7 +445,7 @@ export default function App() {
       )}
 
       {/* Panels — each in its own Suspense so lazy loading never unmounts MapView */}
-      {pois.selectedLocation && (
+      {pois.selectedLocation && !dashboardActive && (
         <Suspense fallback={null}>
           <PoiDetailsPanel
             key={pois.selectedLocation.id}
@@ -376,6 +453,7 @@ export default function App() {
             onClose={handleClosePanel}
             protectedAreas={map.allProtectedAreas}
             customZones={map.customZones}
+            onSetDisabled={pois.setSpotDisabled}
           />
         </Suspense>
       )}
@@ -453,8 +531,9 @@ export default function App() {
 
       <Toaster position="bottom-center" />
 
-      {/* Mobile: controls toggle — bottom right */}
+      {/* Mobile: controls toggle — bottom right (masqué quand le dashboard occupe tout l'écran) */}
       {/* Mobile bottom bar — © row + actions row */}
+      {!dashboardActive && (
       <div className="md:hidden fixed bottom-0 inset-x-0 z-[600] flex flex-col">
 
         {/* Ligne add spot + chevron */}
@@ -563,15 +642,6 @@ export default function App() {
                   >
                     <Snowflake className={`w-5 h-5 ${map.winterMode ? 'text-blue-600' : 'text-gray-600'}`} />
                   </button>
-                  {isAdmin && (
-                    <button
-                      onClick={() => { handleToggleCustomZones(); setShowMobileOptions(false); }}
-                      className={`w-12 h-12 flex items-center justify-center transition-colors ${showCustomZonesEditor ? 'bg-purple-50' : 'hover:bg-gray-50'}`}
-                      title="Zones custom"
-                    >
-                      <Settings className={`w-5 h-5 ${showCustomZonesEditor ? 'text-purple-600' : 'text-gray-600'}`} />
-                    </button>
-                  )}
                   <div className="border-t border-gray-100">
                     <button
                       onClick={() => {
@@ -627,16 +697,32 @@ export default function App() {
                 {map.satelliteMode
                   ? 'Tiles © Esri'
                   : 'Map data: © OpenStreetMap contributors · Map style: © OpenTopoMap'}
+                {' · Contours des massifs : © OpenStreetMap contributors (ODbL)'}
               </span>
             </div>
           )}
         </div>
 
       </div>
+      )}
 
       {showLoginPanel && (
         <Suspense fallback={null}>
           <LoginPanel onClose={() => setShowLoginPanel(false)} />
+        </Suspense>
+      )}
+
+      {dashboardActive && (
+        <Suspense fallback={null}>
+          <AdminDashboard
+            onClose={() => setShowAdminDashboard(false)}
+            locations={pois.locations}
+            onViewOnMap={handleViewSpotOnMap}
+            onSetDisabled={pois.setSpotDisabled}
+            onDeleteSpot={pois.deleteSpot}
+            onOpenZonesEditor={handleOpenZonesFromDashboard}
+            onOpenTerritoryEditor={handleOpenTerritoryEditorFromDashboard}
+          />
         </Suspense>
       )}
 
@@ -649,13 +735,27 @@ export default function App() {
             setDrawnGeometry(null);
             setEditingZone(null);
             setEditingOsmZone(null);
+            setPreviewGeometry(null);
           }}
-          onDrawingToolChange={setDrawTool}
           drawnGeometry={drawnGeometry}
           editingZone={editingZone}
           editingOsmZone={editingOsmZone}
           onRegisterRequestClose={(fn) => { requestCloseZoneForm.current = fn; }}
+          onPreviewGeometryChange={setPreviewGeometry}
         />
+        </Suspense>
+      )}
+
+      {isSuperAdmin && showAdminZoneEditor && (
+        <Suspense fallback={null}>
+          <CustomZonesEditor
+            mode="admin"
+            onClose={handleCloseAdminZoneEditor}
+            drawnGeometry={drawnGeometry}
+            editingAdminZone={editingAdminZone}
+            onRegisterRequestClose={(fn) => { requestCloseZoneForm.current = fn; }}
+            onPreviewGeometryChange={setPreviewGeometry}
+          />
         </Suspense>
       )}
 

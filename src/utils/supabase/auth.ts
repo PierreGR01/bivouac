@@ -52,6 +52,14 @@ export async function getCurrentUser() {
   return user;
 }
 
+export async function updatePassword(newPassword: string) {
+  const { error } = await supabaseClient.auth.updateUser({ password: newPassword });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
 export async function getSession() {
   const {
     data: { session },
@@ -72,6 +80,20 @@ export async function isUserAdmin(userId: string): Promise<boolean> {
   }
 
   return true;
+}
+
+// Retourne les IDs des zones d'administration (territoires) que cet utilisateur administre.
+export async function getZoneAdminIds(userId: string): Promise<string[]> {
+  const { data, error } = await supabaseClient
+    .from('zone_admins')
+    .select('admin_zone_id')
+    .eq('user_id', userId);
+
+  if (error || !data) {
+    return [];
+  }
+
+  return data.map((row: { admin_zone_id: string }) => row.admin_zone_id);
 }
 
 export function getAuthToken() {

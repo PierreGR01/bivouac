@@ -9,8 +9,11 @@ interface LoginPanelProps {
   onClose: () => void;
 }
 
+// Note : un compte admin est redirigé automatiquement vers le dashboard dès la connexion
+// (App.tsx) — la branche "connecté" ci-dessous ne sert donc que de filet de sécurité
+// (déconnexion) si ce panneau reste ouvert par un chemin inattendu.
 export function LoginPanel({ onClose }: LoginPanelProps) {
-  const { currentUser, isAdmin, login, logout, isLoading, error } = useAuth();
+  const { currentUser, isSuperAdmin, zoneAdminIds, login, logout, isLoading, error } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
@@ -49,8 +52,10 @@ export function LoginPanel({ onClose }: LoginPanelProps) {
             </p>
             <p className="text-sm text-gray-600">
               <span className="font-medium">Statut :</span>{' '}
-              {isAdmin ? (
-                <span className="text-emerald-700 font-semibold">Admin</span>
+              {isSuperAdmin ? (
+                <span className="text-emerald-700 font-semibold">Administrateur</span>
+              ) : zoneAdminIds.length > 0 ? (
+                <span className="text-emerald-700 font-semibold">Administrateur de zone</span>
               ) : (
                 <span className="text-gray-500">Utilisateur</span>
               )}

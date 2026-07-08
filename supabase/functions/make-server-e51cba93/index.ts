@@ -52,28 +52,118 @@ const safeHandler = (handler: any) => async (c: any) => {
 
 // --- Security helpers ---
 
-async function requireAdmin(c: any): Promise<boolean> {
+function getServiceClient() {
+  return createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  );
+}
+
+// Verify the bearer token as a real user session (anon key has role:"anon", not "authenticated")
+async function getAuthedUser(c: any): Promise<{ id: string } | null> {
   const authHeader = c.req.header("Authorization") as string | undefined;
-  if (!authHeader?.startsWith("Bearer ")) return false;
+  if (!authHeader?.startsWith("Bearer ")) return null;
   const token = authHeader.slice(7);
-  // Verify the bearer token as a real user session (anon key has role:"anon", not "authenticated")
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_ANON_KEY")!,
   );
   const { data: { user }, error } = await supabase.auth.getUser(token);
-  if (error || !user) return false;
-  // Check admin_users table via service role (bypasses RLS)
-  const adminClient = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-  );
-  const { data } = await adminClient
+  if (error || !user) return null;
+  return { id: user.id };
+}
+
+async function isSuperAdmin(userId: string): Promise<boolean> {
+  const { data } = await getServiceClient()
     .from("admin_users")
     .select("id")
-    .eq("user_id", user.id)
+    .eq("user_id", userId)
     .maybeSingle();
   return !!data;
+}
+
+async function requireAdmin(c: any): Promise<boolean> {
+  const user = await getAuthedUser(c);
+  if (!user) return false;
+  return isSuperAdmin(user.id);
+}
+
+async function isAnyAdmin(userId: string): Promise<boolean> {
+  if (await isSuperAdmin(userId)) return true;
+  const { data } = await getServiceClient()
+    .from("zone_admins")
+    .select("id")
+    .eq("user_id", userId)
+    .limit(1);
+  return !!data && data.length > 0;
+}
+
+// Super-admin or zone-admin (dashboard access) — not scoped to a specific POI/zone.
+async function requireAnyAdmin(c: any): Promise<boolean> {
+  const user = await getAuthedUser(c);
+  if (!user) return false;
+  return isAnyAdmin(user.id);
+}
+
+// --- Zone-admin scoped POI moderation ---
+
+function isPointInGeoJSONRing(point: { lat: number; lng: number }, ring: number[][]): boolean {
+  const n = ring.length;
+  if (n < 3) return false;
+  let inside = false;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1];
+    const xj = ring[j][0], yj = ring[j][1];
+    const intersect = ((yi > point.lat) !== (yj > point.lat))
+      && (point.lng < (xj - xi) * (point.lat - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function isPointInZoneGeometry(point: { lat: number; lng: number }, geometry: any): boolean {
+  if (!geometry) return false;
+  const raw = geometry as Record<string, unknown>;
+  let geom: any = null;
+  if (raw.type === "Feature") {
+    geom = (raw as any).geometry;
+  } else if (raw.type === "Polygon" || raw.type === "MultiPolygon") {
+    geom = raw;
+  }
+  if (!geom) return false;
+
+  if (geom.type === "Polygon") {
+    return isPointInGeoJSONRing(point, geom.coordinates[0]);
+  }
+  if (geom.type === "MultiPolygon") {
+    return geom.coordinates.some((poly: number[][][]) => isPointInGeoJSONRing(point, poly[0]));
+  }
+  return false;
+}
+
+// Super-admin can moderate any POI; a zone-admin can moderate any POI located
+// inside one of the administration territories (admin_zones) assigned to them —
+// not just POIs inside a specific regulated zone.
+async function canModeratePoi(c: any, poiPosition: { lat: number; lng: number } | undefined): Promise<boolean> {
+  const user = await getAuthedUser(c);
+  if (!user) return false;
+  if (await isSuperAdmin(user.id)) return true;
+  if (!poiPosition || typeof poiPosition.lat !== "number" || typeof poiPosition.lng !== "number") return false;
+
+  const adminClient = getServiceClient();
+  const { data: grants } = await adminClient
+    .from("zone_admins")
+    .select("admin_zone_id")
+    .eq("user_id", user.id);
+  const zoneIds = (grants ?? []).map((g: any) => g.admin_zone_id);
+  if (zoneIds.length === 0) return false;
+
+  const { data: zones } = await adminClient
+    .from("admin_zones")
+    .select("geometry")
+    .in("id", zoneIds);
+
+  return (zones ?? []).some((z: any) => isPointInZoneGeometry(poiPosition, z.geometry));
 }
 
 function validateBounds(body: any): { south: number; west: number; north: number; east: number } {
@@ -181,30 +271,30 @@ app.post("/make-server-e51cba93/pois", safeHandler(async (c: any) => {
   }
 }));
 
-// Update (patch) a POI — admin only, field allowlist enforced
+// Update (patch) a POI — admin (super-admin, or zone-admin whose zone contains this POI) only, field allowlist enforced
 app.put("/make-server-e51cba93/pois/:id", safeHandler(async (c: any) => {
-  if (!(await requireAdmin(c))) {
-    return c.json({ success: false, error: "Unauthorized" }, 401);
-  }
-
   try {
     const id = c.req.param("id");
     const raw = await c.req.json();
-
-    // Allowlist: only known enrichment/content fields may be updated
-    const ALLOWED_FIELDS = new Set([
-      "title", "description", "photos", "season", "waterProximity",
-      "naturalWaterProximity", "regulations", "altitude", "capacity",
-      "difficulty", "ratings",
-    ]);
-    const updates = Object.fromEntries(
-      Object.entries(raw).filter(([k]) => ALLOWED_FIELDS.has(k))
-    );
 
     const existing = await kv.get(`poi:${id}`);
     if (!existing) {
       return c.json({ success: false, error: "POI not found" }, 404);
     }
+
+    if (!(await canModeratePoi(c, existing.position))) {
+      return c.json({ success: false, error: "Unauthorized" }, 401);
+    }
+
+    // Allowlist: only known enrichment/content fields may be updated
+    const ALLOWED_FIELDS = new Set([
+      "title", "description", "photos", "season", "waterProximity",
+      "naturalWaterProximity", "regulations", "altitude", "capacity",
+      "difficulty", "ratings", "disabledUntil",
+    ]);
+    const updates = Object.fromEntries(
+      Object.entries(raw).filter(([k]) => ALLOWED_FIELDS.has(k))
+    );
 
     const updated = { ...existing, ...updates };
     await kv.set(`poi:${id}`, updated);
@@ -255,16 +345,70 @@ app.post("/make-server-e51cba93/pois/:id/rate", safeHandler(async (c: any) => {
   }
 }));
 
-// Delete a specific review — admin only
-app.delete("/make-server-e51cba93/pois/:id/reviews/:createdAt", safeHandler(async (c: any) => {
-  if (!(await requireAdmin(c))) {
+// Record a view of a POI (dashboard "vues 30j" metric) — public, rate-limited, no auth
+// required. Stored as one daily-bucket KV row per POI (not one row per view) so the
+// table stays small regardless of traffic.
+app.post("/make-server-e51cba93/pois/:id/view", safeHandler(async (c: any) => {
+  const ip = c.req.header("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
+  if (!checkRateLimit(`view:${ip}`, 300)) {
+    return c.json({ success: false, error: "Too many requests" }, 429);
+  }
+
+  try {
+    const id = c.req.param("id");
+    const poi = await kv.get(`poi:${id}`);
+    if (!poi) {
+      return c.json({ success: false, error: "POI not found" }, 404);
+    }
+
+    const date = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const key = `poiview:${id}:${date}`;
+    const existing = await kv.get(key);
+    await kv.set(key, { poiId: id, date, count: (existing?.count ?? 0) + 1 });
+
+    return c.json({ success: true });
+  } catch (error) {
+    console.error("Error recording POI view:", error);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+}));
+
+// Views per POI over the last 30 days (dashboard) — any admin (super-admin or zone-admin)
+app.get("/make-server-e51cba93/pois/views-30d", safeHandler(async (c: any) => {
+  if (!(await requireAnyAdmin(c))) {
     return c.json({ success: false, error: "Unauthorized" }, 401);
   }
+  try {
+    const buckets = await kv.getByPrefix("poiview:");
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 30);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+
+    const counts: Record<string, number> = {};
+    for (const bucket of buckets) {
+      if (!bucket || bucket.date < cutoffStr) continue;
+      counts[bucket.poiId] = (counts[bucket.poiId] ?? 0) + (bucket.count ?? 0);
+    }
+
+    return c.json({ success: true, data: counts });
+  } catch (error) {
+    console.error("Error computing 30-day views:", error);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+}));
+
+// Delete a specific review — admin (super-admin, or zone-admin whose zone contains this POI) only
+app.delete("/make-server-e51cba93/pois/:id/reviews/:createdAt", safeHandler(async (c: any) => {
   try {
     const id = c.req.param("id");
     const createdAt = decodeURIComponent(c.req.param("createdAt"));
     const poi = await kv.get(`poi:${id}`);
     if (!poi) return c.json({ success: false, error: "POI not found" }, 404);
+
+    if (!(await canModeratePoi(c, poi.position))) {
+      return c.json({ success: false, error: "Unauthorized" }, 401);
+    }
+
     const reviews: any[] = poi.reviews || [];
     const idxMatch = createdAt.match(/^__idx_(\d+)__$/);
     const updatedReviews = idxMatch
@@ -298,6 +442,123 @@ app.delete("/make-server-e51cba93/pois", safeHandler(async (c: any) => {
   } catch (error) {
     console.error("❌ Error resetting POIs:", error);
     return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+}));
+
+// --- Zone-admin grants management — super-admin only ---
+
+async function findUserIdByEmail(email: string): Promise<string | null> {
+  const adminClient = getServiceClient();
+  const normalized = email.trim().toLowerCase();
+  let page = 1;
+  const perPage = 200;
+  for (let i = 0; i < 25; i++) { // safety cap: 5000 users max
+    const { data, error } = await adminClient.auth.admin.listUsers({ page, perPage });
+    if (error || !data?.users?.length) break;
+    const match = data.users.find((u: any) => u.email?.toLowerCase() === normalized);
+    if (match) return match.id;
+    if (data.users.length < perPage) break;
+    page++;
+  }
+  return null;
+}
+
+// List all zone-admin grants, with territory name and grantee email resolved for display
+app.get("/make-server-e51cba93/zone-admins", safeHandler(async (c: any) => {
+  if (!(await requireAdmin(c))) {
+    return c.json({ success: false, error: "Unauthorized" }, 401);
+  }
+  try {
+    const adminClient = getServiceClient();
+    const { data: grants, error } = await adminClient
+      .from("zone_admins")
+      .select("id, user_id, admin_zone_id, created_at")
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+
+    const zoneIds = [...new Set((grants ?? []).map((g: any) => g.admin_zone_id))];
+    const { data: zones } = zoneIds.length
+      ? await adminClient.from("admin_zones").select("id, name").in("id", zoneIds)
+      : { data: [] as any[] };
+    const zoneNameById = new Map((zones ?? []).map((z: any) => [z.id, z.name]));
+
+    const { data: usersPage } = await adminClient.auth.admin.listUsers({ page: 1, perPage: 200 });
+    const emailById = new Map((usersPage?.users ?? []).map((u: any) => [u.id, u.email]));
+
+    const enriched = (grants ?? []).map((g: any) => ({
+      id: g.id,
+      adminZoneId: g.admin_zone_id,
+      zoneName: zoneNameById.get(g.admin_zone_id) ?? g.admin_zone_id,
+      userId: g.user_id,
+      email: emailById.get(g.user_id) ?? g.user_id,
+      createdAt: g.created_at,
+    }));
+
+    return c.json({ success: true, data: enriched });
+  } catch (error) {
+    console.error("Error listing zone admins:", error);
+    return c.json({ success: false, error: "Internal server error" }, 500);
+  }
+}));
+
+// Grant zone-admin rights over a territory (admin_zone) to a user, by email
+app.post("/make-server-e51cba93/zone-admins", safeHandler(async (c: any) => {
+  const grantedBy = await getAuthedUser(c);
+  if (!grantedBy || !(await isSuperAdmin(grantedBy.id))) {
+    return c.json({ success: false, error: "Unauthorized" }, 401);
+  }
+  try {
+    const body = await c.req.json();
+    const email = String(body.email ?? "").trim();
+    const adminZoneId = String(body.adminZoneId ?? "").trim();
+    if (!email || !adminZoneId) {
+      return c.json({ success: false, error: "Missing email or adminZoneId" }, 400);
+    }
+
+    const adminClient = getServiceClient();
+    let userId = await findUserIdByEmail(email);
+    let invited = false;
+
+    if (!userId) {
+      // Personne sans compte : on l'invite par email (Supabase gère l'envoi). Le compte
+      // est créé immédiatement (état "invité"), donc on peut lui attribuer le territoire
+      // dès maintenant — il le retrouvera en se connectant après avoir accepté l'invitation.
+      const redirectTo = Deno.env.get("APP_URL") ?? "https://bivouac.vercel.app";
+      const { data: invite, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, { redirectTo });
+      if (inviteError || !invite?.user) {
+        return c.json({ success: false, error: inviteError?.message || "Impossible d'inviter cet utilisateur" }, 500);
+      }
+      userId = invite.user.id;
+      invited = true;
+    }
+
+    const { data, error } = await adminClient
+      .from("zone_admins")
+      .insert({ user_id: userId, admin_zone_id: adminZoneId, granted_by: grantedBy.id })
+      .select()
+      .single();
+    if (error) throw error;
+
+    return c.json({ success: true, data, invited });
+  } catch (error) {
+    console.error("Error granting zone admin:", error);
+    return c.json({ success: false, error: "Internal server error" }, 500);
+  }
+}));
+
+// Revoke a zone-admin grant
+app.delete("/make-server-e51cba93/zone-admins/:id", safeHandler(async (c: any) => {
+  if (!(await requireAdmin(c))) {
+    return c.json({ success: false, error: "Unauthorized" }, 401);
+  }
+  try {
+    const id = c.req.param("id");
+    const { error } = await getServiceClient().from("zone_admins").delete().eq("id", id);
+    if (error) throw error;
+    return c.json({ success: true });
+  } catch (error) {
+    console.error("Error revoking zone admin:", error);
+    return c.json({ success: false, error: "Internal server error" }, 500);
   }
 }));
 
@@ -335,14 +596,19 @@ app.patch("/make-server-e51cba93/pois/:id/enrich", safeHandler(async (c: any) =>
   }
 }));
 
-// Delete a single POI — admin only
+// Delete a single POI — admin (super-admin, or zone-admin whose zone contains this POI) only
 app.delete("/make-server-e51cba93/pois/:id", safeHandler(async (c: any) => {
-  if (!(await requireAdmin(c))) {
-    return c.json({ success: false, error: "Unauthorized" }, 401);
-  }
-
   try {
     const id = c.req.param("id");
+    const existing = await kv.get(`poi:${id}`);
+    if (!existing) {
+      return c.json({ success: false, error: "POI not found" }, 404);
+    }
+
+    if (!(await canModeratePoi(c, existing.position))) {
+      return c.json({ success: false, error: "Unauthorized" }, 401);
+    }
+
     console.log(`🗑️ Deleting POI with id: ${id}`);
     await kv.del(`poi:${id}`);
     return c.json({ success: true });

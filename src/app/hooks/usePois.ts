@@ -138,6 +138,9 @@ export function usePois() {
     setSelectedLocation(loc);
     if (!loc) return;
 
+    // Analytics "vues 30j" du dashboard admin — fire-and-forget, une fois par ouverture.
+    api.recordPoiView(loc.id).catch(() => {});
+
     // Re-enrich altitude if missing
     if (loc.altitude === null || loc.altitude === undefined) {
       api.fetchAltitude(loc.position.lat, loc.position.lng)
@@ -177,6 +180,28 @@ export function usePois() {
     }
   }, [queryClient]);
 
+  const setSpotDisabled = useCallback(async (poiId: string, disabledUntil: string | null): Promise<boolean> => {
+    const success = await api.updatePoi(poiId, { disabledUntil });
+    if (success) {
+      queryClient.setQueryData<PoiLocation[]>(['pois'], (old = []) =>
+        old.map(p => p.id === poiId ? { ...p, disabledUntil } : p)
+      );
+      setSelectedLocation(prev => prev?.id === poiId ? { ...prev, disabledUntil } : prev);
+    }
+    return success;
+  }, [queryClient]);
+
+  const deleteSpot = useCallback(async (poiId: string): Promise<boolean> => {
+    try {
+      await api.deletePoi(poiId);
+      queryClient.setQueryData<PoiLocation[]>(['pois'], (old = []) => old.filter(p => p.id !== poiId));
+      setSelectedLocation(prev => prev?.id === poiId ? null : prev);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [queryClient]);
+
   return {
     locations: query.data ?? [],
     selectedLocation,
@@ -187,5 +212,7 @@ export function usePois() {
     submitPoi: (newPoi: NewPoi, waterPoints: any[], onSuccess: (poi: PoiLocation) => void) => {
       mutation.mutate({ newPoi, waterPoints }, { onSuccess });
     },
+    setSpotDisabled,
+    deleteSpot,
   };
 }

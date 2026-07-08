@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, SlidersHorizontal, Tent, Plus, Lock, Settings, X, MapPin, Mountain, Loader2 } from 'lucide-react';
+import { Search, SlidersHorizontal, Tent, Plus, LogIn, X, MapPin, Mountain, Loader2 } from 'lucide-react';
 import { useNominatim, NominatimResult } from '../hooks/useNominatim';
 import { PoiLocation } from '../types';
 import { BivouacButton } from './ui/bivouac-button';
@@ -14,11 +14,9 @@ interface SearchBarProps {
   isAddingMode?: boolean;
   isRoutingMode?: boolean;
   isPanelOpen?: boolean;
-  isAdmin?: boolean;
   currentUser?: { email?: string } | null;
   onLoginClick?: () => void;
-  onToggleZones?: () => void;
-  showCustomZonesEditor?: boolean;
+  onOpenDashboard?: () => void;
   allLocations?: PoiLocation[];
   onGeoSelect?: (lat: number, lng: number, boundingbox: [string, string, string, string]) => void;
   onSpotSelect?: (spot: PoiLocation) => void;
@@ -97,19 +95,15 @@ export function SearchBar({
   isAddingMode = false,
   isRoutingMode = false,
   isPanelOpen = false,
-  isAdmin = false,
   currentUser = null,
   onLoginClick,
-  onToggleZones,
-  showCustomZonesEditor = false,
+  onOpenDashboard,
   allLocations,
   onGeoSelect,
   onSpotSelect,
 }: SearchBarProps) {
   const [showSearchInput, setShowSearchInput] = React.useState(false);
-  const [showAccountDropdown, setShowAccountDropdown] = React.useState(false);
   const [showDropdown, setShowDropdown] = React.useState(false);
-  const dropdownRef = React.useRef<HTMLDivElement>(null);
   const mobileSearchRef = React.useRef<HTMLDivElement>(null);
   const desktopSearchRef = React.useRef<HTMLDivElement>(null);
 
@@ -118,18 +112,23 @@ export function SearchBar({
 
   const hasDropdownContent = searchTerm.trim().length >= 2 && (isGeoLoading || suggestions.length > 0 || nearbySpots.length > 0);
 
+  const handleAccountClick = () => {
+    if (currentUser) {
+      onOpenDashboard?.();
+    } else {
+      onLoginClick?.();
+    }
+  };
+
   React.useEffect(() => {
     setShowDropdown(hasDropdownContent);
   }, [hasDropdownContent]);
 
   // Close dropdown on outside click
   React.useEffect(() => {
-    if (!showDropdown && !showAccountDropdown) return;
+    if (!showDropdown) return;
     const handler = (e: MouseEvent | TouchEvent) => {
       const target = e.target as Node;
-      if (dropdownRef.current && !dropdownRef.current.contains(target)) {
-        setShowAccountDropdown(false);
-      }
       const inMobile = mobileSearchRef.current?.contains(target);
       const inDesktop = desktopSearchRef.current?.contains(target);
       if (!inMobile && !inDesktop) {
@@ -142,7 +141,7 @@ export function SearchBar({
       document.removeEventListener('mousedown', handler);
       document.removeEventListener('touchstart', handler as EventListener);
     };
-  }, [showDropdown, showAccountDropdown]);
+  }, [showDropdown]);
 
   const handleGeoSelect = (result: NominatimResult) => {
     onGeoSelect?.(parseFloat(result.lat), parseFloat(result.lon), result.boundingbox);
@@ -281,53 +280,18 @@ export function SearchBar({
               )}
             </button>
 
-            {/* Account button */}
-            <div className="relative flex-shrink-0" ref={dropdownRef}>
-              <button
-                onClick={() => setShowAccountDropdown(!showAccountDropdown)}
-                title={currentUser ? 'Mon compte' : 'Connexion'}
-                className={`p-2.5 rounded-lg transition-colors ${
-                  currentUser
-                    ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                <Lock className="w-5 h-5" />
-              </button>
-
-              {showAccountDropdown && (
-                <div className="absolute right-0 top-full mt-1.5 bg-white shadow-2xl rounded-xl border border-gray-100 overflow-hidden min-w-[180px] z-[700]">
-                  {currentUser && (
-                    <div className="px-4 py-3 border-b border-gray-100">
-                      <p className="text-xs text-gray-400">Connecté en tant que</p>
-                      <p className="text-sm font-semibold text-gray-800 truncate">{currentUser.email || 'Admin'}</p>
-                    </div>
-                  )}
-                  {isAdmin && onToggleZones && (
-                    <button
-                      onClick={() => { onToggleZones(); setShowAccountDropdown(false); }}
-                      className={`w-full flex items-center gap-2.5 px-4 py-3 text-left transition-colors ${
-                        showCustomZonesEditor ? 'bg-purple-50' : 'hover:bg-gray-50'
-                      }`}
-                    >
-                      <Settings className={`w-4 h-4 flex-shrink-0 ${showCustomZonesEditor ? 'text-purple-600' : 'text-gray-500'}`} />
-                      <span className={`text-sm font-medium ${showCustomZonesEditor ? 'text-purple-700' : 'text-gray-700'}`}>
-                        Zones réglementées
-                      </span>
-                    </button>
-                  )}
-                  <button
-                    onClick={() => { onLoginClick?.(); setShowAccountDropdown(false); }}
-                    className="w-full flex items-center gap-2.5 px-4 py-3 text-left hover:bg-gray-50 transition-colors"
-                  >
-                    <Lock className="w-4 h-4 flex-shrink-0 text-gray-500" />
-                    <span className="text-sm font-medium text-gray-700">
-                      {currentUser ? 'Gérer le compte' : 'Se connecter'}
-                    </span>
-                  </button>
-                </div>
-              )}
-            </div>
+            {/* Login / dashboard — icône discrète, aucun menu */}
+            <button
+              onClick={handleAccountClick}
+              title={currentUser ? 'Tableau de bord' : 'Connexion'}
+              className={`flex-shrink-0 p-2.5 rounded-lg transition-colors ${
+                currentUser
+                  ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              <LogIn className="w-5 h-5" />
+            </button>
           </div>
 
           {/* Expandable search input */}
@@ -406,6 +370,19 @@ export function SearchBar({
                 Ajouter
               </BivouacButton>
             )}
+
+            {/* Login / dashboard — icône discrète, aucun menu */}
+            <button
+              onClick={handleAccountClick}
+              title={currentUser ? 'Tableau de bord' : 'Connexion'}
+              className={`flex-shrink-0 p-2 rounded-lg transition-colors ${
+                currentUser
+                  ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              <LogIn className="w-[17px] h-[17px]" />
+            </button>
           </div>
         </div>
 

@@ -5,6 +5,7 @@ import 'leaflet-draw/dist/leaflet.draw.css';
 import { Trash2, ChevronDown, ChevronUp, Info, X } from 'lucide-react';
 import { NIVOSES, NivoseStation } from '../data/nivoses';
 import { PoiLocation } from '../types';
+import { isSpotDisabled } from '../utils/spot-status';
 import { fetchWaterPoints, WaterPoint, getWaterPointLabel, getWaterPointInfo, RateLimitError, filterAndSortWaterPoints } from '../services/overpass';
 import { ProtectedArea, getProtectedAreaLabel, getProtectedAreaInfo, shouldDisplayOnMap } from '../services/protected-areas';
 import { CustomZone } from '../../utils/supabase/custom-zones-api';
@@ -62,9 +63,9 @@ interface MapViewProps {
   isRoutingMode?: boolean;
   isMeasuringMode?: boolean;
   isDrawingMode?: boolean;
-  drawTool?: 'polygon' | 'rectangle';
   onMapClick?: (lat: number, lng: number) => void;
   onGeometryDrawn?: (geometry: GeoJSON.Feature) => void;
+  previewGeometry?: GeoJSON.Feature | null;
   temporaryMarkerPosition?: { lat: number; lng: number } | null;
   routePoints?: Array<{ lat: number; lng: number }>;
   isSmartRouting?: boolean;
@@ -129,9 +130,9 @@ export function MapView({
   isRoutingMode = false,
   isMeasuringMode = false,
   isDrawingMode = false,
-  drawTool = 'polygon',
   onMapClick,
   onGeometryDrawn,
+  previewGeometry,
   temporaryMarkerPosition,
   routePoints = [],
   isSmartRouting = true,
@@ -173,6 +174,9 @@ export function MapView({
   const slopesLayerRef = useRef<L.TileLayer | null>(null);
   const drawControlRef = useRef<any>(null);
   const drawLayerRef = useRef<L.FeatureGroup | null>(null);
+  const previewLayerRef = useRef<L.GeoJSON | null>(null);
+  const onGeometryDrawnRef = useRef(onGeometryDrawn);
+  onGeometryDrawnRef.current = onGeometryDrawn;
   const userMarkerRef = useRef<L.Marker | null>(null);
   const searchMarkerRef = useRef<L.Marker | null>(null);
   const searchMarkerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -280,6 +284,26 @@ export function MapView({
       panToTop(lat, lng);
     };
 
+    // Focus animé sur un spot (dashboard admin — bouton "Carte") : zoom minimum garanti,
+    // sans dézoomer si on est déjà plus proche.
+    (window as any).__mapFlyToSpot = (lat: number, lng: number) => {
+      const targetZoom = Math.max(map.getZoom(), 15);
+      map.flyTo([lat, lng], targetZoom, { animate: true, duration: 1.2 });
+    };
+
+    // Variante vue scindée (dashboard admin ouvert en pleine hauteur sur la gauche, largeur
+    // panelWidthPx) : centre le spot dans la portion de carte encore visible à droite,
+    // plutôt qu'au centre géométrique de la carte (qui serait caché sous le dashboard).
+    (window as any).__mapFlyToSpotSplit = (lat: number, lng: number, panelWidthPx: number) => {
+      const targetZoom = Math.max(map.getZoom(), 15);
+      const mapWidth = map.getSize().x;
+      const desiredScreenX = (panelWidthPx + mapWidth) / 2;
+      const spotPoint = map.project([lat, lng], targetZoom);
+      const centerPoint = L.point(spotPoint.x - (desiredScreenX - mapWidth / 2), spotPoint.y);
+      const center = map.unproject(centerPoint, targetZoom);
+      map.flyTo(center, targetZoom, { animate: true, duration: 1.2 });
+    };
+
     // Géolocalisation en mode ajout : zoom 14 + point au centre de la zone visible (hors overlay 50vh)
     (window as any).__mapPanToAddMode = (lat: number, lng: number) => {
       const targetZoom = 14;
@@ -362,6 +386,8 @@ export function MapView({
       delete (window as any).__mapZoomOut;
       delete (window as any).__mapCenterTo;
       delete (window as any).__mapPanToSpot;
+      delete (window as any).__mapFlyToSpot;
+      delete (window as any).__mapFlyToSpotSplit;
       delete (window as any).__mapPanToAddMode;
       delete (window as any).__mapFitBounds;
       delete (window as any).__mapClearSearchMarker;
@@ -885,9 +911,7 @@ export function MapView({
       }
 
       const shapeOptions = { color: '#f97316', fillOpacity: 0.2, weight: 2 };
-      const handler = drawTool === 'rectangle'
-        ? new (L as any).Draw.Rectangle(map, { shapeOptions })
-        : new (L as any).Draw.Polygon(map, { shapeOptions, showArea: true });
+      const handler = new (L as any).Draw.Polygon(map, { shapeOptions, showArea: true });
 
       handler.enable();
       drawControlRef.current = handler;
@@ -896,9 +920,7 @@ export function MapView({
         const layer = e.layer;
         drawLayerRef.current?.addLayer(layer);
         const geometry = layer.toGeoJSON();
-        if (onGeometryDrawn) {
-          onGeometryDrawn(geometry);
-        }
+        onGeometryDrawnRef.current?.(geometry);
       });
 
       return () => {
@@ -914,7 +936,34 @@ export function MapView({
         drawLayerRef.current = null;
       }
     }
-  }, [isDrawingMode, drawTool, onGeometryDrawn]);
+    // onGeometryDrawn est lu via une ref pour ne pas recréer le handler Leaflet.Draw
+    // (donc perdre le tracé en cours) à chaque re-render du parent (ex: pan/zoom qui
+    // met à jour les bounds dans App.tsx et recrée l'inline callback).
+  }, [isDrawingMode]);
+
+  // Aperçu d'une géométrie sélectionnée sans dessin manuel (massif prédéfini, import
+  // GeoJSON, édition d'un territoire) — sinon rien ne montre visuellement la sélection.
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+    const map = mapInstanceRef.current;
+
+    if (previewLayerRef.current) {
+      map.removeLayer(previewLayerRef.current);
+      previewLayerRef.current = null;
+    }
+
+    if (previewGeometry) {
+      const layer = L.geoJSON(previewGeometry, {
+        style: { color: '#6366f1', weight: 3, fillOpacity: 0.15, dashArray: '6 4' },
+      });
+      layer.addTo(map);
+      previewLayerRef.current = layer;
+      const bounds = layer.getBounds();
+      if (bounds.isValid()) {
+        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 13 });
+      }
+    }
+  }, [previewGeometry]);
 
   // Gérer le clic sur la carte en mode ajout, routage ou mesure
   useEffect(() => {
@@ -1116,7 +1165,7 @@ export function MapView({
         : 'custom-marker-summer';
 
       const customIcon = L.divIcon({
-        className: markerClass,
+        className: isSpotDisabled(location) ? `${markerClass} custom-marker-disabled` : markerClass,
         iconSize: [24, 24],
         iconAnchor: [12, 12],
       });
@@ -1830,7 +1879,10 @@ export function MapView({
                 );
               }
 
-              if (nivoObs && nivoObs.length > 0) {
+              // L'API DPObs ne renvoie qu'une seule observation (pas d'historique) —
+              // sans au moins 2 points pour tracer une courbe, on préfère le fallback GIF ci-dessous.
+              const hasChartData = !!nivoObs && nivoObs.filter(o => o.tempC !== null).length >= 2;
+              if (nivoObs && nivoObs.length > 0 && hasChartData) {
                 const temps  = nivoObs.map(o => o.tempC);
                 const winds  = nivoObs.map(o => o.windKph);
                 const snows  = nivoObs.map(o => o.snowCm);
@@ -1959,6 +2011,7 @@ export function MapView({
               {satelliteMode
                 ? 'Tiles © Esri'
                 : 'Map data: © OpenStreetMap contributors · Map style: © OpenTopoMap'}
+              {' · Contours des massifs : © OpenStreetMap contributors (ODbL)'}
             </div>
           )}
         </div>

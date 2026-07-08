@@ -42,8 +42,8 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const body = await req.json() as { stationId?: string };
-    const { stationId } = body;
+    const body = await req.json() as { stationId?: string; hours?: number };
+    const { stationId, hours } = body;
     if (!stationId) {
       return new Response(
         JSON.stringify({ error: 'stationId required' }),
@@ -52,15 +52,14 @@ Deno.serve(async (req: Request) => {
     }
 
     const now = new Date();
-    // L'API "Données d'observation" couvre seulement les 24 dernières heures
-    const start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const start = new Date(now.getTime() - (hours ?? 24) * 60 * 60 * 1000);
 
     // Endpoint v2 — observations horaires pour une station
     const url =
       `${MF_BASE}/station/horaire` +
-      `?id-station=${encodeURIComponent(stationId)}` +
-      `&date-deb-periode=${encodeURIComponent(isoZ(start))}` +
-      `&date-fin-periode=${encodeURIComponent(isoZ(now))}` +
+      `?id_station=${encodeURIComponent(stationId)}` +
+      `&date_deb_periode=${encodeURIComponent(isoZ(start))}` +
+      `&date_fin_periode=${encodeURIComponent(isoZ(now))}` +
       `&format=json`;
 
     const mfRes = await fetch(url, { headers: { apikey: mfKey } });
@@ -71,9 +70,9 @@ Deno.serve(async (req: Request) => {
       if (mfRes.status === 404) {
         const url6m =
           `${MF_BASE}/station/infrahoraire-6m` +
-          `?id-station=${encodeURIComponent(stationId)}` +
-          `&date-deb-periode=${encodeURIComponent(isoZ(start))}` +
-          `&date-fin-periode=${encodeURIComponent(isoZ(now))}` +
+          `?id_station=${encodeURIComponent(stationId)}` +
+          `&date_deb_periode=${encodeURIComponent(isoZ(start))}` +
+          `&date_fin_periode=${encodeURIComponent(isoZ(now))}` +
           `&format=json`;
         const mfRes6m = await fetch(url6m, { headers: { apikey: mfKey } });
         if (mfRes6m.ok) {

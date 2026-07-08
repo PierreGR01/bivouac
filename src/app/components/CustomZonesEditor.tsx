@@ -1,31 +1,64 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { Loader2, Upload, Hexagon, Square, Check } from 'lucide-react';
+import { Loader2, Upload } from 'lucide-react';
 import { CustomZoneForm } from './CustomZoneForm';
+import { AdminZoneForm } from './AdminZoneForm';
 import { CustomZone } from '../../utils/supabase/custom-zones-api';
+import { AdminZone } from '../../utils/supabase/admin-zones-api';
 import { ProtectedArea, protectedAreaToGeojson } from '../services/protected-areas';
+import { fetchMassifsCatalog, MassifCatalogEntry } from '../../utils/massifs-catalog';
 import { Panel } from './ui/bivouac-panel';
+import { Select } from './ui/bivouac-input';
 
-type DrawTool = 'polygon' | 'rectangle';
+type EditorMode = 'regulated' | 'admin';
 
 interface CustomZonesEditorProps {
   onClose: () => void;
-  onDrawingToolChange?: (tool: DrawTool) => void;
   drawnGeometry?: GeoJSON.Feature | null;
   editingZone?: CustomZone | null;
   editingOsmZone?: ProtectedArea | null;
   onRegisterRequestClose?: (fn: () => void) => void;
+  mode?: EditorMode;
+  editingAdminZone?: AdminZone | null;
+  onPreviewGeometryChange?: (geometry: GeoJSON.Feature | null) => void;
 }
 
 // osmZoneToGeojson est maintenant protectedAreaToGeojson dans protected-areas.ts
 
-export function CustomZonesEditor({ onClose, onDrawingToolChange, drawnGeometry, editingZone, editingOsmZone, onRegisterRequestClose }: CustomZonesEditorProps) {
-  const { isAdmin } = useAuth();
-  const [activeTool, setActiveTool] = useState<DrawTool>('polygon');
+export function CustomZonesEditor({
+  onClose,
+  drawnGeometry,
+  editingZone,
+  editingOsmZone,
+  onRegisterRequestClose,
+  mode = 'regulated',
+  editingAdminZone,
+  onPreviewGeometryChange,
+}: CustomZonesEditorProps) {
+  const { isAdmin, isSuperAdmin } = useAuth();
   const [selectedGeometry, setSelectedGeometry] = useState<GeoJSON.Feature | null>(
-    editingZone?.geometry ?? (editingOsmZone ? protectedAreaToGeojson(editingOsmZone) : null)
+    editingZone?.geometry
+      ?? editingAdminZone?.geometry
+      ?? (editingOsmZone ? protectedAreaToGeojson(editingOsmZone) : null)
   );
   const [isLoading, setIsLoading] = useState(false);
+  const [massifs, setMassifs] = useState<MassifCatalogEntry[]>([]);
+  const [selectedMassifName, setSelectedMassifName] = useState<string | undefined>(undefined);
+  const [selectedMassifSourceNote, setSelectedMassifSourceNote] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (mode === 'admin') {
+      fetchMassifsCatalog().then(setMassifs).catch(() => setMassifs([]));
+    }
+  }, [mode]);
+
+  // Aperçu carte : la zone sélectionnée (dessin déjà visible via Leaflet.Draw, mais pas
+  // un massif prédéfini / import GeoJSON / territoire en cours d'édition).
+  useEffect(() => {
+    onPreviewGeometryChange?.(selectedGeometry);
+    return () => onPreviewGeometryChange?.(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedGeometry]);
 
   useEffect(() => {
     if (drawnGeometry) {
@@ -40,12 +73,14 @@ export function CustomZonesEditor({ onClose, onDrawingToolChange, drawnGeometry,
     }
   }, [editingZone]);
 
-  if (!isAdmin) return null;
+  useEffect(() => {
+    if (editingAdminZone) {
+      setSelectedGeometry(editingAdminZone.geometry);
+    }
+  }, [editingAdminZone]);
 
-  const handleToolChange = (tool: DrawTool) => {
-    setActiveTool(tool);
-    onDrawingToolChange?.(tool);
-  };
+  const isAllowed = mode === 'admin' ? isSuperAdmin : isAdmin;
+  if (!isAllowed) return null;
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -67,7 +102,27 @@ export function CustomZonesEditor({ onClose, onDrawingToolChange, drawnGeometry,
     }
   };
 
+  const handleMassifSelect = (massifId: string) => {
+    const massif = massifs.find((m) => m.id === massifId);
+    if (!massif) return;
+    setSelectedMassifName(massif.name);
+    setSelectedMassifSourceNote(massif.sourceNote);
+    setSelectedGeometry(massif.geometry);
+  };
+
   if (selectedGeometry) {
+    if (mode === 'admin') {
+      return (
+        <AdminZoneForm
+          geometry={selectedGeometry}
+          zone={editingAdminZone ?? undefined}
+          prefill={selectedMassifName ? { name: selectedMassifName } : undefined}
+          onClose={() => { setSelectedGeometry(null); setSelectedMassifName(undefined); setSelectedMassifSourceNote(undefined); onClose(); }}
+          onSuccess={() => { setSelectedGeometry(null); setSelectedMassifName(undefined); setSelectedMassifSourceNote(undefined); onClose(); }}
+          onRegisterRequestClose={onRegisterRequestClose}
+        />
+      );
+    }
     const osmName = editingOsmZone?.name ?? editingOsmZone?.tags?.['name:fr'] ?? editingOsmZone?.tags?.name;
     return (
       <CustomZoneForm
@@ -82,33 +137,28 @@ export function CustomZonesEditor({ onClose, onDrawingToolChange, drawnGeometry,
     );
   }
 
-  const tools: { tool: DrawTool; label: string; Icon: React.ElementType }[] = [
-    { tool: 'polygon', label: 'Polygone', Icon: Hexagon },
-    { tool: 'rectangle', label: 'Rectangle', Icon: Square },
-  ];
-
   const content = (
     <>
-      <div className="flex gap-2 mb-3">
-        {tools.map(({ tool, label, Icon }) => {
-          const selected = activeTool === tool;
-          return (
-            <button
-              key={tool}
-              onClick={() => handleToolChange(tool)}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-lg text-sm font-medium transition-all ${
-                selected
-                  ? 'bg-emerald-600 border-2 border-emerald-600 text-white'
-                  : 'bg-gray-50 border border-gray-300 text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              {selected && <Check size={13} strokeWidth={2.5} />}
-              <Icon size={15} />
-              {label}
-            </button>
-          );
-        })}
-      </div>
+      <p className="text-sm text-gray-600 mb-3">
+        Dessinez un polygone sur la carte (vous pouvez déplacer et zoomer la carte pendant le tracé), importez un fichier GeoJSON{mode === 'admin' ? ', ou sélectionnez un massif prédéfini' : ''}.
+      </p>
+
+      {mode === 'admin' && massifs.length > 0 && (
+        <div className="mb-3">
+          <Select
+            label="Massif prédéfini (contour OpenStreetMap)"
+            value=""
+            onChange={(e) => handleMassifSelect(e.target.value)}
+            options={[
+              { value: '', label: 'Choisir un massif…' },
+              ...massifs.map((m) => ({ value: m.id, label: `${m.region} — ${m.name}` })),
+            ]}
+          />
+          {selectedMassifSourceNote && (
+            <p className="mt-1 text-xs text-gray-500">{selectedMassifSourceNote}</p>
+          )}
+        </div>
+      )}
 
       <label
         className={`flex items-center justify-center gap-2 w-full py-2.5 px-3 rounded-lg border border-gray-300 text-sm font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer ${
@@ -129,7 +179,7 @@ export function CustomZonesEditor({ onClose, onDrawingToolChange, drawnGeometry,
   );
 
   return (
-    <Panel onClose={onClose} title="Créer une zone réglementée">
+    <Panel onClose={onClose} title={mode === 'admin' ? 'Créer un territoire' : 'Créer une zone réglementée'}>
       {content}
     </Panel>
   );

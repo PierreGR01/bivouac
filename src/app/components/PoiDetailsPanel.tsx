@@ -20,6 +20,8 @@ import {
   ChevronDown,
   ChevronUp,
   CloudRain,
+  Ban,
+  PlayCircle,
 } from 'lucide-react';
 import {
   BarChart,
@@ -40,12 +42,14 @@ import { BivouacButton } from './ui/bivouac-button';
 import { AlertCard } from './ui/bivouac-card';
 import { SeasonBadge } from './ui/bivouac-badge';
 import { Textarea } from './ui/bivouac-input';
+import { DISABLE_DURATIONS, isSpotDisabled, formatRemainingDisableTime, computeDisabledUntil } from '../utils/spot-status';
 
 interface PoiDetailsPanelProps {
   location: PoiLocation | null;
   onClose: () => void;
   protectedAreas?: ProtectedArea[];
   customZones?: CustomZone[];
+  onSetDisabled?: (poiId: string, disabledUntil: string | null) => Promise<boolean>;
 }
 
 function safeHref(url: string | undefined): string | undefined {
@@ -63,12 +67,16 @@ export function PoiDetailsPanel({
   onClose,
   protectedAreas = [],
   customZones = [],
+  onSetDisabled,
 }: PoiDetailsPanelProps) {
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
   const { isAdmin } = useAuth();
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showDisableForm, setShowDisableForm] = useState(false);
+  const [disableMonths, setDisableMonths] = useState(DISABLE_DURATIONS[0].months);
+  const [isTogglingDisabled, setIsTogglingDisabled] = useState(false);
 
   if (!location) return null;
 
@@ -103,6 +111,92 @@ export function PoiDetailsPanel({
     }
   };
 
+  const disabled = isSpotDisabled(location);
+
+  const handleDisableSpot = async () => {
+    if (!onSetDisabled) return;
+    setIsTogglingDisabled(true);
+    try {
+      const success = await onSetDisabled(location.id, computeDisabledUntil(disableMonths));
+      if (success) {
+        toast.success('Spot désactivé temporairement');
+        setShowDisableForm(false);
+      } else {
+        toast.error('Impossible de désactiver ce spot');
+      }
+    } finally {
+      setIsTogglingDisabled(false);
+    }
+  };
+
+  const handleReactivateSpot = async () => {
+    if (!onSetDisabled) return;
+    setIsTogglingDisabled(true);
+    try {
+      const success = await onSetDisabled(location.id, null);
+      if (success) {
+        toast.success('Spot réactivé');
+      } else {
+        toast.error('Impossible de réactiver ce spot');
+      }
+    } finally {
+      setIsTogglingDisabled(false);
+    }
+  };
+
+  const disableToggleSection = disabled ? (
+    <BivouacButton
+      variant="outline"
+      icon={isTogglingDisabled ? <Loader2 className="w-4 h-4 animate-spin" /> : <PlayCircle className="w-4 h-4" />}
+      onClick={handleReactivateSpot}
+      disabled={isTogglingDisabled}
+      className="w-full py-2.5"
+    >
+      Réactiver maintenant
+    </BivouacButton>
+  ) : showDisableForm ? (
+    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+      <p className="text-sm text-amber-900 font-medium mb-2">Durée de désactivation</p>
+      <select
+        value={disableMonths}
+        onChange={(e) => setDisableMonths(Number(e.target.value))}
+        className="w-full mb-3 rounded-md border border-amber-200 bg-white px-2 py-1.5 text-sm text-amber-900"
+      >
+        {DISABLE_DURATIONS.map(({ months, label }) => (
+          <option key={months} value={months}>{label}</option>
+        ))}
+      </select>
+      <div className="flex gap-3">
+        <BivouacButton
+          variant="primary"
+          icon={isTogglingDisabled ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4" />}
+          onClick={handleDisableSpot}
+          disabled={isTogglingDisabled}
+          className="flex-1 bg-amber-600 hover:bg-amber-700"
+        >
+          {isTogglingDisabled ? 'Désactivation…' : 'Confirmer'}
+        </BivouacButton>
+        <BivouacButton
+          variant="outline"
+          onClick={() => setShowDisableForm(false)}
+          disabled={isTogglingDisabled}
+          className="flex-1"
+        >
+          Annuler
+        </BivouacButton>
+      </div>
+    </div>
+  ) : (
+    <BivouacButton
+      variant="outline"
+      icon={<Ban className="w-4 h-4" />}
+      onClick={() => setShowDisableForm(true)}
+      className="w-full bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 py-2.5"
+    >
+      Désactiver temporairement
+    </BivouacButton>
+  );
+
   const adminFooter = isAdmin ? (
     showDeleteConfirm ? (
       <div className="bg-red-50 border border-red-200 rounded-lg p-3">
@@ -130,14 +224,17 @@ export function PoiDetailsPanel({
         </div>
       </div>
     ) : (
-      <BivouacButton
-        variant="destructive"
-        icon={<Trash2 className="w-4 h-4" />}
-        onClick={() => setShowDeleteConfirm(true)}
-        className="w-full bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 py-2.5"
-      >
-        Supprimer ce spot
-      </BivouacButton>
+      <div className="flex flex-col gap-2">
+        {disableToggleSection}
+        <BivouacButton
+          variant="destructive"
+          icon={<Trash2 className="w-4 h-4" />}
+          onClick={() => setShowDeleteConfirm(true)}
+          className="w-full bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 py-2.5"
+        >
+          Supprimer ce spot
+        </BivouacButton>
+      </div>
     )
   ) : undefined;
 
@@ -350,6 +447,16 @@ function PanelContent({
             )}
           </div>
         </div>
+      )}
+
+      {/* Bandeau spot désactivé */}
+      {isSpotDisabled(location) && location.disabledUntil && (
+        <AlertCard type="warning" className="mb-3 flex items-center gap-2 py-2">
+          <Ban className="w-4 h-4 flex-shrink-0" />
+          <p className="text-sm font-medium">
+            Spot désactivé pour encore {formatRemainingDisableTime(location.disabledUntil)}
+          </p>
+        </AlertCard>
       )}
 
       {/* Tags Saison + Altitude + GPS */}

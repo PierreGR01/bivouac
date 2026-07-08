@@ -4,6 +4,8 @@ import * as authService from '../../utils/supabase/auth';
 interface AuthContextType {
   currentUser: authService.AuthUser | null;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
+  zoneAdminIds: string[];
   isLoading: boolean;
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
@@ -15,9 +17,20 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<authService.AuthUser | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [zoneAdminIds, setZoneAdminIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const isAdmin = isSuperAdmin || zoneAdminIds.length > 0;
+
+  async function loadRoles(userId: string) {
+    const [adminStatus, zoneIds] = await Promise.all([
+      authService.isUserAdmin(userId),
+      authService.getZoneAdminIds(userId),
+    ]);
+    setIsSuperAdmin(adminStatus);
+    setZoneAdminIds(zoneIds);
+  }
 
   // Initialize auth state on mount
   useEffect(() => {
@@ -37,17 +50,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           email: user.email || '',
         });
 
-        // Check if user is admin
-        const adminStatus = await authService.isUserAdmin(user.id);
-        setIsAdmin(adminStatus);
+        await loadRoles(user.id);
       } else {
         setCurrentUser(null);
-        setIsAdmin(false);
+        setIsSuperAdmin(false);
+        setZoneAdminIds([]);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to initialize auth');
       setCurrentUser(null);
-      setIsAdmin(false);
+      setIsSuperAdmin(false);
+      setZoneAdminIds([]);
     } finally {
       setIsLoading(false);
     }
@@ -66,9 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           email: user.email || '',
         });
 
-        // Check if user is admin
-        const adminStatus = await authService.isUserAdmin(user.id);
-        setIsAdmin(adminStatus);
+        await loadRoles(user.id);
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Login failed';
@@ -91,7 +102,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           id: user.id,
           email: user.email || '',
         });
-        setIsAdmin(false);
+        setIsSuperAdmin(false);
+        setZoneAdminIds([]);
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Signup failed';
@@ -109,7 +121,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       await authService.signOut();
       setCurrentUser(null);
-      setIsAdmin(false);
+      setIsSuperAdmin(false);
+      setZoneAdminIds([]);
       authService.removeAuthToken();
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Logout failed';
@@ -123,6 +136,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const value: AuthContextType = {
     currentUser,
     isAdmin,
+    isSuperAdmin,
+    zoneAdminIds,
     isLoading,
     error,
     login,

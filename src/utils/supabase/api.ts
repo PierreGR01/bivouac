@@ -171,6 +171,36 @@ export async function addRating(poiId: string, rating: number, comment: string):
   }
 }
 
+export async function recordPoiView(poiId: string): Promise<void> {
+  try {
+    await fetch(`${EDGE_FUNCTION_URL}/pois/${poiId}/view`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${ANON_KEY}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (error) {
+    // Best-effort analytics — never surface a failure to the user.
+    console.error('Error recording POI view:', error);
+  }
+}
+
+export async function fetchPoiViews30d(): Promise<Record<string, number>> {
+  try {
+    const authHeader = await getAuthHeader();
+    const response = await fetch(`${EDGE_FUNCTION_URL}/pois/views-30d`, {
+      method: 'GET',
+      headers: { 'Authorization': authHeader },
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!response.ok) throw new Error(`Failed to fetch POI views: ${response.statusText}`);
+    const data = await response.json();
+    return data.data || {};
+  } catch (error) {
+    console.error('Error fetching POI views:', error);
+    return {};
+  }
+}
+
 export async function fetchAltitude(lat: number, lng: number): Promise<number | null> {
   try {
     const response = await fetch(`${EDGE_FUNCTION_URL}/altitude?lat=${lat}&lng=${lng}`, {

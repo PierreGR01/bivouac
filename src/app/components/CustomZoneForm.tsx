@@ -4,9 +4,10 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { createCustomZone, updateCustomZone, deleteCustomZone, CustomZone } from '../../utils/supabase/custom-zones-api';
 import { hideOsmZone } from '../../utils/supabase/hidden-osm-zones-api';
+import { fetchAdminZones, AdminZone } from '../../utils/supabase/admin-zones-api';
 import { fetchOsmZoneById } from '../services/protected-areas';
 import { BivouacButton } from './ui/bivouac-button';
-import { Input, Textarea } from './ui/bivouac-input';
+import { Input, Textarea, Select } from './ui/bivouac-input';
 import { AlertCard } from './ui/bivouac-card';
 
 interface CustomZoneFormProps {
@@ -43,11 +44,28 @@ function Toggle({ enabled, onChange, disabled }: { enabled: boolean; onChange: (
 }
 
 export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, prefill, onRegisterRequestClose }: CustomZoneFormProps) {
-  const { currentUser } = useAuth();
+  const { currentUser, isSuperAdmin, zoneAdminIds } = useAuth();
   const queryClient = useQueryClient();
   const isEditing = !!zone;
   const isOsmZone = !!osmZoneId;
   const isExistingZone = isEditing || isOsmZone;
+
+  const [adminZones, setAdminZones] = useState<AdminZone[]>([]);
+  const [selectedAdminZoneId, setSelectedAdminZoneId] = useState(zone?.admin_zone_id ?? '');
+  const availableAdminZones = isSuperAdmin
+    ? adminZones
+    : adminZones.filter((z) => zoneAdminIds.includes(z.id));
+
+  useEffect(() => {
+    fetchAdminZones().then(setAdminZones).catch(() => setAdminZones([]));
+  }, []);
+
+  useEffect(() => {
+    if (!isEditing && !selectedAdminZoneId && availableAdminZones.length === 1) {
+      setSelectedAdminZoneId(availableAdminZones[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableAdminZones.length]);
 
   const initial = useMemo(() => ({
     name: zone?.name ?? prefill?.name ?? '',
@@ -91,6 +109,7 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
     || JSON.stringify([...restrictionTypes].sort()) !== JSON.stringify([...initial.restrictionTypes].sort())
     || sourceUrl !== initial.sourceUrl
     || osmSourceId !== initial.osmSourceId
+    || selectedAdminZoneId !== (zone?.admin_zone_id ?? '')
     || timeRangeEnabled !== initial.timeRangeEnabled
     || timeRangeStart !== initial.timeRangeStart
     || timeRangeEnd !== initial.timeRangeEnd
@@ -138,6 +157,10 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
       setError('Saisissez les dates de début et de fin de la période (JJ/MM)');
       return;
     }
+    if (!isSuperAdmin && !isEditing && !selectedAdminZoneId) {
+      setError('Sélectionnez le territoire auquel rattacher cette zone');
+      return;
+    }
 
     setIsLoading(true);
     try {
@@ -148,6 +171,7 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
         restriction_types: restrictionTypes,
         source_url: sourceUrl.trim() || undefined,
         osm_source_id: osmSourceId.trim() || undefined,
+        admin_zone_id: selectedAdminZoneId || undefined,
         time_range_start: timeRangeEnabled ? timeRangeStart : undefined,
         time_range_end: timeRangeEnabled ? timeRangeEnd : undefined,
         period_start: periodEnabled ? periodStart.trim() : undefined,
@@ -265,6 +289,20 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
             className="text-sm px-3 py-2"
             disabled={isLoading}
           />
+
+          {/* Territoire de rattachement */}
+          {availableAdminZones.length > 0 && (
+            <Select
+              label={isSuperAdmin ? 'Territoire (optionnel)' : 'Territoire *'}
+              value={selectedAdminZoneId}
+              onChange={(e) => setSelectedAdminZoneId(e.target.value)}
+              options={[
+                ...(isSuperAdmin ? [{ value: '', label: '— aucun —' }] : []),
+                ...availableAdminZones.map((z) => ({ value: z.id, label: z.name })),
+              ]}
+              disabled={isLoading}
+            />
+          )}
 
           {/* Types de restrictions */}
           <div>

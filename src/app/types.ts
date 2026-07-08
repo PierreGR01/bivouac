@@ -16,6 +16,7 @@ export interface PoiLocation {
   difficulty?: number; // Difficulté d'accès (0-5)
   ratings?: number[]; // Notes des utilisateurs (0-5) — legacy
   reviews?: Review[]; // Avis complets (note + commentaire)
+  disabledUntil?: string | null; // ISO 8601 — date de fin de désactivation temporaire, null/absent = actif
 }
 
 export interface Review {
