@@ -43,6 +43,7 @@ import { AlertCard } from './ui/bivouac-card';
 import { SeasonBadge } from './ui/bivouac-badge';
 import { Textarea } from './ui/bivouac-input';
 import { DISABLE_DURATIONS, isSpotDisabled, formatRemainingDisableTime, computeDisabledUntil } from '../utils/spot-status';
+import { getPhotoUrl, getPhotoCaption } from '../utils/photo';
 
 interface PoiDetailsPanelProps {
   location: PoiLocation | null;
@@ -240,10 +241,10 @@ export function PoiDetailsPanel({
 
   return (
     <>
-      {/* Photo modal (mobile only) */}
+      {/* Photo modal (lightbox) */}
       {isPhotoModalOpen && location.photos && location.photos.length > 0 && (
         <div
-          className="md:hidden fixed inset-0 bg-black z-[1100] flex items-center justify-center"
+          className="fixed inset-0 bg-black z-[1100] flex items-center justify-center"
           onClick={() => setIsPhotoModalOpen(false)}
         >
           <button
@@ -253,11 +254,19 @@ export function PoiDetailsPanel({
             <X className="w-6 h-6 text-gray-800" />
           </button>
           <img
-            src={location.photos[currentPhotoIndex]}
+            src={getPhotoUrl(location.photos[currentPhotoIndex])}
             alt={location.title}
             className="max-w-full max-h-full object-contain"
             onClick={(e) => e.stopPropagation()}
           />
+          {getPhotoCaption(location.photos[currentPhotoIndex]) && (
+            <div
+              className="absolute bottom-20 left-1/2 -translate-x-1/2 max-w-[90%] bg-black/70 text-white text-sm px-3 py-1.5 rounded-lg text-center"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {getPhotoCaption(location.photos[currentPhotoIndex])}
+            </div>
+          )}
           {location.photos.length > 1 && (
             <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-2">
               {location.photos.map((_, index) => (
@@ -413,8 +422,8 @@ function PanelContent({
                 style={{ height: '35px', width: '52px' }}
               >
                 <img
-                  src={photo}
-                  alt={`${location.title} - Photo ${index + 1}`}
+                  src={getPhotoUrl(photo)}
+                  alt={getPhotoCaption(photo) || `${location.title} - Photo ${index + 1}`}
                   className="w-full h-full object-cover"
                 />
               </button>
@@ -423,13 +432,17 @@ function PanelContent({
 
           {/* Desktop: full image */}
           <div className="hidden md:block">
-            <div className="aspect-video bg-gray-200 rounded-xl overflow-hidden">
+            <button
+              type="button"
+              onClick={() => onPhotoClick?.()}
+              className="block w-full aspect-video bg-gray-200 rounded-xl overflow-hidden cursor-zoom-in"
+            >
               <img
-                src={location.photos[currentPhotoIndex]}
+                src={getPhotoUrl(location.photos[currentPhotoIndex])}
                 alt={location.title}
                 className="w-full h-full object-cover"
               />
-            </div>
+            </button>
             {location.photos.length > 1 && (
               <div className="flex justify-center gap-2 mt-3">
                 {location.photos.map((_, index) => (

@@ -5,7 +5,7 @@ import { PhotoAnnotationTool } from './PhotoAnnotationTool';
 
 interface PhotoCaptureModalProps {
   imageUrl: string;
-  onConfirm: (finalImageUrl: string) => void;
+  onConfirm: (finalImageUrl: string, caption: string) => void;
   onRetake: () => void;
   onCancel: () => void;
 }
@@ -13,6 +13,7 @@ interface PhotoCaptureModalProps {
 export function PhotoCaptureModal({ imageUrl, onConfirm, onRetake, onCancel }: PhotoCaptureModalProps) {
   const [mode, setMode] = useState<'preview' | 'annotate'>('preview');
   const [currentImageUrl, setCurrentImageUrl] = useState(imageUrl);
+  const [caption, setCaption] = useState('');
 
   if (mode === 'annotate') {
     return (
@@ -45,6 +46,14 @@ export function PhotoCaptureModal({ imageUrl, onConfirm, onRetake, onCancel }: P
       </div>
 
       <div className="flex-shrink-0 px-4 py-3 bg-black/80 flex flex-col gap-2">
+        <input
+          type="text"
+          value={caption}
+          onChange={(e) => setCaption(e.target.value)}
+          placeholder="Légende de la photo (optionnel)"
+          maxLength={140}
+          className="w-full px-3 py-2 rounded-lg border border-white/20 bg-white/95 text-sm text-gray-800 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+        />
         <div className="flex gap-2">
           <BivouacButton
             type="button"
@@ -69,7 +78,7 @@ export function PhotoCaptureModal({ imageUrl, onConfirm, onRetake, onCancel }: P
           type="button"
           variant="primary"
           icon={<Check className="w-4 h-4" />}
-          onClick={() => onConfirm(currentImageUrl)}
+          onClick={() => onConfirm(currentImageUrl, caption)}
           className="w-full py-2.5"
         >
           Valider

@@ -6,6 +6,7 @@ import { AlertCard } from './ui/bivouac-card';
 import { DifficultySelector, Input, Textarea } from './ui/bivouac-input';
 import { useIsMobile } from './ui/use-mobile';
 import { PhotoCaptureModal } from './PhotoCaptureModal';
+import { SpotPhoto } from '../types';
 import { CustomZone, getZoneRestrictionStatus, formatZoneConstraints } from '../../utils/supabase/custom-zones-api';
 import { ProtectedArea, findAreasContainingPoint, getProtectedAreaInfo } from '../services/protected-areas';
 
@@ -18,10 +19,73 @@ interface AddPoiPanelProps {
   protectedAreas?: ProtectedArea[];
 }
 
+// Target: keep stored photos around 2 Mo (they're persisted as base64 strings in the DB,
+// not in object storage), so we retry at lower quality/size until we fit under this budget.
+const TARGET_PHOTO_BYTES = 2 * 1024 * 1024;
+const MAX_PHOTO_BYTES = 2.5 * 1024 * 1024;
+const COMPRESSION_STEPS: Array<{ maxDimension: number; quality: number }> = [
+  { maxDimension: 1600, quality: 0.82 },
+  { maxDimension: 1600, quality: 0.65 },
+  { maxDimension: 1200, quality: 0.7 },
+  { maxDimension: 1200, quality: 0.55 },
+  { maxDimension: 1000, quality: 0.6 },
+  { maxDimension: 800, quality: 0.55 },
+  { maxDimension: 600, quality: 0.5 },
+];
+
+function dataUrlBytes(dataUrl: string): number {
+  return (dataUrl.length * 3) / 4;
+}
+
+function drawToDataUrl(img: HTMLImageElement, maxDimension: number, quality: number): string {
+  const scale = Math.min(1, maxDimension / Math.max(img.width, img.height));
+  const width = Math.round(img.width * scale);
+  const height = Math.round(img.height * scale);
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas non supporté');
+  ctx.drawImage(img, 0, 0, width, height);
+  return canvas.toDataURL('image/jpeg', quality);
+}
+
+function compressImageFile(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      try {
+        let smallest = drawToDataUrl(img, COMPRESSION_STEPS[0].maxDimension, COMPRESSION_STEPS[0].quality);
+        if (dataUrlBytes(smallest) <= TARGET_PHOTO_BYTES) {
+          resolve(smallest);
+          return;
+        }
+        for (const step of COMPRESSION_STEPS.slice(1)) {
+          smallest = drawToDataUrl(img, step.maxDimension, step.quality);
+          if (dataUrlBytes(smallest) <= TARGET_PHOTO_BYTES) {
+            resolve(smallest);
+            return;
+          }
+        }
+        resolve(smallest);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("Impossible de charger l'image"));
+    };
+    img.src = objectUrl;
+  });
+}
+
 export interface NewPoi {
   title: string;
   description: string;
-  photos: string[];
+  photos: SpotPhoto[];
   season: 'hiver' | 'toute-annee';
   regulations: string;
   position: { lat: number; lng: number };
@@ -53,7 +117,7 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [photoUrls, setPhotoUrls] = useState<string[]>([]);
+  const [photos, setPhotos] = useState<SpotPhoto[]>([]);
   const [newPhotoUrl, setNewPhotoUrl] = useState('');
   const [season, setSeason] = useState<'hiver' | 'toute-annee'>('toute-annee');
   const [hasRegulations, setHasRegulations] = useState(false);
@@ -92,7 +156,7 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
 
   const handleAddPhoto = () => {
     if (newPhotoUrl.trim()) {
-      setPhotoUrls([...photoUrls, newPhotoUrl.trim()]);
+      setPhotos([...photos, { url: newPhotoUrl.trim() }]);
       setNewPhotoUrl('');
     }
   };
@@ -100,20 +164,20 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
   const handleFileSelect = (source: 'camera' | 'gallery') => (e: React.ChangeEvent<HTMLInputElement>) => {
     const inputEl = e.target;
     const file = inputEl.files?.[0];
-    if (file && file.type.startsWith('image/')) {
-      if (file.size > 2 * 1024 * 1024) {
-        alert('Photo trop volumineuse (maximum 2 Mo). Veuillez choisir une image plus petite.');
-        inputEl.value = '';
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const dataUrl = event.target?.result as string;
-        if (dataUrl) setPendingPhoto({ dataUrl, source });
-      };
-      reader.readAsDataURL(file);
-      inputEl.value = '';
-    }
+    inputEl.value = '';
+    if (!file || !file.type.startsWith('image/')) return;
+
+    compressImageFile(file)
+      .then((dataUrl) => {
+        if (dataUrlBytes(dataUrl) > MAX_PHOTO_BYTES) {
+          alert('Photo trop volumineuse même après compression. Veuillez choisir une image plus petite.');
+          return;
+        }
+        setPendingPhoto({ dataUrl, source });
+      })
+      .catch(() => {
+        alert("Impossible de traiter cette image. Veuillez réessayer avec une autre photo.");
+      });
   };
 
   const handleRetakePhoto = () => {
@@ -121,13 +185,14 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
     else galleryInputRef.current?.click();
   };
 
-  const handleConfirmPhoto = (finalImageUrl: string) => {
-    setPhotoUrls((prev) => [...prev, finalImageUrl]);
+  const handleConfirmPhoto = (finalImageUrl: string, caption: string) => {
+    const trimmedCaption = caption.trim();
+    setPhotos((prev) => [...prev, trimmedCaption ? { url: finalImageUrl, caption: trimmedCaption } : { url: finalImageUrl }]);
     setPendingPhoto(null);
   };
 
   const handleRemovePhoto = (index: number) => {
-    setPhotoUrls(photoUrls.filter((_, i) => i !== index));
+    setPhotos(photos.filter((_, i) => i !== index));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -156,7 +221,7 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
     onSubmit({
       title: title.trim(),
       description: description.trim(),
-      photos: photoUrls,
+      photos,
       season,
       regulations,
       position: selectedPosition,
@@ -166,7 +231,7 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
 
     setTitle('');
     setDescription('');
-    setPhotoUrls([]);
+    setPhotos([]);
     setNewPhotoUrl('');
     setSeason('été');
     setHasRegulations(false);
@@ -317,15 +382,20 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
             <label className="block text-sm font-semibold mb-1.5 text-gray-700">Photos</label>
           )}
 
-          {photoUrls.length > 0 && (
+          {photos.length > 0 && (
             <div className="grid grid-cols-3 gap-2 mb-2">
-              {photoUrls.map((url, index) => (
+              {photos.map((photo, index) => (
                 <div key={index} className="relative group">
                   <img
-                    src={url}
-                    alt={`Photo ${index + 1}`}
+                    src={photo.url}
+                    alt={photo.caption || `Photo ${index + 1}`}
                     className="w-full h-16 object-cover rounded-lg"
                   />
+                  {photo.caption && (
+                    <div className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[10px] leading-tight px-1 py-0.5 truncate rounded-b-lg">
+                      {photo.caption}
+                    </div>
+                  )}
                   <button
                     type="button"
                     onClick={() => handleRemovePhoto(index)}

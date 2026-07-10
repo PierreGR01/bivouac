@@ -1,3 +1,8 @@
+export interface SpotPhoto {
+  url: string;
+  caption?: string;
+}
+
 export interface PoiLocation {
   id: string;
   position: {
@@ -6,7 +11,7 @@ export interface PoiLocation {
   };
   title: string;
   description: string;
-  photos: string[];
+  photos: (string | SpotPhoto)[]; // legacy spots store plain URL strings, new ones store SpotPhoto
   season: 'hiver' | 'été' | 'toute-annee';
   waterProximity: 'proche' | 'éloigné' | null; // proche: <100m, éloigné: 100-200m, null: >200m
   naturalWaterProximity?: 'proche' | null; // cours d'eau / lac naturel dans un rayon de 200m
