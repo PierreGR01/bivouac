@@ -10,13 +10,13 @@ interface ZoneInfoPanelProps {
   onClose: () => void;
 }
 
-const restrictionLabels: Record<string, string> = {
+export const restrictionLabels: Record<string, string> = {
   camping_forbidden: 'Camping interdit',
   bivouac_forbidden: 'Bivouac interdit',
   fire_forbidden: 'Tout type de feux interdits',
 };
 
-function osmRestrictionTypes(area: ProtectedArea): string[] {
+export function osmRestrictionTypes(area: ProtectedArea): string[] {
   const tags = area.tags || {};
   const hasBivouacTag = tags.bivouac === 'no' || tags.bivouac === 'forbidden';
   const hasCampingTag = tags.camping === 'no' || tags.camping === 'forbidden';
@@ -40,7 +40,7 @@ interface RestrictionDisplayProps {
   periodEnd?: string | null;
 }
 
-function RestrictionDisplay({
+export function RestrictionDisplay({
   restrictionTypes,
   timeRangeStart,
   timeRangeEnd,
@@ -133,7 +133,7 @@ function RestrictionDisplay({
   );
 }
 
-function ClassicRegulations() {
+export function ClassicRegulations() {
   return (
     <div className="mb-4">
       <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Règles communes</p>

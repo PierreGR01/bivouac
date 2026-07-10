@@ -34,7 +34,8 @@ import {
 } from 'recharts';
 import { useWeatherForecast } from '../hooks/useWeatherForecast';
 import { ProtectedArea, findAreasContainingPoint, getProtectedAreaInfo } from '../services/protected-areas';
-import { CustomZone, getZoneRestrictionStatus, formatZoneConstraints } from '../../utils/supabase/custom-zones-api';
+import { CustomZone, getZoneRestrictionStatus } from '../../utils/supabase/custom-zones-api';
+import { RestrictionDisplay, ClassicRegulations, osmRestrictionTypes } from './ZoneInfoPanel';
 import { useAuth } from '../contexts/AuthContext';
 import * as api from '../../utils/supabase/api';
 import { Panel } from './ui/bivouac-panel';
@@ -603,11 +604,26 @@ function PanelContent({
             <AlertCard key={zone.id} type="error" className="border-red-500 p-4">
               <div className="flex items-start gap-3">
                 <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-                <div>
+                <div className="flex-1">
                   <h3 className="font-bold text-sm text-red-900 mb-1">Bivouac interdit</h3>
-                  <p className="text-sm text-red-800">{zone.name}</p>
-                  {zone.description && (
-                    <p className="text-sm text-red-700 mt-1">{zone.description}</p>
+                  <p className="text-sm font-medium text-red-800 mb-2">{zone.name}</p>
+                  <RestrictionDisplay
+                    restrictionTypes={zone.restriction_types ?? []}
+                    timeRangeStart={zone.time_range_start}
+                    timeRangeEnd={zone.time_range_end}
+                    periodStart={zone.period_start}
+                    periodEnd={zone.period_end}
+                  />
+                  <ClassicRegulations />
+                  {zone.source_url && (
+                    <a
+                      href={safeHref(zone.source_url)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-block mt-2 text-sm font-medium underline text-red-700 hover:text-red-900"
+                    >
+                      Plus d'informations →
+                    </a>
                   )}
                 </div>
               </div>
@@ -617,15 +633,17 @@ function PanelContent({
             <AlertCard key={zone.id} type="orange" className="p-4">
               <div className="flex items-start gap-3">
                 <AlertCircle className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
-                <div>
+                <div className="flex-1">
                   <h3 className="font-bold text-sm text-orange-900 mb-1">Zone réglementée</h3>
-                  <p className="text-sm font-medium text-orange-800">{zone.name}</p>
-                  <p className="text-sm text-orange-700 mt-1">
-                    Bivouac interdit {formatZoneConstraints(zone)}
-                  </p>
-                  {zone.description && (
-                    <p className="text-sm text-orange-700 mt-1">{zone.description}</p>
-                  )}
+                  <p className="text-sm font-medium text-orange-800 mb-2">{zone.name}</p>
+                  <RestrictionDisplay
+                    restrictionTypes={zone.restriction_types ?? []}
+                    timeRangeStart={zone.time_range_start}
+                    timeRangeEnd={zone.time_range_end}
+                    periodStart={zone.period_start}
+                    periodEnd={zone.period_end}
+                  />
+                  <ClassicRegulations />
                   {zone.source_url && (
                     <a
                       href={safeHref(zone.source_url)}
@@ -664,24 +682,11 @@ function PanelContent({
                     <h3 className={`font-bold text-sm mb-1 ${info.isCampingForbidden ? 'text-red-900' : 'text-orange-900'}`}>
                       {info.isCampingForbidden ? 'Zone interdite' : 'Zone réglementée'}
                     </h3>
-                    <p className={`font-semibold text-sm mb-1 ${info.isCampingForbidden ? 'text-red-800' : 'text-orange-800'}`}>
+                    <p className={`font-semibold text-sm mb-2 ${info.isCampingForbidden ? 'text-red-800' : 'text-orange-800'}`}>
                       {info.title}
                     </p>
-                    {info.description && (
-                      <p className={`text-sm mb-2 ${info.isCampingForbidden ? 'text-red-700' : 'text-orange-700'}`}>
-                        {info.description}
-                      </p>
-                    )}
-                    {info.restrictions.length > 0 && (
-                      <ul className="space-y-1">
-                        {info.restrictions.map((restriction, idx) => (
-                          <li key={idx} className={`text-sm flex items-start gap-2 ${info.isCampingForbidden ? 'text-red-800' : 'text-orange-800'}`}>
-                            <span className="flex-shrink-0">•</span>
-                            <span>{restriction}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+                    <RestrictionDisplay restrictionTypes={osmRestrictionTypes(area)} />
+                    <ClassicRegulations />
                     {safeHref(area.tags.website) && (
                       <a
                         href={safeHref(area.tags.website)}
