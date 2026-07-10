@@ -1,4 +1,6 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
+import { toast } from 'sonner';
+import { gps } from 'exifr/dist/mini.esm.mjs';
 import { MapPin, Upload, Snowflake, SunSnow, AlertCircle, AlertTriangle, Camera, Image as ImageIcon, Mountain, Tent, Locate, Loader2, X } from 'lucide-react';
 import { Panel } from './ui/bivouac-panel';
 import { BivouacButton, FilterChip } from './ui/bivouac-button';
@@ -129,6 +131,10 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
   const [pendingPhoto, setPendingPhoto] = useState<{ dataUrl: string; source: 'camera' | 'gallery' } | null>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
+  const selectedPositionRef = useRef(selectedPosition);
+  useEffect(() => {
+    selectedPositionRef.current = selectedPosition;
+  }, [selectedPosition]);
 
   const isBlocked = zoneStatus.blocked.length > 0 || osmZoneStatus.blocked.length > 0;
   const isFormValid = Boolean(selectedPosition && title.trim() && description.trim() && !isBlocked);
@@ -166,6 +172,18 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
     const file = inputEl.files?.[0];
     inputEl.value = '';
     if (!file || !file.type.startsWith('image/')) return;
+
+    if (!selectedPositionRef.current) {
+      gps(file)
+        .then((position: { latitude: number; longitude: number } | undefined) => {
+          if (position && !selectedPositionRef.current) {
+            onSetPosition({ lat: position.latitude, lng: position.longitude });
+            (window as any).__mapPanToAddMode?.(position.latitude, position.longitude);
+            toast.success('Position du spot déterminée à partir de la photo');
+          }
+        })
+        .catch(() => {});
+    }
 
     compressImageFile(file)
       .then((dataUrl) => {
