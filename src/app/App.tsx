@@ -46,6 +46,7 @@ export default function App() {
   // UI mode state (stays in App — pure UI concerns)
   const [isAddingMode, setIsAddingMode] = useState(false);
   const [temporaryPosition, setTemporaryPosition] = useState<{ lat: number; lng: number } | null>(null);
+  const [editingPoi, setEditingPoi] = useState<PoiLocation | null>(null);
   const [isMeasuringMode, setIsMeasuringMode] = useState(false);
   const [isDrawingMode, setIsDrawingMode] = useState(false);
   const [drawnGeometry, setDrawnGeometry] = useState<GeoJSON.Feature | null>(null);
@@ -166,6 +167,17 @@ export default function App() {
       setIsAddingMode(false);
       setTemporaryPosition(null);
     });
+  };
+
+  const handleOpenEditPanel = () => {
+    setEditingPoi(pois.selectedLocation);
+    pois.setSelectedLocation(null);
+  };
+
+  const handleUpdatePoi = async (poiId: string, updates: NewPoi) => {
+    const success = await pois.updateSpot(poiId, updates);
+    toast[success ? 'success' : 'error'](success ? 'Spot mis à jour' : 'Échec de la mise à jour du spot');
+    setEditingPoi(null);
   };
 
   const handleToggleCustomZones = () => {
@@ -502,6 +514,7 @@ export default function App() {
             customZones={map.customZones}
             onSetDisabled={pois.setSpotDisabled}
             onLoginRequired={() => setShowLoginPanel(true)}
+            onEdit={isAdmin ? handleOpenEditPanel : undefined}
           />
         </Suspense>
       )}
@@ -523,6 +536,21 @@ export default function App() {
             onSubmit={handleSubmitPoi}
             selectedPosition={temporaryPosition}
             onSetPosition={setTemporaryPosition}
+            customZones={map.customZones}
+            protectedAreas={map.allProtectedAreas}
+          />
+        </Suspense>
+      )}
+
+      {editingPoi && (
+        <Suspense fallback={null}>
+          <AddPoiPanel
+            mode="edit"
+            initialPoi={editingPoi}
+            onClose={() => setEditingPoi(null)}
+            onSubmit={(updates) => handleUpdatePoi(editingPoi.id, updates)}
+            selectedPosition={editingPoi.position}
+            onSetPosition={() => {}}
             customZones={map.customZones}
             protectedAreas={map.allProtectedAreas}
           />
@@ -781,6 +809,7 @@ export default function App() {
             onDeleteSpot={pois.deleteSpot}
             onOpenZonesEditor={handleOpenZonesFromDashboard}
             onOpenTerritoryEditor={handleOpenTerritoryEditorFromDashboard}
+            onRefetchPois={pois.refetchPois}
           />
         </Suspense>
       )}

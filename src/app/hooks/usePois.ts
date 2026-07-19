@@ -202,6 +202,17 @@ export function usePois() {
     }
   }, [queryClient]);
 
+  const updateSpot = useCallback(async (poiId: string, updates: Partial<PoiLocation>): Promise<boolean> => {
+    const success = await api.updatePoi(poiId, updates);
+    if (success) {
+      queryClient.setQueryData<PoiLocation[]>(['pois'], (old = []) =>
+        old.map(p => p.id === poiId ? { ...p, ...updates } : p)
+      );
+      setSelectedLocation(prev => prev?.id === poiId ? { ...prev, ...updates } : prev);
+    }
+    return success;
+  }, [queryClient]);
+
   return {
     locations: query.data ?? [],
     selectedLocation,
@@ -214,5 +225,7 @@ export function usePois() {
     },
     setSpotDisabled,
     deleteSpot,
+    updateSpot,
+    refetchPois: query.refetch,
   };
 }

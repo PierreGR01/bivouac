@@ -23,6 +23,7 @@ import {
   Ban,
   PlayCircle,
   Heart,
+  Pencil,
 } from 'lucide-react';
 import {
   BarChart,
@@ -55,6 +56,7 @@ interface PoiDetailsPanelProps {
   customZones?: CustomZone[];
   onSetDisabled?: (poiId: string, disabledUntil: string | null) => Promise<boolean>;
   onLoginRequired?: () => void;
+  onEdit?: () => void;
 }
 
 function safeHref(url: string | undefined): string | undefined {
@@ -74,6 +76,7 @@ export function PoiDetailsPanel({
   customZones = [],
   onSetDisabled,
   onLoginRequired,
+  onEdit,
 }: PoiDetailsPanelProps) {
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
@@ -204,6 +207,8 @@ export function PoiDetailsPanel({
     </BivouacButton>
   );
 
+  const isDisableFormOpen = !disabled && showDisableForm;
+
   const adminFooter = isAdmin ? (
     showDeleteConfirm ? (
       <div className="bg-red-50 border border-red-200 rounded-lg p-3">
@@ -232,15 +237,27 @@ export function PoiDetailsPanel({
       </div>
     ) : (
       <div className="flex flex-col gap-2">
-        {disableToggleSection}
-        <BivouacButton
-          variant="destructive"
-          icon={<Trash2 className="w-4 h-4" />}
-          onClick={() => setShowDeleteConfirm(true)}
-          className="w-full bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 py-2.5"
-        >
-          Supprimer ce spot
-        </BivouacButton>
+        {onEdit && (
+          <BivouacButton
+            variant="outline"
+            icon={<Pencil className="w-4 h-4" />}
+            onClick={onEdit}
+            className="w-full py-2.5"
+          >
+            Modifier ce spot
+          </BivouacButton>
+        )}
+        <div className={isDisableFormOpen ? 'flex flex-col gap-2' : 'flex flex-row gap-2'}>
+          <div className={isDisableFormOpen ? '' : 'flex-1'}>{disableToggleSection}</div>
+          <BivouacButton
+            variant="destructive"
+            icon={<Trash2 className="w-4 h-4" />}
+            onClick={() => setShowDeleteConfirm(true)}
+            className={`${isDisableFormOpen ? 'w-full' : 'flex-1'} bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 py-2.5`}
+          >
+            Supprimer ce spot
+          </BivouacButton>
+        </div>
       </div>
     )
   ) : undefined;

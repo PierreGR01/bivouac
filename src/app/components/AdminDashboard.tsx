@@ -30,6 +30,7 @@ import { AdminZonesManager } from './AdminZonesManager';
 import { fetchAdminZones, AdminZone } from '../../utils/supabase/admin-zones-api';
 import { fetchPoiViews30d } from '../../utils/supabase/api';
 import { updatePassword } from '../../utils/supabase/auth';
+import { fetchUsers, fetchAuthorEmails, deleteUser, AdminUserSummary } from '../../utils/supabase/users-api';
 import { isPointInAnyZone } from '../utils/zone-geometry';
 import { isSpotDisabled, computeDisabledUntil, DISABLE_DURATIONS } from '../utils/spot-status';
 
@@ -44,6 +45,13 @@ interface AdminDashboardProps {
   // la carte plein écran — ces deux actions quittent donc le dashboard. La liste des
   // territoires et leurs admins, elle, reste affichée dans le dashboard (cf. showTerritories).
   onOpenTerritoryEditor: (zone?: AdminZone) => void;
+  onRefetchPois: () => void;
+}
+
+function formatShortDate(iso?: string): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(-2)}`;
 }
 
 export function AdminDashboard({
@@ -54,10 +62,13 @@ export function AdminDashboard({
   onDeleteSpot,
   onOpenZonesEditor,
   onOpenTerritoryEditor,
+  onRefetchPois,
 }: AdminDashboardProps) {
   const { currentUser, isSuperAdmin, zoneAdminIds, logout } = useAuth();
   const [adminZones, setAdminZones] = useState<AdminZone[]>([]);
   const [views30d, setViews30d] = useState<Record<string, number>>({});
+  const [emailById, setEmailById] = useState<Record<string, string>>({});
+  const [users, setUsers] = useState<AdminUserSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -67,6 +78,10 @@ export function AdminDashboard({
   const [isSubmittingPassword, setIsSubmittingPassword] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [confirmDeleteUserId, setConfirmDeleteUserId] = useState<string | null>(null);
+  const [deleteUserSpots, setDeleteUserSpots] = useState(false);
+  const [deleteUserReviews, setDeleteUserReviews] = useState(false);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -78,6 +93,21 @@ export function AdminDashboard({
         ]);
         setAdminZones(zonesData);
         setViews30d(viewsData);
+
+        if (isSuperAdmin) {
+          const usersData = await fetchUsers();
+          setUsers(usersData);
+          setEmailById(Object.fromEntries(usersData.map((u) => [u.id, u.email])));
+        } else {
+          // Un admin de zone ne peut pas lister tous les comptes — on ne résout que les emails
+          // des auteurs des spots de son propre territoire (cf. logique de coveredLocations).
+          const myZonesData = zonesData.filter((z) => zoneAdminIds.includes(z.id));
+          const geometries = myZonesData.map((z) => z.geometry);
+          const covered = locations.filter((loc) => isPointInAnyZone(loc.position, geometries));
+          const ids = [...new Set(covered.map((l) => l.createdBy).filter((id): id is string => !!id))];
+          const emails = await fetchAuthorEmails(ids);
+          setEmailById(emails);
+        }
       } catch (error) {
         console.error('Error loading dashboard data:', error);
         toast.error('Impossible de charger toutes les données du tableau de bord');
@@ -85,6 +115,7 @@ export function AdminDashboard({
         setIsLoading(false);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const myZones = useMemo(
@@ -135,6 +166,25 @@ export function AdminDashboard({
     } finally {
       setDeletingId(null);
       setConfirmDeleteId(null);
+    }
+  };
+
+  const handleConfirmDeleteUser = async (user: AdminUserSummary) => {
+    setDeletingUserId(user.id);
+    try {
+      await deleteUser(user.id, { deleteSpots: deleteUserSpots, deleteReviews: deleteUserReviews });
+      setUsers((prev) => prev.filter((u) => u.id !== user.id));
+      toast.success('Utilisateur supprimé');
+      if (deleteUserSpots || deleteUserReviews) {
+        onRefetchPois();
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Échec de la suppression du compte');
+    } finally {
+      setDeletingUserId(null);
+      setConfirmDeleteUserId(null);
+      setDeleteUserSpots(false);
+      setDeleteUserReviews(false);
     }
   };
 
@@ -203,6 +253,7 @@ export function AdminDashboard({
               <TabsTrigger value="synthese">Synthèse perso</TabsTrigger>
               <TabsTrigger value="territoires">Gestion des territoires</TabsTrigger>
               <TabsTrigger value="spots">Spots</TabsTrigger>
+              {isSuperAdmin && <TabsTrigger value="utilisateurs">Utilisateurs</TabsTrigger>}
             </TabsList>
 
             {/* Synthèse perso */}
@@ -318,10 +369,13 @@ export function AdminDashboard({
               {coveredLocations.length === 0 ? (
                 <p className="text-sm text-gray-500">Aucun spot dans ce territoire pour le moment.</p>
               ) : (
-                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="border border-gray-200 rounded-lg overflow-x-auto">
+                  <div className="min-w-[760px]">
                   {/* En-tête */}
                   <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 text-gray-500 text-xs uppercase font-medium">
                     <div className="flex-1 min-w-0">Titre du spot</div>
+                    <div className="w-36 flex-shrink-0">Auteur</div>
+                    <div className="w-16 flex-shrink-0 text-center">Créé le</div>
                     <div className="w-9 flex-shrink-0 text-center" title="Vues (30 derniers jours)">Vues</div>
                     <div className="w-9 flex-shrink-0 text-center" title="Photos">Médias</div>
                     <div className="w-[104px] flex-shrink-0 text-center">Actions</div>
@@ -346,6 +400,12 @@ export function AdminDashboard({
                             {disabled && (
                               <span className="text-xs text-orange-600">Désactivé</span>
                             )}
+                          </div>
+                          <div className="w-36 flex-shrink-0 text-xs text-gray-600 truncate" title={poi.createdBy ? (emailById[poi.createdBy] ?? poi.createdBy) : undefined}>
+                            {poi.createdBy ? (emailById[poi.createdBy] ?? '—') : '—'}
+                          </div>
+                          <div className="w-16 flex-shrink-0 text-center text-xs text-gray-600">
+                            {formatShortDate(poi.createdAt)}
                           </div>
                           <div className="w-9 flex-shrink-0 flex items-center justify-center gap-0.5 text-xs text-gray-600">
                             <Eye className="w-3.5 h-3.5 flex-shrink-0" />
@@ -408,9 +468,105 @@ export function AdminDashboard({
                       );
                     })}
                   </div>
+                  </div>
                 </div>
               )}
             </TabsContent>
+
+            {/* Utilisateurs enregistrés — super-admin uniquement */}
+            {isSuperAdmin && (
+              <TabsContent value="utilisateurs">
+                <StatusBadge status="info" className="mb-3">
+                  {users.length} utilisateur{users.length !== 1 ? 's' : ''} enregistré{users.length !== 1 ? 's' : ''}
+                </StatusBadge>
+
+                {users.length === 0 ? (
+                  <p className="text-sm text-gray-500">Aucun utilisateur pour le moment.</p>
+                ) : (
+                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+                    <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 text-gray-500 text-xs uppercase font-medium">
+                      <div className="flex-1 min-w-0">Email</div>
+                      <div className="w-12 flex-shrink-0 text-center">Spots</div>
+                      <div className="w-12 flex-shrink-0 text-center">Avis</div>
+                      <div className="w-9 flex-shrink-0 text-center">Actions</div>
+                    </div>
+                    <div className="divide-y divide-gray-100">
+                      {users.map((user) => {
+                        const isConfirming = confirmDeleteUserId === user.id;
+                        return isConfirming ? (
+                          <div key={user.id} className="bg-red-50 border-t border-red-200 p-3">
+                            <p className="text-sm text-red-800 font-medium mb-2">
+                              Supprimer {user.email} ?
+                            </p>
+                            <label className="flex items-center gap-2 text-sm text-red-800 mb-1">
+                              <input
+                                type="checkbox"
+                                checked={deleteUserSpots}
+                                onChange={(e) => setDeleteUserSpots(e.target.checked)}
+                                className="w-4 h-4 text-red-600 rounded focus:ring-2 focus:ring-red-500"
+                              />
+                              Supprimer aussi ses {user.spotsCount} spot{user.spotsCount !== 1 ? 's' : ''}
+                            </label>
+                            <label className="flex items-center gap-2 text-sm text-red-800 mb-3">
+                              <input
+                                type="checkbox"
+                                checked={deleteUserReviews}
+                                onChange={(e) => setDeleteUserReviews(e.target.checked)}
+                                className="w-4 h-4 text-red-600 rounded focus:ring-2 focus:ring-red-500"
+                              />
+                              Supprimer aussi ses {user.reviewsCount} avis
+                            </label>
+                            <div className="flex gap-2">
+                              <BivouacButton
+                                variant="destructive"
+                                size="sm"
+                                icon={deletingUserId === user.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                                onClick={() => handleConfirmDeleteUser(user)}
+                                disabled={deletingUserId === user.id}
+                                className="flex-1"
+                              >
+                                Confirmer
+                              </BivouacButton>
+                              <BivouacButton
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setConfirmDeleteUserId(null);
+                                  setDeleteUserSpots(false);
+                                  setDeleteUserReviews(false);
+                                }}
+                                disabled={deletingUserId === user.id}
+                                className="flex-1"
+                              >
+                                Annuler
+                              </BivouacButton>
+                            </div>
+                          </div>
+                        ) : (
+                          <div key={user.id} className="flex items-center gap-2 px-3 py-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-800 truncate" title={user.email}>{user.email}</p>
+                              <p className="text-xs text-gray-400">Inscrit le {formatShortDate(user.createdAt)}</p>
+                            </div>
+                            <div className="w-12 flex-shrink-0 text-center text-xs text-gray-600">{user.spotsCount}</div>
+                            <div className="w-12 flex-shrink-0 text-center text-xs text-gray-600">{user.reviewsCount}</div>
+                            <div className="w-9 flex-shrink-0 flex items-center justify-center">
+                              <button
+                                onClick={() => setConfirmDeleteUserId(user.id)}
+                                title="Supprimer ce compte"
+                                className="w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-lg text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </TabsContent>
+            )}
           </Tabs>
         )}
       </div>

@@ -8,7 +8,8 @@ import { AlertCard } from './ui/bivouac-card';
 import { DifficultySelector, Input, Textarea } from './ui/bivouac-input';
 import { useIsMobile } from './ui/use-mobile';
 import { PhotoCaptureModal } from './PhotoCaptureModal';
-import { SpotPhoto } from '../types';
+import { PoiLocation, SpotPhoto } from '../types';
+import { getPhotoUrl, getPhotoCaption } from '../utils/photo';
 import { CustomZone, getZoneRestrictionStatus, formatZoneConstraints } from '../../utils/supabase/custom-zones-api';
 import { ProtectedArea, findAreasContainingPoint, getProtectedAreaInfo } from '../services/protected-areas';
 
@@ -19,6 +20,27 @@ interface AddPoiPanelProps {
   onSetPosition: (position: { lat: number; lng: number } | null) => void;
   customZones?: CustomZone[];
   protectedAreas?: ProtectedArea[];
+  mode?: 'create' | 'edit';
+  initialPoi?: PoiLocation | null;
+}
+
+const NATIONAL_PARK_REGULATION = 'Zone de parc national - bivouac uniquement 19h à 9h';
+
+function parseInitialRegulations(regulations?: string) {
+  if (!regulations) return { hasRegulations: false, isNationalPark: false, regulationDetails: '' };
+  const isNationalPark = regulations.includes(NATIONAL_PARK_REGULATION);
+  const regulationDetails = isNationalPark
+    ? regulations.replace(NATIONAL_PARK_REGULATION, '').replace(/^\.\s*/, '').trim()
+    : regulations;
+  return { hasRegulations: true, isNationalPark, regulationDetails };
+}
+
+function normalizeInitialPhotos(photos?: (string | SpotPhoto)[]): SpotPhoto[] {
+  if (!photos) return [];
+  return photos.map((photo) => {
+    const caption = getPhotoCaption(photo);
+    return caption ? { url: getPhotoUrl(photo), caption } : { url: getPhotoUrl(photo) };
+  });
 }
 
 // Target: keep stored photos around 2 Mo (they're persisted as base64 strings in the DB,
@@ -96,8 +118,9 @@ export interface NewPoi {
   altitude?: number;
 }
 
-export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition, customZones = [], protectedAreas = [] }: AddPoiPanelProps) {
+export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition, customZones = [], protectedAreas = [], mode = 'create', initialPoi = null }: AddPoiPanelProps) {
   const isMobile = useIsMobile();
+  const isEditMode = mode === 'edit';
 
   const zoneStatus = useMemo(() => {
     if (!selectedPosition) return { blocked: [], warnings: [] };
@@ -117,16 +140,18 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
     return { blocked, warnings };
   }, [selectedPosition, protectedAreas]);
 
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [photos, setPhotos] = useState<SpotPhoto[]>([]);
+  const initialRegulations = useMemo(() => parseInitialRegulations(initialPoi?.regulations), [initialPoi]);
+
+  const [title, setTitle] = useState(initialPoi?.title ?? '');
+  const [description, setDescription] = useState(initialPoi?.description ?? '');
+  const [photos, setPhotos] = useState<SpotPhoto[]>(() => normalizeInitialPhotos(initialPoi?.photos));
   const [newPhotoUrl, setNewPhotoUrl] = useState('');
-  const [season, setSeason] = useState<'hiver' | 'toute-annee'>('toute-annee');
-  const [hasRegulations, setHasRegulations] = useState(false);
-  const [regulationDetails, setRegulationDetails] = useState('');
-  const [isNationalPark, setIsNationalPark] = useState(false);
-  const [capacity, setCapacity] = useState<'1' | '2-3' | '4-5' | '5+'>('2-3');
-  const [difficulty, setDifficulty] = useState<number>(2);
+  const [season, setSeason] = useState<'hiver' | 'toute-annee'>(initialPoi?.season === 'hiver' ? 'hiver' : 'toute-annee');
+  const [hasRegulations, setHasRegulations] = useState(initialRegulations.hasRegulations);
+  const [regulationDetails, setRegulationDetails] = useState(initialRegulations.regulationDetails);
+  const [isNationalPark, setIsNationalPark] = useState(initialRegulations.isNationalPark);
+  const [capacity, setCapacity] = useState<'1' | '2-3' | '4-5' | '5+'>(initialPoi?.capacity ?? '2-3');
+  const [difficulty, setDifficulty] = useState<number>(initialPoi?.difficulty ?? 2);
   const [isGeolocating, setIsGeolocating] = useState(false);
   const [pendingPhoto, setPendingPhoto] = useState<{ dataUrl: string; source: 'camera' | 'gallery' } | null>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -247,6 +272,8 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
       difficulty,
     });
 
+    if (isEditMode) return;
+
     setTitle('');
     setDescription('');
     setPhotos([]);
@@ -261,7 +288,7 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
 
   return (
     <>
-    <Panel onClose={onClose} title="Ajouter un spot" mobileMaxHeight="50vh">
+    <Panel onClose={onClose} title={isEditMode ? 'Modifier le spot' : 'Ajouter un spot'} mobileMaxHeight="50vh">
       <form onSubmit={handleSubmit}>
         {/* Position */}
         <div className="mb-3">
@@ -601,7 +628,9 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
         {/* Soumettre */}
         <div className="sticky bottom-0 -mx-6 px-6 bg-white border-t border-gray-100 pt-3 pb-3">
           <BivouacButton type="submit" variant="primary" className="w-full py-2.5 text-sm" disabled={!isFormValid}>
-            {isMobile ? 'Créer le spot' : 'Soumettre le point de bivouac'}
+            {isEditMode
+              ? (isMobile ? 'Enregistrer' : 'Enregistrer les modifications')
+              : (isMobile ? 'Créer le spot' : 'Soumettre le point de bivouac')}
           </BivouacButton>
         </div>
       </form>

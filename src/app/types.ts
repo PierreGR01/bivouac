@@ -23,6 +23,7 @@ export interface PoiLocation {
   reviews?: Review[]; // Avis complets (note + commentaire)
   disabledUntil?: string | null; // ISO 8601 — date de fin de désactivation temporaire, null/absent = actif
   createdBy?: string; // ID de l'utilisateur créateur (dérivé côté serveur, absent sur les spots legacy)
+  createdAt?: string; // ISO 8601 — date de création (dérivée côté serveur, absente sur les spots legacy)
 }
 
 export interface Review {

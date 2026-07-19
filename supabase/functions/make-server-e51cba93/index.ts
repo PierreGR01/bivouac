@@ -592,6 +592,126 @@ app.delete("/make-server-e51cba93/zone-admins/:id", safeHandler(async (c: any) =
   }
 }));
 
+// --- User directory management — super-admin only (except email resolution) ---
+
+// List every registered user with their activity (spots created, reviews left) — super-admin only
+app.get("/make-server-e51cba93/users", safeHandler(async (c: any) => {
+  if (!(await requireAdmin(c))) {
+    return c.json({ success: false, error: "Unauthorized" }, 401);
+  }
+  try {
+    const adminClient = getServiceClient();
+    const allUsers: any[] = [];
+    let page = 1;
+    const perPage = 200;
+    for (let i = 0; i < 25; i++) { // safety cap: 5000 users max
+      const { data, error } = await adminClient.auth.admin.listUsers({ page, perPage });
+      if (error || !data?.users?.length) break;
+      allUsers.push(...data.users);
+      if (data.users.length < perPage) break;
+      page++;
+    }
+
+    const pois = await kv.getByPrefix("poi:");
+    const spotsCount = new Map<string, number>();
+    const reviewsCount = new Map<string, number>();
+    for (const poi of pois) {
+      if (poi?.createdBy) spotsCount.set(poi.createdBy, (spotsCount.get(poi.createdBy) ?? 0) + 1);
+      for (const review of (poi?.reviews || [])) {
+        if (review?.userId) reviewsCount.set(review.userId, (reviewsCount.get(review.userId) ?? 0) + 1);
+      }
+    }
+
+    const enriched = allUsers.map((u: any) => ({
+      id: u.id,
+      email: u.email,
+      createdAt: u.created_at,
+      spotsCount: spotsCount.get(u.id) ?? 0,
+      reviewsCount: reviewsCount.get(u.id) ?? 0,
+    }));
+
+    return c.json({ success: true, data: enriched });
+  } catch (error) {
+    console.error("Error listing users:", error);
+    return c.json({ success: false, error: "Internal server error" }, 500);
+  }
+}));
+
+// Resolve emails for a set of user ids — any admin (used by the spots table's author column,
+// including zone-admins who can't call the full /users listing above)
+app.post("/make-server-e51cba93/users/emails", safeHandler(async (c: any) => {
+  if (!(await requireAnyAdmin(c))) {
+    return c.json({ success: false, error: "Unauthorized" }, 401);
+  }
+  try {
+    const body = await c.req.json();
+    const ids = Array.isArray(body.ids)
+      ? [...new Set(body.ids.filter((id: unknown) => typeof id === "string"))].slice(0, 500)
+      : [];
+
+    const adminClient = getServiceClient();
+    const entries = await Promise.all(ids.map(async (id) => {
+      const { data } = await adminClient.auth.admin.getUserById(id as string);
+      return [id, data?.user?.email ?? null] as const;
+    }));
+    const emailById = Object.fromEntries(entries.filter(([, email]) => !!email));
+
+    return c.json({ success: true, data: emailById });
+  } catch (error) {
+    console.error("Error resolving user emails:", error);
+    return c.json({ success: false, error: "Internal server error" }, 500);
+  }
+}));
+
+// Delete a user account — super-admin only, with optional cascade over their spots/reviews
+app.delete("/make-server-e51cba93/users/:id", safeHandler(async (c: any) => {
+  const requester = await getAuthedUser(c);
+  if (!requester || !(await isSuperAdmin(requester.id))) {
+    return c.json({ success: false, error: "Unauthorized" }, 401);
+  }
+  try {
+    const id = c.req.param("id");
+    if (id === requester.id) {
+      return c.json({ success: false, error: "Vous ne pouvez pas supprimer votre propre compte" }, 400);
+    }
+
+    const body = await c.req.json().catch(() => ({}));
+    const deleteSpots = !!body.deleteSpots;
+    const deleteReviews = !!body.deleteReviews;
+
+    if (deleteSpots || deleteReviews) {
+      const pois = await kv.getByPrefix("poi:");
+
+      if (deleteSpots) {
+        const ownKeys = pois.filter((p: any) => p.createdBy === id).map((p: any) => `poi:${p.id}`);
+        if (ownKeys.length > 0) await kv.mdel(...ownKeys);
+      }
+
+      if (deleteReviews) {
+        const remaining = deleteSpots ? pois.filter((p: any) => p.createdBy !== id) : pois;
+        for (const poi of remaining) {
+          const reviews: any[] = poi.reviews || [];
+          if (!reviews.some((r: any) => r.userId === id)) continue;
+          const updatedReviews = reviews.filter((r: any) => r.userId !== id);
+          const updated = { ...poi, reviews: updatedReviews, ratings: updatedReviews.map((r: any) => r.rating) };
+          await kv.set(`poi:${poi.id}`, updated);
+        }
+      }
+    }
+
+    const adminClient = getServiceClient();
+    const { error } = await adminClient.auth.admin.deleteUser(id);
+    if (error) {
+      return c.json({ success: false, error: error.message || "Échec de la suppression du compte" }, 500);
+    }
+
+    return c.json({ success: true });
+  } catch (error) {
+    console.error("Error deleting user:", error);
+    return c.json({ success: false, error: "Internal server error" }, 500);
+  }
+}));
+
 // Enrich a POI (altitude, water proximity) — rate-limited, no admin required
 app.patch("/make-server-e51cba93/pois/:id/enrich", safeHandler(async (c: any) => {
   const ip = c.req.header("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
