@@ -85,6 +85,7 @@ interface MapViewProps {
   isSmartRouting?: boolean;
   maxDistanceFromRoute?: number; // en mètres
   onNearbyWaterCountChange?: (count: number) => void;
+  onRouteWaterLoadingChange?: (isLoading: boolean) => void;
   showWaterPoints?: boolean;
   showProtectedAreas?: boolean;
   protectedAreas?: ProtectedArea[];
@@ -154,6 +155,7 @@ export function MapView({
   isSmartRouting = true,
   maxDistanceFromRoute = 200,
   onNearbyWaterCountChange,
+  onRouteWaterLoadingChange,
   showWaterPoints = false,
   showProtectedAreas = false,
   protectedAreas = [],
@@ -235,6 +237,7 @@ export function MapView({
   // Points d'eau le long du tracé — indépendants du calque "Points d'eau" (viewport) :
   // dès qu'un itinéraire est actif, on interroge Overpass sur l'emprise du tracé entier.
   const [routeWaterPoints, setRouteWaterPoints] = useState<WaterPoint[]>([]);
+  const [isLoadingRouteWater, setIsLoadingRouteWater] = useState(false);
 
   // Refs pour callbacks parents — évite que l'effect se ré-exécute à chaque render du parent
   // tout en gardant un accès toujours frais aux dernières valeurs
@@ -1394,10 +1397,15 @@ export function MapView({
   useEffect(() => {
     if (routePoints.length < 2) {
       setRouteWaterPoints([]);
+      setIsLoadingRouteWater(false);
       return;
     }
 
     let cancelled = false;
+    // Visible dès le changement (pas seulement après le debounce) : le fallback Overpass
+    // direct (quand le proxy Edge Function est indisponible) peut prendre plusieurs dizaines
+    // de secondes — sans indicateur, ça se voit comme "aucun point d'eau trouvé".
+    setIsLoadingRouteWater(true);
     const timer = setTimeout(() => {
       const bounds = getRouteBounds(routePoints, maxDistanceFromRoute / 1000);
       fetchWaterPoints(bounds)
@@ -1408,6 +1416,9 @@ export function MapView({
           // Tracé trop long / API indisponible : on garde simplement les spots de bivouac,
           // les points d'eau du calque viewport (s'il est actif) restent affichés.
           if (!cancelled) setRouteWaterPoints([]);
+        })
+        .finally(() => {
+          if (!cancelled) setIsLoadingRouteWater(false);
         });
     }, 800);
 
@@ -1437,6 +1448,13 @@ export function MapView({
   useEffect(() => {
     onNearbyWaterCountChangeRef.current?.(routeFilteredWaterPoints.length);
   }, [routeFilteredWaterPoints]);
+
+  const onRouteWaterLoadingChangeRef = useRef(onRouteWaterLoadingChange);
+  onRouteWaterLoadingChangeRef.current = onRouteWaterLoadingChange;
+
+  useEffect(() => {
+    onRouteWaterLoadingChangeRef.current?.(isLoadingRouteWater);
+  }, [isLoadingRouteWater]);
 
   // Charger les points d'eau - chargement initial automatique puis manuel
   useEffect(() => {

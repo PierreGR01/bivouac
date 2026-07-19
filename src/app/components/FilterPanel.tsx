@@ -25,6 +25,7 @@ interface FilterPanelProps {
   onMaxDistanceChange: (value: number) => void;
   nearbyPoisCount: number;
   nearbyWaterCount: number;
+  isLoadingWaterCount?: boolean;
 }
 
 export function FilterPanel({
@@ -38,6 +39,7 @@ export function FilterPanel({
   onMaxDistanceChange,
   nearbyPoisCount,
   nearbyWaterCount,
+  isLoadingWaterCount = false,
 }: FilterPanelProps) {
   const [showTraces, setShowTraces] = useState(() => activeTripId !== null);
 
@@ -133,7 +135,11 @@ export function FilterPanel({
             />
             <div className="grid grid-cols-2 gap-2 mt-3">
               <InfoCard title="Spots à proximité" value={nearbyPoisCount} variant="emerald" />
-              <InfoCard title="Points d'eau à proximité" value={nearbyWaterCount} variant="blue" />
+              <InfoCard
+                title="Points d'eau à proximité"
+                value={isLoadingWaterCount ? 'Recherche…' : nearbyWaterCount}
+                variant="blue"
+              />
             </div>
           </div>
         )}

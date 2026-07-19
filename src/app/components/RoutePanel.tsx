@@ -16,6 +16,7 @@ interface RoutePanelProps {
   routePointsCount: number;
   nearbyPoisCount: number;
   nearbyWaterCount: number;
+  isLoadingWaterCount?: boolean;
   maxDistance: number;
   onMaxDistanceChange: (value: number) => void;
   onSaveRoute?: (name: string) => Promise<void>;
@@ -30,6 +31,7 @@ export function RoutePanel({
   routePointsCount,
   nearbyPoisCount,
   nearbyWaterCount,
+  isLoadingWaterCount = false,
   maxDistance,
   onMaxDistanceChange,
   onSaveRoute,
@@ -67,7 +69,12 @@ export function RoutePanel({
       <div className="grid grid-cols-2 gap-3 mb-4">
         <InfoCard title="Points d'itinéraire" value={routePointsCount} variant="blue" />
         <InfoCard title="Spots à proximité" value={nearbyPoisCount} variant="emerald" />
-        <InfoCard title="Points d'eau à proximité" value={nearbyWaterCount} variant="blue" className="col-span-2" />
+        <InfoCard
+          title="Points d'eau à proximité"
+          value={isLoadingWaterCount ? 'Recherche…' : nearbyWaterCount}
+          variant="blue"
+          className="col-span-2"
+        />
       </div>
 
       {/* Toggle mode de routage */}

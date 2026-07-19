@@ -65,6 +65,7 @@ export default function App() {
   const [selectedZone, setSelectedZone] = useState<CustomZone | null>(null);
   const [selectedProtectedArea, setSelectedProtectedArea] = useState<ProtectedArea | null>(null);
   const [nearbyWaterCount, setNearbyWaterCount] = useState(0);
+  const [isLoadingRouteWater, setIsLoadingRouteWater] = useState(false);
   const requestCloseZoneForm = useRef<(() => void) | null>(null);
 
   // Le dashboard n'est réellement affiché que pour un compte admin — évite un état
@@ -408,6 +409,7 @@ export default function App() {
           isSmartRouting={filters.isSmartRouting}
           maxDistanceFromRoute={filters.maxDistanceFromRoute}
           onNearbyWaterCountChange={setNearbyWaterCount}
+          onRouteWaterLoadingChange={setIsLoadingRouteWater}
           showWaterPoints={map.showWaterPoints}
           showProtectedAreas={map.showProtectedAreas}
           protectedAreas={map.allProtectedAreas}
@@ -538,6 +540,7 @@ export default function App() {
             routePointsCount={filters.routePoints.length}
             nearbyPoisCount={filters.nearbyPoisCount}
             nearbyWaterCount={nearbyWaterCount}
+            isLoadingWaterCount={isLoadingRouteWater}
             maxDistance={filters.maxDistanceFromRoute}
             onMaxDistanceChange={filters.setMaxDistanceFromRoute}
             onSaveRoute={handleSaveRoute}
@@ -558,6 +561,7 @@ export default function App() {
             onMaxDistanceChange={filters.setMaxDistanceFromRoute}
             nearbyPoisCount={filters.nearbyPoisCount}
             nearbyWaterCount={nearbyWaterCount}
+            isLoadingWaterCount={isLoadingRouteWater}
           />
         </Suspense>
       )}
