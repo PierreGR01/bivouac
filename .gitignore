@@ -30,3 +30,14 @@ supabase/.temp/
 
 # Claude
 .claude/
+
+# Documents sensibles / non destinés au repo (RIB, statuts, budget, dossiers de subvention)
+prospection/
+docs/budget/
+
+# Scripts et artefacts de debug temporaires
+design-system-preview.html
+scripts/check.mjs
+scripts/recon*.mjs
+scripts/serve-docs.mjs
+scripts/debug-*.png
