@@ -83,7 +83,7 @@ interface MapViewProps {
   temporaryMarkerPosition?: { lat: number; lng: number } | null;
   routePoints?: Array<{ lat: number; lng: number }>;
   isSmartRouting?: boolean;
-  maxDistanceFromRoute?: number;
+  maxDistanceFromRoute?: number; // en mètres
   onNearbyWaterCountChange?: (count: number) => void;
   showWaterPoints?: boolean;
   showProtectedAreas?: boolean;
@@ -152,7 +152,7 @@ export function MapView({
   temporaryMarkerPosition,
   routePoints = [],
   isSmartRouting = true,
-  maxDistanceFromRoute = 2,
+  maxDistanceFromRoute = 200,
   onNearbyWaterCountChange,
   showWaterPoints = false,
   showProtectedAreas = false,
@@ -1399,7 +1399,7 @@ export function MapView({
 
     let cancelled = false;
     const timer = setTimeout(() => {
-      const bounds = getRouteBounds(routePoints, maxDistanceFromRoute);
+      const bounds = getRouteBounds(routePoints, maxDistanceFromRoute / 1000);
       fetchWaterPoints(bounds)
         .then(points => {
           if (!cancelled) setRouteWaterPoints(points);
@@ -1425,7 +1425,7 @@ export function MapView({
     if (routePoints.length < 2 || routeWaterPoints.length === 0) return [];
     return routeWaterPoints
       .map(wp => ({ wp, dist: distanceToRoute({ lat: wp.lat, lng: wp.lng }, routePoints) }))
-      .filter(({ dist }) => dist <= maxDistanceFromRoute)
+      .filter(({ dist }) => dist <= maxDistanceFromRoute / 1000)
       .sort((a, b) => a.dist - b.dist)
       .slice(0, MAX_ROUTE_WATER_MARKERS)
       .map(({ wp }) => wp);

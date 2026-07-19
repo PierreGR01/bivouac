@@ -123,12 +123,12 @@ export function FilterPanel({
           <div className="mt-3 pt-3 border-t border-gray-200">
             <RangeSlider
               label="Périmètre autour de la trace"
-              min="0.5"
-              max="10"
-              step="0.5"
+              min="50"
+              max="400"
+              step="25"
               value={maxDistanceFromRoute}
               onChange={(e) => onMaxDistanceChange(parseFloat(e.target.value))}
-              unit="km"
+              unit="m"
               displayValue={maxDistanceFromRoute}
             />
             <div className="grid grid-cols-2 gap-2 mt-3">

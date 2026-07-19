@@ -9,4 +9,4 @@ export const WATER_PROXIMITY_FAR_M = 200;
 // Rayon (~300m) utilisé pour charger les points d'eau autour d'un nouveau spot
 export const WATER_LOADING_RADIUS_DEG = 0.003;
 
-export const DEFAULT_ROUTE_DISTANCE_KM = 2;
+export const DEFAULT_ROUTE_DISTANCE_M = 200;

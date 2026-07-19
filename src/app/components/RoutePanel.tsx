@@ -98,16 +98,16 @@ export function RoutePanel({
       <div className="mb-5">
         <RangeSlider
           label="Distance maximale de l'itinéraire"
-          min="0.5"
-          max="10"
-          step="0.5"
+          min="50"
+          max="400"
+          step="25"
           value={maxDistance}
           onChange={(e) => onMaxDistanceChange(parseFloat(e.target.value))}
-          unit="km"
+          unit="m"
           displayValue={maxDistance}
         />
         <p className="text-xs text-gray-500 mt-1">
-          Affiche les spots à moins de {maxDistance} km de l'itinéraire
+          Affiche les spots à moins de {maxDistance} m de l'itinéraire
         </p>
       </div>
 

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { PoiLocation } from '../types';
 import { FilterOptions } from '../components/FilterPanel';
-import { DEFAULT_ROUTE_DISTANCE_KM } from '../constants';
+import { DEFAULT_ROUTE_DISTANCE_M } from '../constants';
 import { distanceToRoute } from '../utils/route-distance';
 
 const EMPTY_FILTERS: FilterOptions = {
@@ -25,7 +25,9 @@ export function useFilters(locations: PoiLocation[], winterMode: boolean) {
   const [isRoutingMode, setIsRoutingMode] = useState(false);
   const [routePoints, setRoutePoints] = useState<Array<{ lat: number; lng: number }>>([]);
   const [isSmartRouting, setIsSmartRouting] = useState(true);
-  const [maxDistanceFromRoute, setMaxDistanceFromRoute] = useState(DEFAULT_ROUTE_DISTANCE_KM);
+  // En mètres (le slider va de 50m à 400m) — converti en km au point d'usage, distanceToRoute
+  // et getRouteBounds travaillant en kilomètres.
+  const [maxDistanceFromRoute, setMaxDistanceFromRoute] = useState(DEFAULT_ROUTE_DISTANCE_M);
   // Id de la trace enregistrée actuellement chargée comme itinéraire actif (null si l'itinéraire
   // est dessiné à la main ou n'a pas encore été sauvegardé) — permet au panneau Filtres de savoir
   // quelle trace afficher comme activée.
@@ -70,7 +72,7 @@ export function useFilters(locations: PoiLocation[], winterMode: boolean) {
 
       let matchesRoute = true;
       if (routePoints.length >= 2) {
-        matchesRoute = distanceToRoute(location.position, routePoints) <= maxDistanceFromRoute;
+        matchesRoute = distanceToRoute(location.position, routePoints) <= maxDistanceFromRoute / 1000;
       }
 
       return matchesSearch && matchesSeason && matchesWaterSource && matchesNaturalWater &&
@@ -89,7 +91,7 @@ export function useFilters(locations: PoiLocation[], winterMode: boolean) {
   const nearbyPoisCount = useMemo(() => {
     if (routePoints.length < 2) return 0;
     return locations.filter(
-      loc => distanceToRoute(loc.position, routePoints) <= maxDistanceFromRoute
+      loc => distanceToRoute(loc.position, routePoints) <= maxDistanceFromRoute / 1000
     ).length;
   }, [locations, routePoints, maxDistanceFromRoute]);
 
