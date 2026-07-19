@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, Suspense } from 'react';
+import React, { useState, useRef, useMemo, Suspense } from 'react';
 import { toast, Toaster } from 'sonner';
 import { devLog } from './utils/logger';
 import { MapView } from './components/MapView';
@@ -12,6 +12,8 @@ import { Tent, Plus, Loader2, AlertCircle, Settings, Search, BanIcon, Droplet, C
 import { usePois } from './hooks/usePois';
 import { useMapLayers } from './hooks/useMapLayers';
 import { useFilters } from './hooks/useFilters';
+import { useTrips } from './hooks/useTrips';
+import { Trip } from '../utils/supabase/trips-api';
 import { CustomZone } from '../utils/supabase/custom-zones-api';
 import { AdminZone } from '../utils/supabase/admin-zones-api';
 import { ProtectedArea } from './services/protected-areas';
@@ -24,6 +26,7 @@ const FilterPanel = React.lazy(() => import('./components/FilterPanel').then(m =
 const LoginPanel = React.lazy(() => import('./components/LoginPanel').then(m => ({ default: m.LoginPanel })));
 const CustomZonesEditor = React.lazy(() => import('./components/CustomZonesEditor').then(m => ({ default: m.CustomZonesEditor })));
 const AdminDashboard = React.lazy(() => import('./components/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
+const UserDashboard = React.lazy(() => import('./components/UserDashboard').then(m => ({ default: m.UserDashboard })));
 const ServerStatus = React.lazy(() => import('./components/ServerStatus').then(m => ({ default: m.ServerStatus })));
 const WaterPointsInfo = React.lazy(() => import('./components/WaterPointsInfo').then(m => ({ default: m.WaterPointsInfo })));
 const ZoneInfoPanel = React.lazy(() => import('./components/ZoneInfoPanel').then(m => ({ default: m.ZoneInfoPanel })));
@@ -32,6 +35,7 @@ export default function App() {
   const { currentUser, isAdmin, isSuperAdmin, zoneAdminIds } = useAuth();
 
   const pois = usePois();
+  const trips = useTrips();
   const map = useMapLayers();
   const visibleLocations = useMemo(
     () => isAdmin ? pois.locations : pois.locations.filter(l => !isSpotDisabled(l)),
@@ -51,6 +55,7 @@ export default function App() {
   const [editingZone, setEditingZone] = useState<CustomZone | null>(null);
   const [editingOsmZone, setEditingOsmZone] = useState<ProtectedArea | null>(null);
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
+  const [showUserDashboard, setShowUserDashboard] = useState(false);
   const [showAdminZoneEditor, setShowAdminZoneEditor] = useState(false);
   const [editingAdminZone, setEditingAdminZone] = useState<AdminZone | null>(null);
   const [previewGeometry, setPreviewGeometry] = useState<GeoJSON.Feature | null>(null);
@@ -65,21 +70,10 @@ export default function App() {
   // "showAdminDashboard=true" orphelin (header masqué, rien affiché à la place) pour un
   // utilisateur connecté non-admin.
   const dashboardActive = isAdmin && showAdminDashboard;
-
-  // Le dashboard est l'outil principal d'administration : dès qu'une session admin est
-  // active (connexion ou session restaurée), on y arrive par défaut. hasAutoOpenedDashboard
-  // évite de le rouvrir de force si l'admin le ferme ensuite pour consulter la carte.
-  const hasAutoOpenedDashboard = useRef(false);
-  useEffect(() => {
-    if (isAdmin && !hasAutoOpenedDashboard.current) {
-      hasAutoOpenedDashboard.current = true;
-      setShowAdminDashboard(true);
-      setShowLoginPanel(false);
-    }
-    if (!isAdmin) {
-      hasAutoOpenedDashboard.current = false;
-    }
-  }, [isAdmin]);
+  // Dashboard personnel : réservé aux utilisateurs connectés non-admin (les admins passent
+  // toujours par AdminDashboard, cf. dashboardActive ci-dessus).
+  const userDashboardActive = !isAdmin && !!currentUser && showUserDashboard;
+  const anyDashboardActive = dashboardActive || userDashboardActive;
 
   // --- Composed handlers ---
 
@@ -91,6 +85,10 @@ export default function App() {
   const handleClosePanel = () => pois.setSelectedLocation(null);
 
   const handleOpenAddPanel = () => {
+    if (!currentUser) {
+      setShowLoginPanel(true);
+      return;
+    }
     setIsAddingMode(true);
     pois.setSelectedLocation(null);
     setTemporaryPosition(null);
@@ -108,6 +106,25 @@ export default function App() {
     filters.setShowFilters(false);
     setIsAddingMode(false);
     setIsMeasuringMode(false);
+  };
+
+  const handleSaveRoute = async (name: string) => {
+    const success = await trips.saveTrip({ name, points: filters.routePoints, source: 'drawn' });
+    if (success) {
+      filters.closeRoutePanel();
+    }
+  };
+
+  // Recharge le tracé d'un trip enregistré dans l'éditeur d'itinéraire existant (modifiable/
+  // ré-enregistrable), plutôt qu'une nouvelle couche carte en lecture seule dédiée.
+  const handleViewTripOnMap = (trip: Trip) => {
+    filters.setRoutePoints(trip.points);
+    filters.setIsRoutingMode(true);
+    if (window.innerWidth < MOBILE_BREAKPOINT_PX) {
+      setShowUserDashboard(false);
+      const first = trip.points[0];
+      if (first) (window as any).__mapFlyToSpot?.(first.lat, first.lng);
+    }
   };
 
   const handleToggleMeasureMode = () => {
@@ -173,6 +190,18 @@ export default function App() {
     setShowAdminDashboard(true);
   };
 
+  const handleOpenDashboard = () => {
+    if (isAdmin) {
+      handleOpenAdminDashboard();
+      return;
+    }
+    if (!currentUser) return;
+    pois.setSelectedLocation(null);
+    setIsAddingMode(false);
+    filters.setShowFilters(false);
+    setShowUserDashboard(true);
+  };
+
   // Anciens boutons flottants "Zones"/"Territoires" — intégrés au dashboard, celui-ci se
   // ferme donc pour laisser place au flux existant (dessin sur la carte, gestion des zones).
   const handleOpenZonesFromDashboard = () => {
@@ -200,6 +229,7 @@ export default function App() {
     pois.setSelectedLocation(poi);
     if (window.innerWidth < MOBILE_BREAKPOINT_PX) {
       setShowAdminDashboard(false);
+      setShowUserDashboard(false);
       (window as any).__mapFlyToSpot?.(poi.position.lat, poi.position.lng);
     } else {
       const panelWidth = window.innerWidth / 2;
@@ -261,8 +291,8 @@ export default function App() {
   return (
     <div className="relative w-screen overflow-hidden" style={{ height: '100dvh' }}>
 
-      {/* Search bar — masquée quand le dashboard admin est actif (page dédiée) */}
-      {!dashboardActive && (
+      {/* Search bar — masquée quand un dashboard (admin ou personnel) est actif (page dédiée) */}
+      {!anyDashboardActive && (
         <div>
           <SearchBar
             searchTerm={filters.searchTerm}
@@ -275,7 +305,7 @@ export default function App() {
             isPanelOpen={isPanelOpen}
             currentUser={currentUser}
             onLoginClick={() => setShowLoginPanel(!showLoginPanel)}
-            onOpenDashboard={handleOpenAdminDashboard}
+            onOpenDashboard={handleOpenDashboard}
             allLocations={visibleLocations}
             onGeoSelect={(lat, lng, bbox) => {
               (window as any).__mapFitBounds?.(bbox, lat, lng);
@@ -289,7 +319,7 @@ export default function App() {
       )}
 
       {/* Diagnostic serveur — désormais seul bouton flottant desktop, indépendant de l'admin */}
-      {!dashboardActive && !pois.serverAvailable && !isAddingMode && (
+      {!anyDashboardActive && !pois.serverAvailable && !isAddingMode && (
         <div className="hidden md:flex absolute top-6 right-6 z-[600] items-center gap-3">
           <button
             onClick={() => setShowDiagnostic(!showDiagnostic)}
@@ -445,7 +475,7 @@ export default function App() {
       )}
 
       {/* Panels — each in its own Suspense so lazy loading never unmounts MapView */}
-      {pois.selectedLocation && !dashboardActive && (
+      {pois.selectedLocation && !anyDashboardActive && (
         <Suspense fallback={null}>
           <PoiDetailsPanel
             key={pois.selectedLocation.id}
@@ -454,6 +484,7 @@ export default function App() {
             protectedAreas={map.allProtectedAreas}
             customZones={map.customZones}
             onSetDisabled={pois.setSpotDisabled}
+            onLoginRequired={() => setShowLoginPanel(true)}
           />
         </Suspense>
       )}
@@ -493,6 +524,7 @@ export default function App() {
             nearbyPoisCount={filters.nearbyPoisCount}
             maxDistance={filters.maxDistanceFromRoute}
             onMaxDistanceChange={filters.setMaxDistanceFromRoute}
+            onSaveRoute={handleSaveRoute}
           />
         </Suspense>
       )}
@@ -533,7 +565,7 @@ export default function App() {
 
       {/* Mobile: controls toggle — bottom right (masqué quand le dashboard occupe tout l'écran) */}
       {/* Mobile bottom bar — © row + actions row */}
-      {!dashboardActive && (
+      {!anyDashboardActive && (
       <div className="md:hidden fixed bottom-0 inset-x-0 z-[600] flex flex-col">
 
         {/* Ligne add spot + chevron */}
@@ -722,6 +754,18 @@ export default function App() {
             onDeleteSpot={pois.deleteSpot}
             onOpenZonesEditor={handleOpenZonesFromDashboard}
             onOpenTerritoryEditor={handleOpenTerritoryEditorFromDashboard}
+          />
+        </Suspense>
+      )}
+
+      {userDashboardActive && (
+        <Suspense fallback={null}>
+          <UserDashboard
+            onClose={() => setShowUserDashboard(false)}
+            locations={pois.locations}
+            onViewSpotOnMap={handleViewSpotOnMap}
+            onDeleteSpot={pois.deleteSpot}
+            onViewTripOnMap={handleViewTripOnMap}
           />
         </Suspense>
       )}

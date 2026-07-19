@@ -18,12 +18,14 @@ import {
   KeyRound,
   Settings,
   LogOut,
+  Plus,
 } from 'lucide-react';
 import { PoiLocation } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { BivouacButton } from './ui/bivouac-button';
 import { Input } from './ui/bivouac-input';
 import { StatusBadge } from './ui/bivouac-badge';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs';
 import { AdminZonesManager } from './AdminZonesManager';
 import { fetchAdminZones, AdminZone } from '../../utils/supabase/admin-zones-api';
 import { fetchPoiViews30d } from '../../utils/supabase/api';
@@ -64,7 +66,7 @@ export function AdminDashboard({
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isSubmittingPassword, setIsSubmittingPassword] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const [showTerritories, setShowTerritories] = useState(false);
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -152,6 +154,7 @@ export function AdminDashboard({
       toast.success('Mot de passe mis à jour');
       setNewPassword('');
       setConfirmPassword('');
+      setShowPasswordForm(false);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Échec de la mise à jour du mot de passe');
     } finally {
@@ -195,10 +198,15 @@ export function AdminDashboard({
             <Loader2 className="w-6 h-6 animate-spin text-emerald-600" />
           </div>
         ) : (
-          <div className="space-y-6">
-            {/* Synthèse personnelle */}
-            <section>
-              <h2 className="text-sm font-semibold text-gray-800 mb-2">Synthèse personnelle</h2>
+          <Tabs defaultValue="synthese">
+            <TabsList className="w-full">
+              <TabsTrigger value="synthese">Synthèse perso</TabsTrigger>
+              <TabsTrigger value="territoires">Gestion des territoires</TabsTrigger>
+              <TabsTrigger value="spots">Spots</TabsTrigger>
+            </TabsList>
+
+            {/* Synthèse perso */}
+            <TabsContent value="synthese" className="space-y-4">
               <div className="bg-gray-50 rounded-lg p-3 space-y-1.5">
                 <p className="text-sm text-gray-600 flex items-center gap-1.5">
                   <Mail className="w-3.5 h-3.5 flex-shrink-0" />
@@ -213,12 +221,63 @@ export function AdminDashboard({
                   <span>Territoire : {territoryLabel}</span>
                 </p>
               </div>
-            </section>
 
-            {/* Outils d'administration — anciens boutons flottants "Zones"/"Territoires" */}
-            <section>
-              <h2 className="text-sm font-semibold text-gray-800 mb-2">Outils d'administration</h2>
-              <div className="flex flex-wrap gap-2 mb-3">
+              <div>
+                <BivouacButton
+                  variant="secondary"
+                  size="sm"
+                  icon={<KeyRound className="w-4 h-4" />}
+                  onClick={() => setShowPasswordForm((v) => !v)}
+                >
+                  Modifier le mot de passe
+                </BivouacButton>
+                {showPasswordForm && (
+                  <form onSubmit={handleChangePassword} className="space-y-3 mt-3">
+                    <Input
+                      label="Nouveau mot de passe"
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="••••••••"
+                      autoComplete="new-password"
+                      disabled={isSubmittingPassword}
+                    />
+                    <Input
+                      label="Confirmer le mot de passe"
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="••••••••"
+                      autoComplete="new-password"
+                      disabled={isSubmittingPassword}
+                    />
+                    <BivouacButton
+                      type="submit"
+                      variant="primary"
+                      icon={isSubmittingPassword ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
+                      disabled={isSubmittingPassword || !newPassword || !confirmPassword}
+                      className="w-full"
+                    >
+                      Changer le mot de passe
+                    </BivouacButton>
+                  </form>
+                )}
+              </div>
+
+              <BivouacButton
+                variant="destructive"
+                icon={isLoggingOut ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}
+                onClick={handleLogout}
+                disabled={isLoggingOut}
+                className="w-full"
+              >
+                Se déconnecter
+              </BivouacButton>
+            </TabsContent>
+
+            {/* Gestion des territoires */}
+            <TabsContent value="territoires" className="space-y-3">
+              <div className="flex flex-wrap gap-2">
                 <BivouacButton
                   variant="secondary"
                   size="sm"
@@ -229,29 +288,29 @@ export function AdminDashboard({
                 </BivouacButton>
                 {isSuperAdmin && (
                   <BivouacButton
-                    variant={showTerritories ? 'primary' : 'secondary'}
+                    variant="secondary"
                     size="sm"
-                    icon={<ShieldCheck className="w-4 h-4" />}
-                    onClick={() => setShowTerritories((v) => !v)}
+                    icon={<Plus className="w-4 h-4" />}
+                    onClick={() => onOpenTerritoryEditor()}
                   >
-                    Gérer les territoires
+                    Attribuer la gestion d'un territoire
                   </BivouacButton>
                 )}
               </div>
-              {isSuperAdmin && showTerritories && (
+              {isSuperAdmin && (
                 <div className="border border-gray-200 rounded-lg p-3">
                   <AdminZonesManager
                     embedded
+                    showCreateButton={false}
                     onCreateNew={() => onOpenTerritoryEditor()}
                     onEditZone={(zone) => onOpenTerritoryEditor(zone)}
                   />
                 </div>
               )}
-            </section>
+            </TabsContent>
 
-            {/* Synthèse du territoire couvert */}
-            <section>
-              <h2 className="text-sm font-semibold text-gray-800 mb-2">Territoire couvert</h2>
+            {/* Spots du territoire couvert */}
+            <TabsContent value="spots">
               <StatusBadge status="info" className="mb-3">
                 {coveredLocations.length} spot{coveredLocations.length !== 1 ? 's' : ''} intégré{coveredLocations.length !== 1 ? 's' : ''} à ce territoire
               </StatusBadge>
@@ -351,57 +410,8 @@ export function AdminDashboard({
                   </div>
                 </div>
               )}
-            </section>
-
-            {/* Gestion des données personnelles */}
-            <section>
-              <h2 className="text-sm font-semibold text-gray-800 mb-2">Données personnelles</h2>
-              <div className="bg-gray-50 rounded-lg p-3 mb-3">
-                <p className="text-sm text-gray-600 flex items-center gap-1.5">
-                  <Mail className="w-3.5 h-3.5 flex-shrink-0" />
-                  {currentUser?.email}
-                </p>
-              </div>
-              <form onSubmit={handleChangePassword} className="space-y-3 mb-4">
-                <Input
-                  label="Nouveau mot de passe"
-                  type="password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="••••••••"
-                  autoComplete="new-password"
-                  disabled={isSubmittingPassword}
-                />
-                <Input
-                  label="Confirmer le mot de passe"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="••••••••"
-                  autoComplete="new-password"
-                  disabled={isSubmittingPassword}
-                />
-                <BivouacButton
-                  type="submit"
-                  variant="primary"
-                  icon={isSubmittingPassword ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
-                  disabled={isSubmittingPassword || !newPassword || !confirmPassword}
-                  className="w-full"
-                >
-                  Changer le mot de passe
-                </BivouacButton>
-              </form>
-              <BivouacButton
-                variant="destructive"
-                icon={isLoggingOut ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}
-                onClick={handleLogout}
-                disabled={isLoggingOut}
-                className="w-full"
-              >
-                Se déconnecter
-              </BivouacButton>
-            </section>
-          </div>
+            </TabsContent>
+          </Tabs>
         )}
       </div>
     </div>

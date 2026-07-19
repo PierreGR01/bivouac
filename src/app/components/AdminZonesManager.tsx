@@ -15,9 +15,13 @@ interface AdminZonesManagerProps {
   // Rendu inline dans le dashboard admin (sans le chrome Panel ni bouton fermer) plutôt
   // qu'en panneau flottant indépendant.
   embedded?: boolean;
+  // Le dashboard admin affiche désormais ce bouton lui-même, à côté de "Créer une zone
+  // réglementée" et sous le libellé "Attribuer la gestion d'un territoire" — on masque
+  // donc le bouton interne pour éviter le doublon.
+  showCreateButton?: boolean;
 }
 
-export function AdminZonesManager({ onClose, onCreateNew, onEditZone, embedded = false }: AdminZonesManagerProps) {
+export function AdminZonesManager({ onClose, onCreateNew, onEditZone, embedded = false, showCreateButton = true }: AdminZonesManagerProps) {
   const { isSuperAdmin } = useAuth();
   const [zones, setZones] = useState<AdminZone[]>([]);
   const [grants, setGrants] = useState<ZoneAdminGrant[]>([]);
@@ -93,14 +97,16 @@ export function AdminZonesManager({ onClose, onCreateNew, onEditZone, embedded =
         </div>
       ) : (
         <>
-          <BivouacButton
-            variant="primary"
-            icon={<Plus className="w-4 h-4" />}
-            onClick={onCreateNew}
-            className="w-full mb-4"
-          >
-            Nouveau territoire
-          </BivouacButton>
+          {showCreateButton && (
+            <BivouacButton
+              variant="primary"
+              icon={<Plus className="w-4 h-4" />}
+              onClick={onCreateNew}
+              className="w-full mb-4"
+            >
+              Nouveau territoire
+            </BivouacButton>
+          )}
 
           {zones.length === 0 ? (
             <p className="text-sm text-gray-500">Aucun territoire pour le moment.</p>

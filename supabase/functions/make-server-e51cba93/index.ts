@@ -201,12 +201,26 @@ function checkRateLimit(key: string, maxPerWindow: number, windowMs = 3_600_000)
 }
 
 // --- CORS ---
-// Set ALLOWED_ORIGIN Supabase secret to restrict to your Vercel domain in production.
-// Falls back to "*" if not set (permissive — set the secret when you know your deployment URL).
+// ALLOWED_ORIGIN secret restricts cross-origin calls to the production app's origin.
+// DENO_DEPLOYMENT_ID is only set when running on Supabase's deployed infrastructure, so a
+// truly local Edge Function (`supabase functions serve`) still falls back to "*" for
+// convenience. In practice though, the frontend's local dev server (`npm run dev`) also
+// calls the *deployed* function (see VITE_EDGE_FUNCTION_URL in .env.local), not a local
+// one — so DENO_DEPLOYMENT_ID is set even for local frontend development, and the plain
+// "*" fallback above never applies to it. We therefore also allow any localhost/127.0.0.1
+// origin explicitly. CORS only gates what a browser's JS is allowed to read; it isn't a
+// security boundary against non-browser callers, so this doesn't weaken the lockdown
+// against untrusted browser origins hitting the production app.
+const PROD_ORIGIN = "https://bivouac-proto.vercel.app";
+const isLocalDev = !Deno.env.get("DENO_DEPLOYMENT_ID");
+const configuredOrigin = Deno.env.get("ALLOWED_ORIGIN") || PROD_ORIGIN;
+const isLocalOrigin = (origin: string) => /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
 app.use(
   "/*",
   cors({
-    origin: Deno.env.get("ALLOWED_ORIGIN") || "*",
+    origin: isLocalDev
+      ? "*"
+      : (origin: string) => (origin === configuredOrigin || isLocalOrigin(origin) ? origin : null),
     allowHeaders: ["Content-Type", "Authorization"],
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     exposeHeaders: ["Content-Length"],
@@ -230,8 +244,13 @@ app.get("/make-server-e51cba93/pois", safeHandler(async (c: any) => {
   }
 }));
 
-// Create a new POI — rate-limited, no auth required (any visitor can propose a spot)
+// Create a new POI — requires a logged-in user, rate-limited
 app.post("/make-server-e51cba93/pois", safeHandler(async (c: any) => {
+  const user = await getAuthedUser(c);
+  if (!user) {
+    return c.json({ success: false, error: "Connexion requise pour créer un spot" }, 401);
+  }
+
   const ip = c.req.header("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
   if (!checkRateLimit(`create:${ip}`, 20)) {
     return c.json({ success: false, error: "Too many requests" }, 429);
@@ -260,6 +279,7 @@ app.post("/make-server-e51cba93/pois", safeHandler(async (c: any) => {
       difficulty,
       ratings: ratings || [],
       createdAt: new Date().toISOString(),
+      createdBy: user.id,
     };
 
     await kv.set(`poi:${id}`, poi);
@@ -306,8 +326,13 @@ app.put("/make-server-e51cba93/pois/:id", safeHandler(async (c: any) => {
   }
 }));
 
-// Add a rating to a POI — rate-limited, no auth required
+// Add a rating to a POI — requires a logged-in user, rate-limited
 app.post("/make-server-e51cba93/pois/:id/rate", safeHandler(async (c: any) => {
+  const user = await getAuthedUser(c);
+  if (!user) {
+    return c.json({ success: false, error: "Connexion requise pour poster un avis" }, 401);
+  }
+
   const ip = c.req.header("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
   if (!checkRateLimit(`rate:${ip}`, 30)) {
     return c.json({ success: false, error: "Too many requests" }, 429);
@@ -330,7 +355,7 @@ app.post("/make-server-e51cba93/pois/:id/rate", safeHandler(async (c: any) => {
       return c.json({ success: false, error: "POI not found" }, 404);
     }
 
-    const review = { rating, comment: comment.trim(), createdAt: new Date().toISOString() };
+    const review = { rating, comment: comment.trim(), createdAt: new Date().toISOString(), userId: user.id };
     const updatedPoi = {
       ...poi,
       ratings: [...(poi.ratings || []), rating],
@@ -397,7 +422,8 @@ app.get("/make-server-e51cba93/pois/views-30d", safeHandler(async (c: any) => {
   }
 }));
 
-// Delete a specific review — admin (super-admin, or zone-admin whose zone contains this POI) only
+// Delete a specific review — the review's author, or an admin (super-admin, or
+// zone-admin whose zone contains this POI)
 app.delete("/make-server-e51cba93/pois/:id/reviews/:createdAt", safeHandler(async (c: any) => {
   try {
     const id = c.req.param("id");
@@ -405,12 +431,16 @@ app.delete("/make-server-e51cba93/pois/:id/reviews/:createdAt", safeHandler(asyn
     const poi = await kv.get(`poi:${id}`);
     if (!poi) return c.json({ success: false, error: "POI not found" }, 404);
 
-    if (!(await canModeratePoi(c, poi.position))) {
+    const reviews: any[] = poi.reviews || [];
+    const idxMatch = createdAt.match(/^__idx_(\d+)__$/);
+    const targetReview = idxMatch ? reviews[parseInt(idxMatch[1], 10)] : reviews.find((r: any) => r.createdAt === createdAt);
+
+    const user = await getAuthedUser(c);
+    const isAuthor = !!user && !!targetReview?.userId && targetReview.userId === user.id;
+    if (!isAuthor && !(await canModeratePoi(c, poi.position))) {
       return c.json({ success: false, error: "Unauthorized" }, 401);
     }
 
-    const reviews: any[] = poi.reviews || [];
-    const idxMatch = createdAt.match(/^__idx_(\d+)__$/);
     const updatedReviews = idxMatch
       ? reviews.filter((_, i) => i !== parseInt(idxMatch[1]))
       : reviews.filter((r: any) => r.createdAt !== createdAt);
@@ -596,7 +626,8 @@ app.patch("/make-server-e51cba93/pois/:id/enrich", safeHandler(async (c: any) =>
   }
 }));
 
-// Delete a single POI — admin (super-admin, or zone-admin whose zone contains this POI) only
+// Delete a single POI — the spot's creator, or an admin (super-admin, or zone-admin
+// whose zone contains this POI)
 app.delete("/make-server-e51cba93/pois/:id", safeHandler(async (c: any) => {
   try {
     const id = c.req.param("id");
@@ -605,7 +636,9 @@ app.delete("/make-server-e51cba93/pois/:id", safeHandler(async (c: any) => {
       return c.json({ success: false, error: "POI not found" }, 404);
     }
 
-    if (!(await canModeratePoi(c, existing.position))) {
+    const user = await getAuthedUser(c);
+    const isOwner = !!user && !!existing.createdBy && existing.createdBy === user.id;
+    if (!isOwner && !(await canModeratePoi(c, existing.position))) {
       return c.json({ success: false, error: "Unauthorized" }, 401);
     }
 

@@ -22,6 +22,7 @@ import {
   CloudRain,
   Ban,
   PlayCircle,
+  Heart,
 } from 'lucide-react';
 import {
   BarChart,
@@ -37,6 +38,7 @@ import { ProtectedArea, findAreasContainingPoint, getProtectedAreaInfo } from '.
 import { CustomZone, getZoneRestrictionStatus } from '../../utils/supabase/custom-zones-api';
 import { RestrictionDisplay, ClassicRegulations, osmRestrictionTypes } from './ZoneInfoPanel';
 import { useAuth } from '../contexts/AuthContext';
+import { useFavorites } from '../hooks/useFavorites';
 import * as api from '../../utils/supabase/api';
 import { Panel } from './ui/bivouac-panel';
 import { BivouacButton } from './ui/bivouac-button';
@@ -52,6 +54,7 @@ interface PoiDetailsPanelProps {
   protectedAreas?: ProtectedArea[];
   customZones?: CustomZone[];
   onSetDisabled?: (poiId: string, disabledUntil: string | null) => Promise<boolean>;
+  onLoginRequired?: () => void;
 }
 
 function safeHref(url: string | undefined): string | undefined {
@@ -70,10 +73,12 @@ export function PoiDetailsPanel({
   protectedAreas = [],
   customZones = [],
   onSetDisabled,
+  onLoginRequired,
 }: PoiDetailsPanelProps) {
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
-  const { isAdmin } = useAuth();
+  const { isAdmin, currentUser } = useAuth();
+  const { isFavorite, toggleFavorite } = useFavorites();
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showDisableForm, setShowDisableForm] = useState(false);
@@ -289,7 +294,22 @@ export function PoiDetailsPanel({
         </div>
       )}
 
-      <Panel onClose={onClose} title={location.title} mobileMaxHeight="min(66.67dvh, calc(100dvh - 220px))" stickyFooter={adminFooter}>
+      <Panel
+        onClose={onClose}
+        title={location.title}
+        mobileMaxHeight="min(66.67dvh, calc(100dvh - 220px))"
+        stickyFooter={adminFooter}
+        headerAction={currentUser ? (
+          <button
+            onClick={() => toggleFavorite(location.id)}
+            className="p-1.5 hover:bg-gray-100 rounded-full transition-colors"
+            aria-label={isFavorite(location.id) ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+            title={isFavorite(location.id) ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+          >
+            <Heart className={`w-5 h-5 ${isFavorite(location.id) ? 'fill-red-500 text-red-500' : 'text-gray-400'}`} />
+          </button>
+        ) : undefined}
+      >
         <PanelContent
           location={location}
           currentPhotoIndex={currentPhotoIndex}
@@ -297,6 +317,7 @@ export function PoiDetailsPanel({
           areasContainingPoi={areasContainingPoi}
           customZoneStatus={customZoneStatus}
           onPhotoClick={() => setIsPhotoModalOpen(true)}
+          onLoginRequired={onLoginRequired}
         />
       </Panel>
     </>
@@ -311,6 +332,7 @@ function PanelContent({
   areasContainingPoi = [],
   customZoneStatus = { blocked: [], warnings: [] },
   onPhotoClick,
+  onLoginRequired,
 }: {
   location: PoiLocation;
   currentPhotoIndex: number;
@@ -318,8 +340,9 @@ function PanelContent({
   areasContainingPoi?: ProtectedArea[];
   customZoneStatus?: { blocked: CustomZone[]; warnings: CustomZone[] };
   onPhotoClick?: () => void;
+  onLoginRequired?: () => void;
 }) {
-  const { isAdmin } = useAuth();
+  const { isAdmin, currentUser } = useAuth();
   const { data: weather, loading: weatherLoading, error: weatherError } = useWeatherForecast(
     location.position.lat,
     location.position.lng,
@@ -332,7 +355,7 @@ function PanelContent({
   const [isSubmittingRating, setIsSubmittingRating] = useState(false);
   const [showReviews, setShowReviews] = useState(false);
   const [visibleReviewCount, setVisibleReviewCount] = useState(10);
-  const [localReviews, setLocalReviews] = useState<{ rating: number; comment: string; createdAt?: string }[]>(location.reviews || []);
+  const [localReviews, setLocalReviews] = useState<{ rating: number; comment: string; createdAt?: string; userId?: string }[]>(location.reviews || []);
   const [copiedGps, setCopiedGps] = useState(false);
 
   const handleCopyGps = () => {
@@ -361,8 +384,9 @@ function PanelContent({
     return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(-2)}`;
   };
 
-  const handleDeleteReview = async (review: { rating: number; comment: string; createdAt?: string }) => {
-    if (!isAdmin) return;
+  const handleDeleteReview = async (review: { rating: number; comment: string; createdAt?: string; userId?: string }) => {
+    const canDelete = isAdmin || (!!currentUser && review.userId === currentUser.id);
+    if (!canDelete) return;
     // Use createdAt if available, otherwise fall back to index in the original array
     const reviewKey = review.createdAt ?? `__idx_${localReviews.indexOf(review)}__`;
     try {
@@ -767,46 +791,57 @@ function PanelContent({
 
       {/* Évaluation */}
       <div className="mb-4 bg-amber-50 rounded-lg p-4">
-        {/* Row 1 : titre + étoiles */}
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Évaluer ce spot</h3>
-          <div className="flex items-center gap-0.5">
-            {[1, 2, 3, 4, 5].map((star) => (
-              <Star
-                key={star}
-                className={`w-6 h-6 cursor-pointer transition-all ${
-                  hoverRating >= star || (!hoverRating && newRating >= star)
-                    ? 'fill-yellow-500 text-yellow-500 scale-110'
-                    : 'text-gray-300 hover:text-yellow-400'
-                }`}
-                onMouseEnter={() => setHoverRating(star)}
-                onMouseLeave={() => setHoverRating(0)}
-                onClick={() => setNewRating(star)}
+        {currentUser ? (
+          <>
+            {/* Row 1 : titre + étoiles */}
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Évaluer ce spot</h3>
+              <div className="flex items-center gap-0.5">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <Star
+                    key={star}
+                    className={`w-6 h-6 cursor-pointer transition-all ${
+                      hoverRating >= star || (!hoverRating && newRating >= star)
+                        ? 'fill-yellow-500 text-yellow-500 scale-110'
+                        : 'text-gray-300 hover:text-yellow-400'
+                    }`}
+                    onMouseEnter={() => setHoverRating(star)}
+                    onMouseLeave={() => setHoverRating(0)}
+                    onClick={() => setNewRating(star)}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Row 2 : champ texte — affiché uniquement après sélection d'une note */}
+            {newRating > 0 && (
+              <Textarea
+                className="text-sm rounded-md border-amber-200 px-3 focus:ring-1 focus:ring-amber-400 text-gray-700"
+                rows={2}
+                placeholder="Décrivez votre expérience…"
+                value={reviewComment}
+                onChange={(e) => setReviewComment(e.target.value)}
               />
-            ))}
-          </div>
-        </div>
+            )}
 
-        {/* Row 2 : champ texte — affiché uniquement après sélection d'une note */}
-        {newRating > 0 && (
-          <Textarea
-            className="text-sm rounded-md border-amber-200 px-3 focus:ring-1 focus:ring-amber-400 text-gray-700"
-            rows={2}
-            placeholder="Décrivez votre expérience…"
-            value={reviewComment}
-            onChange={(e) => setReviewComment(e.target.value)}
-          />
-        )}
-
-        {canSubmit && (
-          <div className="mt-2">
-            <BivouacButton
-              variant="primary"
-              size="sm"
-              onClick={handleSubmitRating}
-              disabled={isSubmittingRating}
-            >
-              {isSubmittingRating ? 'Envoi…' : 'Valider'}
+            {canSubmit && (
+              <div className="mt-2">
+                <BivouacButton
+                  variant="primary"
+                  size="sm"
+                  onClick={handleSubmitRating}
+                  disabled={isSubmittingRating}
+                >
+                  {isSubmittingRating ? 'Envoi…' : 'Valider'}
+                </BivouacButton>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm text-gray-600">Connectez-vous pour laisser un avis sur ce spot.</p>
+            <BivouacButton variant="secondary" size="sm" onClick={onLoginRequired}>
+              Se connecter
             </BivouacButton>
           </div>
         )}
@@ -865,7 +900,7 @@ function PanelContent({
                         {review.createdAt && (
                           <span className="text-xs text-gray-400">{formatReviewDate(review.createdAt)}</span>
                         )}
-                        {isAdmin && (
+                        {(isAdmin || review.userId === currentUser?.id) && (
                           <button
                             onClick={() => handleDeleteReview(review)}
                             className="cursor-pointer p-1 text-gray-300 hover:text-red-500 transition-colors"

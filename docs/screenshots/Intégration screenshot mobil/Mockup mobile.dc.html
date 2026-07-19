@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  html, body { background: transparent; margin: 0; }
+</style>
+</helmet>
+<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:56px;padding:48px;background:transparent;">
+  <sc-for list="{{ phones }}" as="src" hint-placeholder-count="4">
+    <div style="position:relative;width:364px;padding:13px;background:#f1f2f4;border-radius:60px;border:1.5px solid #c2c6cc;">
+      <div style="position:absolute;left:-4px;top:130px;width:3px;height:34px;border-radius:3px 0 0 3px;border:1.5px solid #c2c6cc;border-right:none;background:#f1f2f4;box-sizing:border-box;"></div>
+      <div style="position:absolute;left:-4px;top:182px;width:3px;height:58px;border-radius:3px 0 0 3px;border:1.5px solid #c2c6cc;border-right:none;background:#f1f2f4;box-sizing:border-box;"></div>
+      <div style="position:absolute;left:-4px;top:252px;width:3px;height:58px;border-radius:3px 0 0 3px;border:1.5px solid #c2c6cc;border-right:none;background:#f1f2f4;box-sizing:border-box;"></div>
+      <div style="position:absolute;right:-4px;top:200px;width:3px;height:80px;border-radius:0 3px 3px 0;border:1.5px solid #c2c6cc;border-left:none;background:#f1f2f4;box-sizing:border-box;"></div>
+      <div style="position:relative;border-radius:48px;overflow:hidden;background:#ffffff;border:1.5px solid #d4d7dc;">
+        <div style="position:relative;height:30px;background:#ffffff;">
+          <div style="position:absolute;left:50%;top:8px;transform:translateX(-50%);width:96px;height:28px;background:#f1f2f4;border:1.5px solid #c2c6cc;border-radius:18px;box-sizing:border-box;"></div>
+        </div>
+        <img src="{{ src }}" alt="Mockup" style="display:block;width:100%;height:auto;" />
+      </div>
+    </div>
+  </sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1720,&quot;height&quot;:880}}">
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      phones: [
+        "uploads/pasted-1782482641978-0.png",
+        "uploads/pasted-1782483274136-0.png",
+        "uploads/pasted-1782483307980-0.png",
+        "uploads/pasted-1782483336487-0.png"
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

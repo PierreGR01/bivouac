@@ -1,9 +1,11 @@
-import React from 'react';
-import { Route, Trash2, Check, Zap } from 'lucide-react';
+import React, { useState } from 'react';
+import { Route, Trash2, Check, Zap, Save } from 'lucide-react';
 import { Panel } from './ui/bivouac-panel';
 import { BivouacButton } from './ui/bivouac-button';
 import { AlertCard, InfoCard } from './ui/bivouac-card';
 import { RangeSlider } from './ui/bivouac-input';
+import { TripNamePrompt } from './TripNamePrompt';
+import { useAuth } from '../contexts/AuthContext';
 
 interface RoutePanelProps {
   onClose: () => void;
@@ -15,6 +17,7 @@ interface RoutePanelProps {
   nearbyPoisCount: number;
   maxDistance: number;
   onMaxDistanceChange: (value: number) => void;
+  onSaveRoute?: (name: string) => Promise<void>;
 }
 
 export function RoutePanel({
@@ -27,7 +30,23 @@ export function RoutePanel({
   nearbyPoisCount,
   maxDistance,
   onMaxDistanceChange,
+  onSaveRoute,
 }: RoutePanelProps) {
+  const { currentUser } = useAuth();
+  const [showNamePrompt, setShowNamePrompt] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleConfirmSave = async (name: string) => {
+    if (!onSaveRoute) return;
+    setIsSaving(true);
+    try {
+      await onSaveRoute(name);
+      setShowNamePrompt(false);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <Panel
       onClose={onClose}
@@ -88,6 +107,29 @@ export function RoutePanel({
           Affiche les spots à moins de {maxDistance} km de l'itinéraire
         </p>
       </div>
+
+      {/* Enregistrer le tracé — réservé aux utilisateurs connectés */}
+      {currentUser && onSaveRoute && (
+        <div className="mb-4">
+          {showNamePrompt ? (
+            <TripNamePrompt
+              onConfirm={handleConfirmSave}
+              onCancel={() => setShowNamePrompt(false)}
+              isSubmitting={isSaving}
+            />
+          ) : (
+            <BivouacButton
+              variant="secondary"
+              icon={<Save className="w-4 h-4" />}
+              onClick={() => setShowNamePrompt(true)}
+              disabled={routePointsCount < 2}
+              className="w-full py-2.5"
+            >
+              Enregistrer ce tracé
+            </BivouacButton>
+          )}
+        </div>
+      )}
 
       {/* Actions */}
       <div className="flex gap-3">

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, SlidersHorizontal, Tent, Plus, LogIn, X, MapPin, Mountain, Loader2 } from 'lucide-react';
+import { Search, SlidersHorizontal, Tent, Plus, User, LayoutDashboard, X, MapPin, Mountain, Loader2 } from 'lucide-react';
 import { useNominatim, NominatimResult } from '../hooks/useNominatim';
 import { PoiLocation } from '../types';
 import { BivouacButton } from './ui/bivouac-button';
@@ -290,7 +290,7 @@ export function SearchBar({
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
-              <LogIn className="w-5 h-5" />
+              {currentUser ? <LayoutDashboard className="w-5 h-5" /> : <User className="w-5 h-5" />}
             </button>
           </div>
 
@@ -381,7 +381,7 @@ export function SearchBar({
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
-              <LogIn className="w-[17px] h-[17px]" />
+              {currentUser ? <LayoutDashboard className="w-[17px] h-[17px]" /> : <User className="w-[17px] h-[17px]" />}
             </button>
           </div>
         </div>

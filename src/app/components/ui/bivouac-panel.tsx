@@ -10,6 +10,7 @@ interface PanelProps {
   className?: string;
   mobileMaxHeight?: string;
   stickyFooter?: React.ReactNode;
+  headerAction?: React.ReactNode;
 }
 
 export function Panel({
@@ -20,6 +21,7 @@ export function Panel({
   className,
   mobileMaxHeight = 'calc(100vh - 120px)',
   stickyFooter,
+  headerAction,
 }: PanelProps) {
   return (
     <>
@@ -36,13 +38,16 @@ export function Panel({
           <div className="flex justify-center pb-2">
             <div className="w-12 h-1.5 bg-gray-300 rounded-full" />
           </div>
-          <button
-            onClick={onClose}
-            className="absolute top-3 right-4 p-1.5 hover:bg-gray-100 rounded-full transition-colors"
-            aria-label="Fermer"
-          >
-            <X className="w-5 h-5 text-gray-600" />
-          </button>
+          <div className="absolute top-3 right-4 flex items-center gap-1">
+            {headerAction}
+            <button
+              onClick={onClose}
+              className="p-1.5 hover:bg-gray-100 rounded-full transition-colors"
+              aria-label="Fermer"
+            >
+              <X className="w-5 h-5 text-gray-600" />
+            </button>
+          </div>
           <div className="flex items-center gap-2">
             {icon && <span className="flex-shrink-0 text-gray-600">{icon}</span>}
             <h2 className="text-lg font-bold text-gray-800">{title}</h2>
@@ -72,13 +77,16 @@ export function Panel({
             {icon && <span className="flex-shrink-0 text-gray-600">{icon}</span>}
             <h2 className="text-xl font-bold text-gray-800">{title}</h2>
           </div>
-          <button
-            onClick={onClose}
-            className="flex-shrink-0 ml-3 p-2 hover:bg-gray-100 rounded-full transition-colors"
-            aria-label="Fermer"
-          >
-            <X className="w-5 h-5 text-gray-600" />
-          </button>
+          <div className="flex-shrink-0 flex items-center gap-1 ml-3">
+            {headerAction}
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              aria-label="Fermer"
+            >
+              <X className="w-5 h-5 text-gray-600" />
+            </button>
+          </div>
         </div>
 
         {/* Scrollable content */}

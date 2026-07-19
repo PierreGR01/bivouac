@@ -22,10 +22,12 @@ export interface PoiLocation {
   ratings?: number[]; // Notes des utilisateurs (0-5) — legacy
   reviews?: Review[]; // Avis complets (note + commentaire)
   disabledUntil?: string | null; // ISO 8601 — date de fin de désactivation temporaire, null/absent = actif
+  createdBy?: string; // ID de l'utilisateur créateur (dérivé côté serveur, absent sur les spots legacy)
 }
 
 export interface Review {
   rating: number;
   comment: string;
   createdAt: string; // ISO 8601
+  userId?: string; // ID de l'utilisateur auteur (dérivé côté serveur, absent sur les avis legacy)
 }

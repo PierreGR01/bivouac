@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LogIn, LogOut } from 'lucide-react';
+import { LogIn, LogOut, UserPlus } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { Panel } from './ui/bivouac-panel';
 import { BivouacButton } from './ui/bivouac-button';
@@ -9,11 +9,9 @@ interface LoginPanelProps {
   onClose: () => void;
 }
 
-// Note : un compte admin est redirigé automatiquement vers le dashboard dès la connexion
-// (App.tsx) — la branche "connecté" ci-dessous ne sert donc que de filet de sécurité
-// (déconnexion) si ce panneau reste ouvert par un chemin inattendu.
 export function LoginPanel({ onClose }: LoginPanelProps) {
-  const { currentUser, isSuperAdmin, zoneAdminIds, login, logout, isLoading, error } = useAuth();
+  const { currentUser, isSuperAdmin, zoneAdminIds, login, logout, signup, isLoading, error } = useAuth();
+  const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
@@ -30,6 +28,19 @@ export function LoginPanel({ onClose }: LoginPanelProps) {
     }
   };
 
+  const handleSignup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLocalError(null);
+    try {
+      await signup(email, password);
+      setEmail('');
+      setPassword('');
+      setMode('login');
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : "Échec de l'inscription");
+    }
+  };
+
   const handleLogout = async () => {
     try {
       await logout();
@@ -40,7 +51,7 @@ export function LoginPanel({ onClose }: LoginPanelProps) {
     }
   };
 
-  const title = currentUser ? 'Mon compte' : 'Connexion admin';
+  const title = currentUser ? 'Mon compte' : mode === 'signup' ? 'Créer un compte' : 'Connexion';
 
   return (
     <Panel onClose={onClose} title={title}>
@@ -72,6 +83,51 @@ export function LoginPanel({ onClose }: LoginPanelProps) {
             Se déconnecter
           </BivouacButton>
         </div>
+      ) : mode === 'signup' ? (
+        <form onSubmit={handleSignup} className="space-y-4">
+          <Input
+            label="Email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="vous@example.com"
+            className="py-2.5"
+            disabled={isLoading}
+            autoComplete="email"
+          />
+          <Input
+            label="Mot de passe"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+            className="py-2.5"
+            disabled={isLoading}
+            autoComplete="new-password"
+          />
+          {(error || localError) && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+              {error || localError}
+            </div>
+          )}
+          <BivouacButton
+            type="submit"
+            variant="primary"
+            size="lg"
+            icon={<UserPlus size={18} />}
+            disabled={isLoading || !email || !password}
+            className="w-full"
+          >
+            {isLoading ? 'Inscription…' : "Finaliser l'inscription"}
+          </BivouacButton>
+          <button
+            type="button"
+            onClick={() => { setMode('login'); setLocalError(null); }}
+            className="w-full text-sm text-gray-500 hover:text-gray-700 text-center"
+          >
+            J'ai déjà un compte
+          </button>
+        </form>
       ) : (
         <form onSubmit={handleLogin} className="space-y-4">
           <Input
@@ -79,7 +135,7 @@ export function LoginPanel({ onClose }: LoginPanelProps) {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="admin@example.com"
+            placeholder="vous@example.com"
             className="py-2.5"
             disabled={isLoading}
             autoComplete="email"
@@ -109,7 +165,17 @@ export function LoginPanel({ onClose }: LoginPanelProps) {
           >
             {isLoading ? 'Connexion…' : 'Se connecter'}
           </BivouacButton>
-          <p className="text-xs text-gray-400 text-center">Accès administrateur uniquement.</p>
+          <BivouacButton
+            type="button"
+            variant="secondary"
+            size="lg"
+            icon={<UserPlus size={18} />}
+            onClick={() => { setMode('signup'); setLocalError(null); }}
+            disabled={isLoading}
+            className="w-full"
+          >
+            S'inscrire
+          </BivouacButton>
         </form>
       )}
     </Panel>
