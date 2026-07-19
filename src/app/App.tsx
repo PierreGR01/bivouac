@@ -83,6 +83,7 @@ export default function App() {
   const handleLocationClick = (location: typeof pois.selectedLocation) => {
     pois.setSelectedLocation(location);
     filters.setShowFilters(false);
+    setShowLoginPanel(false);
   };
 
   const handleClosePanel = () => pois.setSelectedLocation(null);
@@ -96,6 +97,7 @@ export default function App() {
     pois.setSelectedLocation(null);
     setTemporaryPosition(null);
     filters.setShowFilters(false);
+    setShowLoginPanel(false);
   };
 
   const handleCloseAddPanel = () => {
@@ -109,6 +111,7 @@ export default function App() {
     filters.setShowFilters(false);
     setIsAddingMode(false);
     setIsMeasuringMode(false);
+    setShowLoginPanel(false);
   };
 
   const handleSaveRoute = async (name: string) => {
@@ -123,6 +126,7 @@ export default function App() {
   const handleViewTripOnMap = (trip: Trip) => {
     filters.activateTrip(trip);
     filters.setIsRoutingMode(true);
+    setShowLoginPanel(false);
     if (window.innerWidth < MOBILE_BREAKPOINT_PX) {
       setShowUserDashboard(false);
       const first = trip.points[0];
@@ -146,6 +150,7 @@ export default function App() {
     setIsAddingMode(false);
     pois.setSelectedLocation(null);
     filters.setShowFilters(false);
+    setShowLoginPanel(false);
   };
 
   const handleMapClick = (lat: number, lng: number) => {
@@ -181,6 +186,7 @@ export default function App() {
   };
 
   const handleToggleCustomZones = () => {
+    setShowLoginPanel(false);
     if (showCustomZonesEditor) {
       setShowCustomZonesEditor(false);
       setIsDrawingMode(false);
@@ -205,6 +211,7 @@ export default function App() {
     setEditingOsmZone(null);
     setShowCustomZonesEditor(true);
     setIsDrawingMode(false);
+    setShowLoginPanel(false);
   };
 
   const handleOpenAdminDashboard = () => {
@@ -214,6 +221,7 @@ export default function App() {
     setShowAdminZoneEditor(false);
     setEditingAdminZone(null);
     setShowAdminDashboard(true);
+    setShowLoginPanel(false);
   };
 
   const handleOpenDashboard = () => {
@@ -226,6 +234,7 @@ export default function App() {
     setIsAddingMode(false);
     filters.setShowFilters(false);
     setShowUserDashboard(true);
+    setShowLoginPanel(false);
   };
 
   // Anciens boutons flottants "Zones"/"Territoires" — intégrés au dashboard, celui-ci se
@@ -253,6 +262,7 @@ export default function App() {
   // dashboard). Sur mobile, il n'y a pas la place pour les deux, donc on le referme.
   const handleViewSpotOnMap = (poi: PoiLocation) => {
     pois.setSelectedLocation(poi);
+    setShowLoginPanel(false);
     if (window.innerWidth < MOBILE_BREAKPOINT_PX) {
       setShowAdminDashboard(false);
       setShowUserDashboard(false);
@@ -267,12 +277,14 @@ export default function App() {
     setEditingAdminZone(null);
     setShowAdminZoneEditor(true);
     setIsDrawingMode(true);
+    setShowLoginPanel(false);
   };
 
   const handleEditAdminZone = (zone: AdminZone) => {
     setEditingAdminZone(zone);
     setShowAdminZoneEditor(true);
     setIsDrawingMode(false);
+    setShowLoginPanel(false);
   };
 
   // Retour au dashboard (et non à un panneau "territoires" séparé) une fois le tracé
@@ -291,18 +303,21 @@ export default function App() {
     setEditingZone(null);
     setShowCustomZonesEditor(true);
     setIsDrawingMode(false);
+    setShowLoginPanel(false);
   };
 
   const handleZoneInfoClick = (zone: CustomZone) => {
     setSelectedZone(zone);
     setSelectedProtectedArea(null);
     setShowMobileOptions(false);
+    setShowLoginPanel(false);
   };
 
   const handleProtectedAreaInfoClick = (area: ProtectedArea) => {
     setSelectedProtectedArea(area);
     setSelectedZone(null);
     setShowMobileOptions(false);
+    setShowLoginPanel(false);
   };
 
   const handleCloseZoneInfo = () => {
