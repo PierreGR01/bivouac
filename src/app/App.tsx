@@ -554,6 +554,10 @@ export default function App() {
             trips={trips.trips}
             activeTripId={filters.activeTripId}
             onToggleTrip={handleToggleTrip}
+            maxDistanceFromRoute={filters.maxDistanceFromRoute}
+            onMaxDistanceChange={filters.setMaxDistanceFromRoute}
+            nearbyPoisCount={filters.nearbyPoisCount}
+            nearbyWaterCount={nearbyWaterCount}
           />
         </Suspense>
       )}

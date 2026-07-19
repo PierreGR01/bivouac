@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { Droplets, Snowflake, SunSnow, Waves, Tent, Mountain, Route, ChevronDown, ChevronUp } from 'lucide-react';
 import { Panel } from './ui/bivouac-panel';
 import { BivouacButton, FilterChip } from './ui/bivouac-button';
-import { DifficultySelector } from './ui/bivouac-input';
+import { DifficultySelector, RangeSlider } from './ui/bivouac-input';
+import { InfoCard } from './ui/bivouac-card';
 import { Trip } from '../../utils/supabase/trips-api';
 
 export interface FilterOptions {
@@ -20,9 +21,24 @@ interface FilterPanelProps {
   trips: Trip[];
   activeTripId: string | null;
   onToggleTrip: (trip: Trip) => void;
+  maxDistanceFromRoute: number;
+  onMaxDistanceChange: (value: number) => void;
+  nearbyPoisCount: number;
+  nearbyWaterCount: number;
 }
 
-export function FilterPanel({ filters, onFilterChange, onClose, trips, activeTripId, onToggleTrip }: FilterPanelProps) {
+export function FilterPanel({
+  filters,
+  onFilterChange,
+  onClose,
+  trips,
+  activeTripId,
+  onToggleTrip,
+  maxDistanceFromRoute,
+  onMaxDistanceChange,
+  nearbyPoisCount,
+  nearbyWaterCount,
+}: FilterPanelProps) {
   const [showTraces, setShowTraces] = useState(() => activeTripId !== null);
 
   const toggleSeason = (season: string) => {
@@ -102,6 +118,24 @@ export function FilterPanel({ filters, onFilterChange, onClose, trips, activeTri
               ))}
             </div>
           )
+        )}
+        {showTraces && activeTripId && (
+          <div className="mt-3 pt-3 border-t border-gray-200">
+            <RangeSlider
+              label="Périmètre autour de la trace"
+              min="0.5"
+              max="10"
+              step="0.5"
+              value={maxDistanceFromRoute}
+              onChange={(e) => onMaxDistanceChange(parseFloat(e.target.value))}
+              unit="km"
+              displayValue={maxDistanceFromRoute}
+            />
+            <div className="grid grid-cols-2 gap-2 mt-3">
+              <InfoCard title="Spots à proximité" value={nearbyPoisCount} variant="emerald" />
+              <InfoCard title="Points d'eau à proximité" value={nearbyWaterCount} variant="blue" />
+            </div>
+          </div>
         )}
       </div>
 

@@ -40,7 +40,10 @@ const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes (augmenté pour réduire le
 // Rate limiting avancé
 let lastRequestTime = 0;
 const MIN_REQUEST_INTERVAL = 8000; // 8 secondes minimum entre les requêtes (augmenté)
-let pendingRequest: Promise<WaterPoint[]> | null = null;
+// Une entrée par zone (bounds) demandée — le calque viewport et le tracé actif peuvent
+// interroger des zones différentes en même temps ; une seule promesse partagée pour toutes
+// les zones ferait qu'un appel reçoive par erreur le résultat de l'AUTRE zone.
+const pendingRequests = new Map<string, Promise<WaterPoint[]>>();
 let failedRequestsCount = 0;
 let lastFailureTime = 0;
 const MAX_RETRIES = 3; // Augmenté à 3 tentatives
@@ -109,10 +112,11 @@ export async function fetchWaterPoints(
     return cached.data;
   }
 
-  // Si une requête est déjà en cours, la retourner
-  if (pendingRequest) {
-    devLog.log('Requête déjà en cours, réutilisation...');
-    return pendingRequest;
+  // Si une requête pour cette même zone est déjà en cours, la réutiliser
+  const existingRequest = pendingRequests.get(cacheKey);
+  if (existingRequest) {
+    devLog.log('Requête déjà en cours pour cette zone, réutilisation...');
+    return existingRequest;
   }
 
   // Rate limiting - vérifier si on peut faire une requête
@@ -146,10 +150,11 @@ export async function fetchWaterPoints(
   lastRequestTime = Date.now();
 
   // Créer la promesse de requête avec retry
-  pendingRequest = executeOverpassQueryWithRetry(bounds, timeout, cacheKey);
-  
+  const request = executeOverpassQueryWithRetry(bounds, timeout, cacheKey);
+  pendingRequests.set(cacheKey, request);
+
   try {
-    const result = await pendingRequest;
+    const result = await request;
     // Réinitialiser le compteur d'échecs en cas de succès
     failedRequestsCount = 0;
     return result;
@@ -162,7 +167,7 @@ export async function fetchWaterPoints(
     }
     throw error;
   } finally {
-    pendingRequest = null;
+    pendingRequests.delete(cacheKey);
   }
 }
 
@@ -357,7 +362,7 @@ export function resetRateLimiting(): void {
   failedRequestsCount = 0;
   lastFailureTime = 0;
   lastRequestTime = 0;
-  pendingRequest = null;
+  pendingRequests.clear();
   devLog.log('✅ Rate limiting réinitialisé');
 }
 
