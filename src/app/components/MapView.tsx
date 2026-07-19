@@ -12,6 +12,15 @@ import { CustomZone } from '../../utils/supabase/custom-zones-api';
 import { MapControls } from './MapControls';
 import { MAP_CENTER, MAP_DEFAULT_ZOOM } from '../constants';
 
+// Au-delà de ce nombre de points, un marqueur numéroté par point (utile pour quelques
+// waypoints cliqués à la main) devient illisible et coûteux à afficher — le tracé (polyligne)
+// suffit à représenter une trace dense (import GPX/KML).
+const MAX_ROUTE_MARKERS = 30;
+// L'API de routage OSRM attend une liste de waypoints à relier, pas une trace déjà précise :
+// au-delà de ce seuil on saute le routage et on trace directement les points, ce qui reproduit
+// fidèlement une trace GPS dense sans dépendre d'une API externe non prévue pour ça.
+const MAX_SMART_ROUTING_WAYPOINTS = 25;
+
 function makeCrosshairIcon(color: string, size: number): L.DivIcon {
   const h = size / 2;
   const gap = Math.round(size * 0.18);
@@ -1244,45 +1253,48 @@ export function MapView({
 
     if (routePoints.length === 0) return;
 
-    // Ajouter des marqueurs pour chaque point d'itinéraire
-    routePoints.forEach((point, index) => {
-      // Valider les coordonnées
-      if (typeof point.lat !== 'number' || 
-          typeof point.lng !== 'number' ||
-          isNaN(point.lat) || 
-          isNaN(point.lng)) {
-        console.warn('Point d\'itinéraire avec coordonnées invalides ignoré:', point);
-        return;
-      }
+    // Ajouter des marqueurs pour chaque point d'itinéraire (uniquement pour une courte liste
+    // de waypoints cliqués à la main — une trace dense importée s'affiche via la polyligne seule)
+    if (routePoints.length <= MAX_ROUTE_MARKERS) {
+      routePoints.forEach((point, index) => {
+        // Valider les coordonnées
+        if (typeof point.lat !== 'number' ||
+            typeof point.lng !== 'number' ||
+            isNaN(point.lat) ||
+            isNaN(point.lng)) {
+          console.warn('Point d\'itinéraire avec coordonnées invalides ignoré:', point);
+          return;
+        }
 
-      const icon = L.divIcon({
-        html: `<div style="
-          background-color: #2563eb;
-          color: white;
-          border-radius: 50%;
-          width: 32px;
-          height: 32px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-weight: bold;
-          font-size: 14px;
-          border: 3px solid white;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-        ">${index + 1}</div>`,
-        className: '',
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
+        const icon = L.divIcon({
+          html: `<div style="
+            background-color: #2563eb;
+            color: white;
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 14px;
+            border: 3px solid white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+          ">${index + 1}</div>`,
+          className: '',
+          iconSize: [32, 32],
+          iconAnchor: [16, 16],
+        });
+
+        const marker = L.marker([point.lat, point.lng], { icon });
+        marker.addTo(map);
+        routeMarkersRef.current.push(marker);
       });
-
-      const marker = L.marker([point.lat, point.lng], { icon });
-      marker.addTo(map);
-      routeMarkersRef.current.push(marker);
-    });
+    }
 
     // Tracer l'itinéraire
     if (routePoints.length >= 2) {
-      if (isSmartRouting) {
+      if (isSmartRouting && routePoints.length <= MAX_SMART_ROUTING_WAYPOINTS) {
         // Routage intelligent avec l'API OSRM directement
         const coordinates = routePoints.map(p => `${p.lng},${p.lat}`).join(';');
         const osrmUrl = `https://router.project-osrm.org/route/v1/foot/${coordinates}?overview=full&geometries=geojson`;
@@ -1326,6 +1338,18 @@ export function MapView({
             routeLayerRef.current = polyline;
             map.fitBounds(polyline.getBounds(), { padding: [50, 50] });
           });
+      } else if (isSmartRouting) {
+        // Trop de points pour router via OSRM (trace importée dense) : le tracé est déjà
+        // précis, on le trace tel quel plutôt que d'appeler l'API de routage.
+        const polyline = L.polyline(
+          routePoints.map(p => [p.lat, p.lng]),
+          { color: '#2563eb', weight: 4, opacity: 0.8 }
+        );
+        polyline.addTo(map);
+        routeLayerRef.current = polyline;
+
+        // Ajuster la vue pour voir tout l'itinéraire
+        map.fitBounds(polyline.getBounds(), { padding: [50, 50] });
       } else {
         // Ligne droite simple
         const polyline = L.polyline(
