@@ -1,8 +1,9 @@
-import React from 'react';
-import { Droplets, Snowflake, SunSnow, Waves, Tent, Mountain } from 'lucide-react';
+import React, { useState } from 'react';
+import { Droplets, Snowflake, SunSnow, Waves, Tent, Mountain, Route, ChevronDown, ChevronUp } from 'lucide-react';
 import { Panel } from './ui/bivouac-panel';
 import { BivouacButton, FilterChip } from './ui/bivouac-button';
 import { DifficultySelector } from './ui/bivouac-input';
+import { Trip } from '../../utils/supabase/trips-api';
 
 export interface FilterOptions {
   seasons: string[];       // 'toute-saison' | 'hiver'
@@ -16,9 +17,14 @@ interface FilterPanelProps {
   filters: FilterOptions;
   onFilterChange: (filters: FilterOptions) => void;
   onClose: () => void;
+  trips: Trip[];
+  activeTripId: string | null;
+  onToggleTrip: (trip: Trip) => void;
 }
 
-export function FilterPanel({ filters, onFilterChange, onClose }: FilterPanelProps) {
+export function FilterPanel({ filters, onFilterChange, onClose, trips, activeTripId, onToggleTrip }: FilterPanelProps) {
+  const [showTraces, setShowTraces] = useState(() => activeTripId !== null);
+
   const toggleSeason = (season: string) => {
     const newSeasons = filters.seasons.includes(season)
       ? filters.seasons.filter((s) => s !== season)
@@ -53,6 +59,52 @@ export function FilterPanel({ filters, onFilterChange, onClose }: FilterPanelPro
 
   return (
     <Panel onClose={onClose} title="Filtres">
+      {/* Traces enregistrées */}
+      <div className="mb-6">
+        <button
+          type="button"
+          onClick={() => setShowTraces((v) => !v)}
+          className="w-full flex items-center justify-between mb-3"
+        >
+          <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-2">
+            Traces enregistrées
+            {activeTripId && (
+              <span className="normal-case text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+                1 active
+              </span>
+            )}
+          </h3>
+          {showTraces ? (
+            <ChevronUp className="w-4 h-4 text-gray-400 flex-shrink-0" />
+          ) : (
+            <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" />
+          )}
+        </button>
+        {showTraces && (
+          trips.length === 0 ? (
+            <p className="text-xs text-gray-400">Aucune trace enregistrée pour le moment.</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {trips.map((trip) => (
+                <label
+                  key={trip.id}
+                  className="flex items-center gap-3 cursor-pointer p-2.5 border border-gray-200 rounded-lg hover:border-emerald-300 transition-colors bg-white"
+                >
+                  <input
+                    type="checkbox"
+                    checked={activeTripId === trip.id}
+                    onChange={() => onToggleTrip(trip)}
+                    className="w-5 h-5 text-emerald-600 rounded focus:ring-2 focus:ring-emerald-500 flex-shrink-0"
+                  />
+                  <Route className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                  <span className="text-sm text-gray-800 flex-1 truncate">{trip.name}</span>
+                </label>
+              ))}
+            </div>
+          )
+        )}
+      </div>
+
       {/* Saison */}
       <div className="mb-6">
         <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Saison</h3>

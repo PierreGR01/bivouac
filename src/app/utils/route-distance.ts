@@ -54,3 +54,29 @@ export function distanceToRoute(
   }
   return minDistance;
 }
+
+// Boîte englobante d'un tracé, élargie de `bufferKm` dans toutes les directions —
+// utilisée pour interroger une zone couvrant tout le parcours (ex: points d'eau à proximité).
+export function getRouteBounds(
+  route: Array<{ lat: number; lng: number }>,
+  bufferKm: number
+): { south: number; west: number; north: number; east: number } {
+  let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+  for (const p of route) {
+    if (p.lat < minLat) minLat = p.lat;
+    if (p.lat > maxLat) maxLat = p.lat;
+    if (p.lng < minLng) minLng = p.lng;
+    if (p.lng > maxLng) maxLng = p.lng;
+  }
+
+  const avgLat = (minLat + maxLat) / 2;
+  const latBufferDeg = bufferKm / 111;
+  const lngBufferDeg = bufferKm / (111 * Math.max(Math.cos(avgLat * Math.PI / 180), 0.01));
+
+  return {
+    south: minLat - latBufferDeg,
+    west: minLng - lngBufferDeg,
+    north: maxLat + latBufferDeg,
+    east: maxLng + lngBufferDeg,
+  };
+}

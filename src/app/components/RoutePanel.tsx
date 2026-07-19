@@ -15,6 +15,7 @@ interface RoutePanelProps {
   onFinishRoute: () => void;
   routePointsCount: number;
   nearbyPoisCount: number;
+  nearbyWaterCount: number;
   maxDistance: number;
   onMaxDistanceChange: (value: number) => void;
   onSaveRoute?: (name: string) => Promise<void>;
@@ -28,6 +29,7 @@ export function RoutePanel({
   onFinishRoute,
   routePointsCount,
   nearbyPoisCount,
+  nearbyWaterCount,
   maxDistance,
   onMaxDistanceChange,
   onSaveRoute,
@@ -56,8 +58,8 @@ export function RoutePanel({
       {/* Instructions */}
       <AlertCard type="success" className="mb-4">
         <p className="text-sm">
-          Cliquez sur la carte pour placer des points. Les spots de bivouac proches seront
-          automatiquement filtrés.
+          Cliquez sur la carte pour placer des points. Les spots de bivouac et points d'eau
+          proches seront automatiquement filtrés.
         </p>
       </AlertCard>
 
@@ -65,6 +67,7 @@ export function RoutePanel({
       <div className="grid grid-cols-2 gap-3 mb-4">
         <InfoCard title="Points d'itinéraire" value={routePointsCount} variant="blue" />
         <InfoCard title="Spots à proximité" value={nearbyPoisCount} variant="emerald" />
+        <InfoCard title="Points d'eau à proximité" value={nearbyWaterCount} variant="blue" className="col-span-2" />
       </div>
 
       {/* Toggle mode de routage */}

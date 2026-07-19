@@ -64,6 +64,7 @@ export default function App() {
   const [userPosition, setUserPosition] = useState<{ lat: number; lng: number } | null>(null);
   const [selectedZone, setSelectedZone] = useState<CustomZone | null>(null);
   const [selectedProtectedArea, setSelectedProtectedArea] = useState<ProtectedArea | null>(null);
+  const [nearbyWaterCount, setNearbyWaterCount] = useState(0);
   const requestCloseZoneForm = useRef<(() => void) | null>(null);
 
   // Le dashboard n'est réellement affiché que pour un compte admin — évite un état
@@ -118,12 +119,22 @@ export default function App() {
   // Recharge le tracé d'un trip enregistré dans l'éditeur d'itinéraire existant (modifiable/
   // ré-enregistrable), plutôt qu'une nouvelle couche carte en lecture seule dédiée.
   const handleViewTripOnMap = (trip: Trip) => {
-    filters.setRoutePoints(trip.points);
+    filters.activateTrip(trip);
     filters.setIsRoutingMode(true);
     if (window.innerWidth < MOBILE_BREAKPOINT_PX) {
       setShowUserDashboard(false);
       const first = trip.points[0];
       if (first) (window as any).__mapFlyToSpot?.(first.lat, first.lng);
+    }
+  };
+
+  // Activer/désactiver une trace enregistrée depuis le panneau Filtres — un seul itinéraire
+  // pouvant être actif à la fois, activer une trace remplace celle éventuellement en cours.
+  const handleToggleTrip = (trip: Trip) => {
+    if (filters.activeTripId === trip.id) {
+      filters.deactivateTrip();
+    } else {
+      filters.activateTrip(trip);
     }
   };
 
@@ -140,6 +151,8 @@ export default function App() {
       setTemporaryPosition({ lat, lng });
     } else if (filters.isRoutingMode) {
       filters.setRoutePoints(prev => [...prev, { lat, lng }]);
+      // L'itinéraire s'écarte désormais de la trace enregistrée chargée, le cas échéant.
+      if (filters.activeTripId) filters.setActiveTripId(null);
     } else if (showCustomZonesEditor && (editingZone || editingOsmZone)) {
       requestCloseZoneForm.current?.();
     } else if (showAdminZoneEditor && editingAdminZone) {
@@ -393,6 +406,8 @@ export default function App() {
           temporaryMarkerPosition={temporaryPosition}
           routePoints={filters.routePoints}
           isSmartRouting={filters.isSmartRouting}
+          maxDistanceFromRoute={filters.maxDistanceFromRoute}
+          onNearbyWaterCountChange={setNearbyWaterCount}
           showWaterPoints={map.showWaterPoints}
           showProtectedAreas={map.showProtectedAreas}
           protectedAreas={map.allProtectedAreas}
@@ -518,10 +533,11 @@ export default function App() {
             onClose={filters.closeRoutePanel}
             isSmartRouting={filters.isSmartRouting}
             onToggleSmartRouting={filters.setIsSmartRouting}
-            onClearRoute={() => filters.setRoutePoints([])}
+            onClearRoute={filters.deactivateTrip}
             onFinishRoute={() => filters.setIsRoutingMode(false)}
             routePointsCount={filters.routePoints.length}
             nearbyPoisCount={filters.nearbyPoisCount}
+            nearbyWaterCount={nearbyWaterCount}
             maxDistance={filters.maxDistanceFromRoute}
             onMaxDistanceChange={filters.setMaxDistanceFromRoute}
             onSaveRoute={handleSaveRoute}
@@ -535,6 +551,9 @@ export default function App() {
             filters={filters.filters}
             onFilterChange={filters.setFilters}
             onClose={() => filters.setShowFilters(false)}
+            trips={trips.trips}
+            activeTripId={filters.activeTripId}
+            onToggleTrip={handleToggleTrip}
           />
         </Suspense>
       )}

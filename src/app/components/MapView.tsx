@@ -11,6 +11,7 @@ import { ProtectedArea, getProtectedAreaLabel, getProtectedAreaInfo, shouldDispl
 import { CustomZone } from '../../utils/supabase/custom-zones-api';
 import { MapControls } from './MapControls';
 import { MAP_CENTER, MAP_DEFAULT_ZOOM } from '../constants';
+import { distanceToRoute, getRouteBounds } from '../utils/route-distance';
 
 // Au-delà de ce nombre de points, un marqueur numéroté par point (utile pour quelques
 // waypoints cliqués à la main) devient illisible et coûteux à afficher — le tracé (polyligne)
@@ -20,6 +21,10 @@ const MAX_ROUTE_MARKERS = 30;
 // au-delà de ce seuil on saute le routage et on trace directement les points, ce qui reproduit
 // fidèlement une trace GPS dense sans dépendre d'une API externe non prévue pour ça.
 const MAX_SMART_ROUTING_WAYPOINTS = 25;
+// Nombre max de points d'eau affichés le long d'un tracé (les plus proches en priorité) —
+// même limite d'esprit que les 35 points du calque viewport, adaptée à l'emprise plus large
+// d'un itinéraire complet.
+const MAX_ROUTE_WATER_MARKERS = 150;
 
 function makeCrosshairIcon(color: string, size: number): L.DivIcon {
   const h = size / 2;
@@ -78,6 +83,8 @@ interface MapViewProps {
   temporaryMarkerPosition?: { lat: number; lng: number } | null;
   routePoints?: Array<{ lat: number; lng: number }>;
   isSmartRouting?: boolean;
+  maxDistanceFromRoute?: number;
+  onNearbyWaterCountChange?: (count: number) => void;
   showWaterPoints?: boolean;
   showProtectedAreas?: boolean;
   protectedAreas?: ProtectedArea[];
@@ -145,6 +152,8 @@ export function MapView({
   temporaryMarkerPosition,
   routePoints = [],
   isSmartRouting = true,
+  maxDistanceFromRoute = 2,
+  onNearbyWaterCountChange,
   showWaterPoints = false,
   showProtectedAreas = false,
   protectedAreas = [],
@@ -223,6 +232,10 @@ export function MapView({
   const [showRefreshButton, setShowRefreshButton] = useState(false);
   const [isManualLoad, setIsManualLoad] = useState(false);
 
+  // Points d'eau le long du tracé — indépendants du calque "Points d'eau" (viewport) :
+  // dès qu'un itinéraire est actif, on interroge Overpass sur l'emprise du tracé entier.
+  const [routeWaterPoints, setRouteWaterPoints] = useState<WaterPoint[]>([]);
+
   // Refs pour callbacks parents — évite que l'effect se ré-exécute à chaque render du parent
   // tout en gardant un accès toujours frais aux dernières valeurs
   const onMapMoveRef = useRef(onMapMove);
@@ -270,9 +283,10 @@ export function MapView({
     (window as any).__mapZoomIn = () => map.zoomIn();
     (window as any).__mapZoomOut = () => map.zoomOut();
     
-    // Move the map so `lat/lng` appears centered in the visible strip (between header and panel)
-    const panToTop = (lat: number, lng: number) => {
-      const zoom = map.getZoom();
+    // Point de la carte tel que `lat/lng` apparaîtrait centré dans la bande visible (entre le
+    // header et le panneau de détails mobile, qui couvre les 2/3 inférieurs de l'écran) —
+    // calculé au zoom `zoom` donné, pour rester correct même quand le zoom change (flyTo).
+    const getTopCenteredView = (lat: number, lng: number, zoom: number) => {
       const mapHeight = map.getSize().y;
       const headerHeight = 64;
       const panelHeight = mapHeight * (2 / 3);
@@ -280,7 +294,13 @@ export function MapView({
       const targetY = headerHeight + visibleHeight / 2;
       const spotPoint = map.project([lat, lng], zoom);
       const centerPoint = L.point(spotPoint.x, spotPoint.y + (mapHeight / 2 - targetY));
-      const center = map.unproject(centerPoint, zoom);
+      return map.unproject(centerPoint, zoom);
+    };
+
+    // Move the map so `lat/lng` appears centered in the visible strip (between header and panel)
+    const panToTop = (lat: number, lng: number) => {
+      const zoom = map.getZoom();
+      const center = getTopCenteredView(lat, lng, zoom);
       map.setView(center, zoom, { animate: false });
     };
 
@@ -294,10 +314,13 @@ export function MapView({
     };
 
     // Focus animé sur un spot (dashboard admin — bouton "Carte") : zoom minimum garanti,
-    // sans dézoomer si on est déjà plus proche.
+    // sans dézoomer si on est déjà plus proche. Même offset vertical que panToTop pour que le
+    // spot ne finisse pas caché sous le panneau de détails mobile, quelle que soit l'origine
+    // de la navigation (liste favoris, trips, recherche...).
     (window as any).__mapFlyToSpot = (lat: number, lng: number) => {
       const targetZoom = Math.max(map.getZoom(), 15);
-      map.flyTo([lat, lng], targetZoom, { animate: true, duration: 1.2 });
+      const center = getTopCenteredView(lat, lng, targetZoom);
+      map.flyTo(center, targetZoom, { animate: true, duration: 1.2 });
     };
 
     // Variante vue scindée (dashboard admin ouvert en pleine hauteur sur la gauche, largeur
@@ -1365,6 +1388,56 @@ export function MapView({
     }
   }, [routePoints, isSmartRouting]);
 
+  // Charger les points d'eau le long du tracé — sur toute l'emprise du parcours (pas seulement
+  // le viewport courant), dès qu'un itinéraire existe, indépendamment du calque "Points d'eau".
+  // Débounce pour éviter une requête Overpass à chaque point ajouté / chaque cran du slider.
+  useEffect(() => {
+    if (routePoints.length < 2) {
+      setRouteWaterPoints([]);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      const bounds = getRouteBounds(routePoints, maxDistanceFromRoute);
+      fetchWaterPoints(bounds)
+        .then(points => {
+          if (!cancelled) setRouteWaterPoints(points);
+        })
+        .catch(() => {
+          // Tracé trop long / API indisponible : on garde simplement les spots de bivouac,
+          // les points d'eau du calque viewport (s'il est actif) restent affichés.
+          if (!cancelled) setRouteWaterPoints([]);
+        });
+    }, 800);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [routePoints, maxDistanceFromRoute]);
+
+  // Points d'eau du tracé effectivement à moins de `maxDistanceFromRoute` de l'itinéraire,
+  // triés par proximité et plafonnés : un long tracé en zone alpine peut retourner des
+  // centaines de plans d'eau OSM, autant de marqueurs DOM individuels ferait le même genre
+  // de blocage navigateur que l'import GPX dense (cf. gpx-kml-parser.ts).
+  const routeFilteredWaterPoints = useMemo(() => {
+    if (routePoints.length < 2 || routeWaterPoints.length === 0) return [];
+    return routeWaterPoints
+      .map(wp => ({ wp, dist: distanceToRoute({ lat: wp.lat, lng: wp.lng }, routePoints) }))
+      .filter(({ dist }) => dist <= maxDistanceFromRoute)
+      .sort((a, b) => a.dist - b.dist)
+      .slice(0, MAX_ROUTE_WATER_MARKERS)
+      .map(({ wp }) => wp);
+  }, [routeWaterPoints, routePoints, maxDistanceFromRoute]);
+
+  const onNearbyWaterCountChangeRef = useRef(onNearbyWaterCountChange);
+  onNearbyWaterCountChangeRef.current = onNearbyWaterCountChange;
+
+  useEffect(() => {
+    onNearbyWaterCountChangeRef.current?.(routeFilteredWaterPoints.length);
+  }, [routeFilteredWaterPoints]);
+
   // Charger les points d'eau - chargement initial automatique puis manuel
   useEffect(() => {
     if (!mapInstanceRef.current || !showWaterPoints) {
@@ -1505,20 +1578,36 @@ export function MapView({
 
   // Filtrer et limiter les points d'eau à afficher
   // 35 max pour le chargement automatique, illimité pour le chargement manuel
-  const filteredWaterPoints = useMemo(() => {
+  const viewportFilteredWaterPoints = useMemo(() => {
     if (!showWaterPoints || waterPoints.length === 0) return [];
-    
+
     // Extraire les positions des spots de bivouac
     const spotPositions = locations.map(loc => ({
       lat: loc.position.lat,
       lng: loc.position.lng
     }));
-    
+
     // Si chargement manuel, pas de limite (undefined)
     // Si chargement automatique, limite à 35
     const maxPoints = isManualLoad ? undefined : 35;
     return filterAndSortWaterPoints(waterPoints, spotPositions, maxPoints);
   }, [waterPoints, locations, showWaterPoints, isManualLoad]);
+
+  // Fusion avec les points d'eau du tracé (dédoublonnés par id) : le calque viewport et le
+  // tracé sont deux sources indépendantes, toutes deux affichées quand elles sont actives.
+  const filteredWaterPoints = useMemo(() => {
+    if (routeFilteredWaterPoints.length === 0) return viewportFilteredWaterPoints;
+
+    const seenIds = new Set(viewportFilteredWaterPoints.map(wp => wp.id));
+    const merged = [...viewportFilteredWaterPoints];
+    for (const wp of routeFilteredWaterPoints) {
+      if (!seenIds.has(wp.id)) {
+        seenIds.add(wp.id);
+        merged.push(wp);
+      }
+    }
+    return merged;
+  }, [viewportFilteredWaterPoints, routeFilteredWaterPoints]);
 
   // Afficher les marqueurs de points d'eau
   useEffect(() => {
@@ -1530,7 +1619,9 @@ export function MapView({
     waterMarkersRef.current.forEach(marker => marker.remove());
     waterMarkersRef.current = [];
 
-    if (!showWaterPoints) return;
+    // Afficher si le calque "Points d'eau" est actif OU si un tracé est en cours
+    // (les points d'eau du tracé s'affichent indépendamment du calque)
+    if (!showWaterPoints && routePoints.length < 2) return;
 
     // Ajouter les nouveaux marqueurs (limités et triés)
     filteredWaterPoints.forEach((waterPoint) => {
@@ -1599,7 +1690,7 @@ export function MapView({
       marker.addTo(map);
       waterMarkersRef.current.push(marker);
     });
-  }, [filteredWaterPoints, showWaterPoints]);
+  }, [filteredWaterPoints, showWaterPoints, routePoints.length]);
 
   // Afficher les zones protégées sur la carte
   useEffect(() => {

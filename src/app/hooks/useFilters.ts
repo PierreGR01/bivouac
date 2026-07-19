@@ -26,6 +26,10 @@ export function useFilters(locations: PoiLocation[], winterMode: boolean) {
   const [routePoints, setRoutePoints] = useState<Array<{ lat: number; lng: number }>>([]);
   const [isSmartRouting, setIsSmartRouting] = useState(true);
   const [maxDistanceFromRoute, setMaxDistanceFromRoute] = useState(DEFAULT_ROUTE_DISTANCE_KM);
+  // Id de la trace enregistrée actuellement chargée comme itinéraire actif (null si l'itinéraire
+  // est dessiné à la main ou n'a pas encore été sauvegardé) — permet au panneau Filtres de savoir
+  // quelle trace afficher comme activée.
+  const [activeTripId, setActiveTripId] = useState<string | null>(null);
 
   // Synchroniser le mode hiver avec le filtre saison
   useEffect(() => {
@@ -92,17 +96,32 @@ export function useFilters(locations: PoiLocation[], winterMode: boolean) {
   const openRoutePanel = () => {
     setIsRoutingMode(true);
     setRoutePoints([]);
+    setActiveTripId(null);
   };
 
   const closeRoutePanel = () => {
     setIsRoutingMode(false);
     setRoutePoints([]);
+    setActiveTripId(null);
   };
 
   const resetFilters = () => {
     setSearchTerm('');
     setFilters(EMPTY_FILTERS);
     setRoutePoints([]);
+    setActiveTripId(null);
+  };
+
+  // Charge une trace enregistrée comme itinéraire actif (utilisé par "voir sur la carte"
+  // et par le toggle de trace dans le panneau Filtres — les deux doivent rester en phase).
+  const activateTrip = (trip: { id: string; points: Array<{ lat: number; lng: number }> }) => {
+    setRoutePoints(trip.points);
+    setActiveTripId(trip.id);
+  };
+
+  const deactivateTrip = () => {
+    setRoutePoints([]);
+    setActiveTripId(null);
   };
 
   return {
@@ -113,6 +132,8 @@ export function useFilters(locations: PoiLocation[], winterMode: boolean) {
     routePoints, setRoutePoints,
     isSmartRouting, setIsSmartRouting,
     maxDistanceFromRoute, setMaxDistanceFromRoute,
+    activeTripId, setActiveTripId,
+    activateTrip, deactivateTrip,
     filteredLocations,
     activeFiltersCount,
     nearbyPoisCount,
