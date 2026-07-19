@@ -11,13 +11,17 @@ import {
   Check,
   X as XIcon,
   Loader2,
+  KeyRound,
+  LogOut,
 } from 'lucide-react';
 import { PoiLocation, Review } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { BivouacButton } from './ui/bivouac-button';
+import { Input } from './ui/bivouac-input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs';
 import { TripNamePrompt } from './TripNamePrompt';
 import * as api from '../../utils/supabase/api';
+import { updatePassword } from '../../utils/supabase/auth';
 import { Trip } from '../../utils/supabase/trips-api';
 import { useFavorites } from '../hooks/useFavorites';
 import { useTrips } from '../hooks/useTrips';
@@ -103,7 +107,7 @@ function EmptyState({ label }: { label: string }) {
 }
 
 export function UserDashboard({ onClose, locations, onViewSpotOnMap, onDeleteSpot, onViewTripOnMap }: UserDashboardProps) {
-  const { currentUser } = useAuth();
+  const { currentUser, logout } = useAuth();
   const queryClient = useQueryClient();
   const favorites = useFavorites();
   const trips = useTrips();
@@ -113,6 +117,11 @@ export function UserDashboard({ onClose, locations, onViewSpotOnMap, onDeleteSpo
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pendingImport, setPendingImport] = useState<RoutePoint[] | null>(null);
   const [isSavingImport, setIsSavingImport] = useState(false);
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isSubmittingPassword, setIsSubmittingPassword] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const mySpots = useMemo(
     () => locations.filter((l) => l.createdBy === currentUser?.id),
@@ -204,6 +213,42 @@ export function UserDashboard({ onClose, locations, onViewSpotOnMap, onDeleteSpo
     }
   };
 
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword.length < 6) {
+      toast.error('Le mot de passe doit contenir au moins 6 caractères');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error('Les mots de passe ne correspondent pas');
+      return;
+    }
+    setIsSubmittingPassword(true);
+    try {
+      await updatePassword(newPassword);
+      toast.success('Mot de passe mis à jour');
+      setNewPassword('');
+      setConfirmPassword('');
+      setShowPasswordForm(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Échec de la mise à jour du mot de passe');
+    } finally {
+      setIsSubmittingPassword(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await logout();
+      onClose();
+    } catch {
+      toast.error('Échec de la déconnexion');
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
+
   return (
     <div className="fixed inset-y-0 left-0 z-[1200] bg-white shadow-2xl flex flex-col w-full md:w-1/2">
       <header className="flex-shrink-0 flex items-center gap-3 px-4 md:px-6 py-3 border-b border-gray-100">
@@ -222,13 +267,65 @@ export function UserDashboard({ onClose, locations, onViewSpotOnMap, onDeleteSpo
       </header>
 
       <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
-        <section>
+        <section className="space-y-3">
           <div className="bg-gray-50 rounded-lg p-3">
             <p className="text-sm text-gray-600 flex items-center gap-1.5">
               <Mail className="w-3.5 h-3.5 flex-shrink-0" />
               {currentUser?.email}
             </p>
           </div>
+
+          <div>
+            <BivouacButton
+              variant="secondary"
+              size="sm"
+              icon={<KeyRound className="w-4 h-4" />}
+              onClick={() => setShowPasswordForm((v) => !v)}
+            >
+              Modifier le mot de passe
+            </BivouacButton>
+            {showPasswordForm && (
+              <form onSubmit={handleChangePassword} className="space-y-3 mt-3">
+                <Input
+                  label="Nouveau mot de passe"
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="••••••••"
+                  autoComplete="new-password"
+                  disabled={isSubmittingPassword}
+                />
+                <Input
+                  label="Confirmer le mot de passe"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="••••••••"
+                  autoComplete="new-password"
+                  disabled={isSubmittingPassword}
+                />
+                <BivouacButton
+                  type="submit"
+                  variant="primary"
+                  icon={isSubmittingPassword ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
+                  disabled={isSubmittingPassword || !newPassword || !confirmPassword}
+                  className="w-full"
+                >
+                  Changer le mot de passe
+                </BivouacButton>
+              </form>
+            )}
+          </div>
+
+          <BivouacButton
+            variant="destructive"
+            icon={isLoggingOut ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+            className="w-full"
+          >
+            Se déconnecter
+          </BivouacButton>
         </section>
 
         <Tabs defaultValue="spots">
