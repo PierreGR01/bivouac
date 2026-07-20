@@ -2,6 +2,7 @@ import React, { useState, useRef, useMemo, useEffect, Suspense } from 'react';
 import { toast, Toaster } from 'sonner';
 import { devLog } from './utils/logger';
 import { MapView } from './components/MapView';
+import { WeatherOptionsPanel } from './components/WeatherOptionsPanel';
 import { SearchBar } from './components/SearchBar';
 import { FilterOptions } from './components/FilterPanel';
 import { NewPoi } from './components/AddPoiPanel';
@@ -457,6 +458,12 @@ export default function App() {
           onMapMove={(bounds) => map.setMapBounds(bounds)}
           showWeather={map.showWeather}
           onWeatherToggle={map.toggleWeather}
+          showWind={map.showWind}
+          onWindToggle={map.toggleWind}
+          showStorms={map.showStorms}
+          onStormsToggle={map.toggleStorms}
+          showNivoses={map.showNivoses}
+          onNivosesToggle={map.toggleNivoses}
           satelliteMode={map.satelliteMode}
           onSatelliteModeToggle={map.toggleSatellite}
           winterMode={map.winterMode}
@@ -791,6 +798,16 @@ export default function App() {
                     </button>
                   </div>
                 </div>
+              )}
+              {showMobileOptions && map.showWeather && (
+                <WeatherOptionsPanel
+                  showWind={map.showWind}
+                  onWindToggle={map.toggleWind}
+                  showStorms={map.showStorms}
+                  onStormsToggle={map.toggleStorms}
+                  showNivoses={map.showNivoses}
+                  onNivosesToggle={map.toggleNivoses}
+                />
               )}
               </div>
               <button

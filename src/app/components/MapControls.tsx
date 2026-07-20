@@ -1,5 +1,6 @@
 import React from 'react';
 import { Droplet, BanIcon, Route, Plus, Minus, Ruler, Snowflake, Locate, Settings, CloudRain } from 'lucide-react';
+import { WeatherOptionsPanel } from './WeatherOptionsPanel';
 
 interface MapControlsProps {
   showWaterPoints: boolean;
@@ -12,6 +13,12 @@ interface MapControlsProps {
   onMeasureClick: () => void;
   showWeather?: boolean;
   onWeatherToggle?: () => void;
+  showWind?: boolean;
+  onWindToggle?: () => void;
+  showStorms?: boolean;
+  onStormsToggle?: () => void;
+  showNivoses?: boolean;
+  onNivosesToggle?: () => void;
   satelliteMode: boolean;
   onSatelliteModeToggle: () => void;
   winterMode?: boolean;
@@ -33,6 +40,12 @@ export function MapControls({
   satelliteMode,
   showWeather = false,
   onWeatherToggle,
+  showWind = true,
+  onWindToggle,
+  showStorms = true,
+  onStormsToggle,
+  showNivoses = true,
+  onNivosesToggle,
   onSatelliteModeToggle,
   winterMode = false,
   onWinterModeToggle,
@@ -127,17 +140,32 @@ export function MapControls({
       <div className="h-px bg-gray-200 my-1"></div>
 
       {/* Météo — radar, foudre, vent, nivoses */}
-      <button
-        onClick={onWeatherToggle}
-        className={`w-10 h-10 rounded-lg transition-all flex items-center justify-center ${
-          showWeather
-            ? 'bg-cyan-600 text-white'
-            : 'text-gray-700 hover:bg-gray-100'
-        }`}
-        title="Météo (radar, foudre, vent, nivoses)"
-      >
-        <CloudRain className="w-5 h-5" />
-      </button>
+      <div className="relative">
+        <button
+          onClick={onWeatherToggle}
+          className={`w-10 h-10 rounded-lg transition-all flex items-center justify-center ${
+            showWeather
+              ? 'bg-cyan-600 text-white'
+              : 'text-gray-700 hover:bg-gray-100'
+          }`}
+          title="Météo (radar, foudre, vent, nivoses)"
+        >
+          <CloudRain className="w-5 h-5" />
+        </button>
+
+        {showWeather && onWindToggle && onStormsToggle && onNivosesToggle && (
+          <div className="absolute right-full top-0 mr-2">
+            <WeatherOptionsPanel
+              showWind={showWind}
+              onWindToggle={onWindToggle}
+              showStorms={showStorms}
+              onStormsToggle={onStormsToggle}
+              showNivoses={showNivoses}
+              onNivosesToggle={onNivosesToggle}
+            />
+          </div>
+        )}
+      </div>
 
       {/* Séparateur */}
       <div className="h-px bg-gray-200 my-1"></div>

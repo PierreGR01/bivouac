@@ -20,6 +20,9 @@ export function useMapLayers() {
   const [waterPoints, setWaterPoints] = useState<any[]>([]);
 
   const [showWeather, setShowWeather] = useState(false);
+  const [showWind, setShowWind] = useState(true);
+  const [showStorms, setShowStorms] = useState(true);
+  const [showNivoses, setShowNivoses] = useState(true);
 
   const [showProtectedAreas, setShowProtectedAreas] = useState(true);
   const [showProtectedAreasButton, setShowProtectedAreasButton] = useState(false);
@@ -116,6 +119,9 @@ export function useMapLayers() {
   };
 
   const toggleWeather = () => setShowWeather(prev => !prev);
+  const toggleWind = () => setShowWind(prev => !prev);
+  const toggleStorms = () => setShowStorms(prev => !prev);
+  const toggleNivoses = () => setShowNivoses(prev => !prev);
 
   const toggleProtectedAreas = useCallback(() => {
     if (!showProtectedAreas) {
@@ -137,6 +143,12 @@ export function useMapLayers() {
     toggleWinter,
     showWeather,
     toggleWeather,
+    showWind,
+    toggleWind,
+    showStorms,
+    toggleStorms,
+    showNivoses,
+    toggleNivoses,
     showWaterPoints,
     toggleWaterPoints,
     showWaterPointsInfo,

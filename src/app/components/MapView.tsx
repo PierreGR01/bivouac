@@ -101,6 +101,12 @@ interface MapViewProps {
   onWaterPointsLoaded?: (points: WaterPoint[]) => void;
   showWeather?: boolean;
   onWeatherToggle?: () => void;
+  showWind?: boolean;
+  onWindToggle?: () => void;
+  showStorms?: boolean;
+  onStormsToggle?: () => void;
+  showNivoses?: boolean;
+  onNivosesToggle?: () => void;
   satelliteMode?: boolean;
   onSatelliteModeToggle?: () => void;
   winterMode?: boolean;
@@ -173,6 +179,12 @@ export function MapView({
   onWaterPointsLoaded,
   showWeather = false,
   onWeatherToggle,
+  showWind = true,
+  onWindToggle,
+  showStorms = true,
+  onStormsToggle,
+  showNivoses = true,
+  onNivosesToggle,
   satelliteMode = false,
   onSatelliteModeToggle,
   winterMode = false,
@@ -547,7 +559,7 @@ export function MapView({
       rainRadarIndexRef.current = 0;
     };
 
-    if (!showWeather) {
+    if (!showWeather || !showStorms) {
       cleanup();
       return;
     }
@@ -601,7 +613,7 @@ export function MapView({
       .catch(() => loadOWM());
 
     return cleanup;
-  }, [showWeather, forecastMode]);
+  }, [showWeather, showStorms, forecastMode]);
 
   // Points de foudre — SSE via Edge Function (proxy MQTT Blitzortung)
   useEffect(() => {
@@ -629,7 +641,7 @@ export function MapView({
       clearMarkers();
     };
 
-    if (!showWeather) {
+    if (!showWeather || !showStorms) {
       cleanup();
       return;
     }
@@ -692,14 +704,14 @@ export function MapView({
     connect();
 
     return cleanup;
-  }, [showWeather]);
+  }, [showWeather, showStorms]);
 
   // Animation vent — canvas impératif + grille spatiale 4×4 Open-Meteo
   // Chaque particule est interpolée bilinéairement sur la grille → données réelles, pas de simulation
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
-    if (!showWeather) return;
+    if (!showWeather || !showWind) return;
 
     const N_PARTICLES = 300;
     // PIXEL_SCALE est calculé dynamiquement dans animate() en fonction du zoom
@@ -845,7 +857,7 @@ export function MapView({
       if (canvas.parentNode) canvas.parentNode.removeChild(canvas);
       windGridRef.current = null;
     };
-  }, [showWeather]);
+  }, [showWeather, showWind]);
 
   // Fetch données horaires capteur via nivo-proxy (Météo-France DPObs)
   useEffect(() => {
@@ -887,7 +899,7 @@ export function MapView({
       nivoseMarkersRef.current = [];
     };
 
-    if (!showWeather) {
+    if (!showWeather || !showNivoses) {
       removeMarkers();
       setSelectedNivose(null);
       return;
@@ -926,7 +938,7 @@ export function MapView({
     });
 
     return removeMarkers;
-  }, [showWeather]);
+  }, [showWeather, showNivoses]);
 
 
   // Gérer le mode dessin (Leaflet Draw)
@@ -2082,7 +2094,7 @@ export function MapView({
       )}
 
       {/* Légende radar précipitations — desktop (bottom-left) */}
-      {showWeather && (
+      {showWeather && showStorms && (
         <div className="hidden md:block absolute bottom-11 left-6 z-[400] bg-white/90 backdrop-blur-sm rounded-xl shadow-xl w-52 overflow-hidden">
           <button
             onClick={() => setLegendOpen(o => !o)}
@@ -2096,7 +2108,7 @@ export function MapView({
       )}
 
       {/* Légende radar précipitations — mobile (top-left, icône seule) */}
-      {showWeather && (
+      {showWeather && showStorms && (
         <div className="md:hidden absolute top-[70px] left-3 z-[400]">
           <button
             onClick={() => setLegendOpen(o => !o)}
@@ -2151,6 +2163,12 @@ export function MapView({
           onMeasureClick={onMeasureClick}
           showWeather={showWeather}
           onWeatherToggle={onWeatherToggle}
+          showWind={showWind}
+          onWindToggle={onWindToggle}
+          showStorms={showStorms}
+          onStormsToggle={onStormsToggle}
+          showNivoses={showNivoses}
+          onNivosesToggle={onNivosesToggle}
           satelliteMode={satelliteMode}
           onSatelliteModeToggle={onSatelliteModeToggle || (() => {})}
           winterMode={winterMode}
