@@ -6,7 +6,7 @@ import { Trash2, ChevronDown, ChevronUp, Info, X } from 'lucide-react';
 import { NIVOSES, NivoseStation } from '../data/nivoses';
 import { PoiLocation } from '../types';
 import { isSpotDisabled } from '../utils/spot-status';
-import { fetchWaterPoints, WaterPoint, getWaterPointLabel, getWaterPointInfo, RateLimitError, filterAndSortWaterPoints } from '../services/overpass';
+import { fetchWaterPoints, WaterPoint, RateLimitError, filterAndSortWaterPoints } from '../services/overpass';
 import { ProtectedArea, getProtectedAreaLabel, getProtectedAreaInfo, shouldDisplayOnMap } from '../services/protected-areas';
 import { CustomZone } from '../../utils/supabase/custom-zones-api';
 import { MapControls } from './MapControls';
@@ -108,6 +108,8 @@ interface MapViewProps {
   userPosition?: { lat: number; lng: number } | null;
   selectedZone?: CustomZone | null;
   selectedProtectedArea?: ProtectedArea | null;
+  onWaterPointClick?: (point: WaterPoint) => void;
+  selectedWaterPoint?: WaterPoint | null;
 }
 
 const LEGEND_ITEMS = [
@@ -178,6 +180,8 @@ export function MapView({
   userPosition = null,
   selectedZone = null,
   selectedProtectedArea = null,
+  onWaterPointClick,
+  selectedWaterPoint = null,
 }: MapViewProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -1646,9 +1650,6 @@ export function MapView({
       // Les cours d'eau ne sont pas affichés (utilisés uniquement pour la proximité)
       if (waterPoint.waterType === 'stream') return;
 
-      const label = getWaterPointLabel(waterPoint);
-      const info = getWaterPointInfo(waterPoint);
-
       const isNatural = waterPoint.waterType === 'uncontrolled_water';
       const color = isNatural ? '#0d9488' : '#0ea5e9';
       const shadowColor = isNatural ? 'rgba(13, 148, 136, 0.4)' : 'rgba(14, 165, 233, 0.4)';
@@ -1684,31 +1685,18 @@ export function MapView({
         iconAnchor: [10, 10],
       });
 
+      const isSelected = selectedWaterPoint?.id === waterPoint.id;
+
       const marker = L.marker([waterPoint.lat, waterPoint.lng], {
-        icon: customIcon,
+        icon: isSelected ? selectedWaterIcon : customIcon,
         zIndexOffset: -100, // Afficher sous les marqueurs de bivouac
       });
 
-      // Popup avec informations détaillées
-      const popupContent = `
-        <div class="text-sm">
-          <h3 class="font-semibold text-blue-600">${label}</h3>
-          ${info.length > 0 ? `
-            <ul class="mt-2 text-xs space-y-1">
-              ${info.map(i => `<li class="text-gray-700">${i}</li>`).join('')}
-            </ul>
-          ` : ''}
-          <p class="mt-2 text-xs text-gray-500">Source: OpenStreetMap</p>
-        </div>
-      `;
-
-      marker.bindPopup(popupContent);
-      marker.on('popupopen', () => marker.setIcon(selectedWaterIcon));
-      marker.on('popupclose', () => marker.setIcon(customIcon));
+      marker.on('click', () => onWaterPointClick?.(waterPoint));
       marker.addTo(map);
       waterMarkersRef.current.push(marker);
     });
-  }, [filteredWaterPoints, showWaterPoints, routePoints.length]);
+  }, [filteredWaterPoints, showWaterPoints, routePoints.length, onWaterPointClick, selectedWaterPoint]);
 
   // Afficher les zones protégées sur la carte
   useEffect(() => {

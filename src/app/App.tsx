@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, Suspense } from 'react';
+import React, { useState, useRef, useMemo, useEffect, Suspense } from 'react';
 import { toast, Toaster } from 'sonner';
 import { devLog } from './utils/logger';
 import { MapView } from './components/MapView';
@@ -8,7 +8,7 @@ import { NewPoi } from './components/AddPoiPanel';
 import { MOBILE_BREAKPOINT_PX } from './constants';
 import { useAuth } from './contexts/AuthContext';
 import { isSpotDisabled } from './utils/spot-status';
-import { Tent, Plus, Loader2, AlertCircle, Settings, Search, BanIcon, Droplet, ChevronUp, ChevronDown, Snowflake, Locate, CloudRain } from 'lucide-react';
+import { Tent, Plus, Loader2, AlertCircle, Settings, BanIcon, Droplet, ChevronUp, ChevronDown, Snowflake, Locate, CloudRain } from 'lucide-react';
 import { usePois } from './hooks/usePois';
 import { useMapLayers } from './hooks/useMapLayers';
 import { useFilters } from './hooks/useFilters';
@@ -17,6 +17,7 @@ import { Trip } from '../utils/supabase/trips-api';
 import { CustomZone } from '../utils/supabase/custom-zones-api';
 import { AdminZone } from '../utils/supabase/admin-zones-api';
 import { ProtectedArea } from './services/protected-areas';
+import { WaterPoint } from './services/overpass';
 import { PoiLocation } from './types';
 
 const PoiDetailsPanel = React.lazy(() => import('./components/PoiDetailsPanel').then(m => ({ default: m.PoiDetailsPanel })));
@@ -30,6 +31,7 @@ const UserDashboard = React.lazy(() => import('./components/UserDashboard').then
 const ServerStatus = React.lazy(() => import('./components/ServerStatus').then(m => ({ default: m.ServerStatus })));
 const WaterPointsInfo = React.lazy(() => import('./components/WaterPointsInfo').then(m => ({ default: m.WaterPointsInfo })));
 const ZoneInfoPanel = React.lazy(() => import('./components/ZoneInfoPanel').then(m => ({ default: m.ZoneInfoPanel })));
+const WaterPointDetailsPanel = React.lazy(() => import('./components/WaterPointDetailsPanel').then(m => ({ default: m.WaterPointDetailsPanel })));
 
 export default function App() {
   const { currentUser, isAdmin, isSuperAdmin, zoneAdminIds } = useAuth();
@@ -65,9 +67,29 @@ export default function App() {
   const [userPosition, setUserPosition] = useState<{ lat: number; lng: number } | null>(null);
   const [selectedZone, setSelectedZone] = useState<CustomZone | null>(null);
   const [selectedProtectedArea, setSelectedProtectedArea] = useState<ProtectedArea | null>(null);
+  const [selectedWaterPoint, setSelectedWaterPoint] = useState<WaterPoint | null>(null);
   const [nearbyWaterCount, setNearbyWaterCount] = useState(0);
   const [isLoadingRouteWater, setIsLoadingRouteWater] = useState(false);
   const requestCloseZoneForm = useRef<(() => void) | null>(null);
+
+  // Toast (fermable) au lieu d'un overlay bloquant quand un filtre ne renvoie aucun résultat.
+  useEffect(() => {
+    const hasNoResults = !pois.isLoading && filters.filteredLocations.length === 0 && !isAddingMode;
+    if (!hasNoResults) {
+      toast.dismiss('no-results');
+      return;
+    }
+    const hasActiveFilters = !!filters.searchTerm || filters.activeFiltersCount > 0;
+    toast.info('Aucun spot trouvé', {
+      id: 'no-results',
+      description: hasActiveFilters
+        ? 'Essayez de modifier vos critères de recherche ou de filtres.'
+        : 'Aucun spot de bivouac disponible pour le moment.',
+      action: hasActiveFilters
+        ? { label: 'Réinitialiser', onClick: () => filters.resetFilters() }
+        : undefined,
+    });
+  }, [pois.isLoading, filters.filteredLocations.length, isAddingMode, filters.searchTerm, filters.activeFiltersCount]);
 
   // Le dashboard n'est réellement affiché que pour un compte admin — évite un état
   // "showAdminDashboard=true" orphelin (header masqué, rien affiché à la place) pour un
@@ -82,8 +104,17 @@ export default function App() {
 
   const handleLocationClick = (location: typeof pois.selectedLocation) => {
     pois.setSelectedLocation(location);
+    setSelectedWaterPoint(null);
     filters.setShowFilters(false);
     setShowLoginPanel(false);
+  };
+
+  const handleWaterPointClick = (point: WaterPoint) => {
+    setSelectedWaterPoint(point);
+    pois.setSelectedLocation(null);
+    setSelectedZone(null);
+    setSelectedProtectedArea(null);
+    setShowMobileOptions(false);
   };
 
   const handleClosePanel = () => pois.setSelectedLocation(null);
@@ -95,6 +126,7 @@ export default function App() {
     }
     setIsAddingMode(true);
     pois.setSelectedLocation(null);
+    setSelectedWaterPoint(null);
     setTemporaryPosition(null);
     filters.setShowFilters(false);
     setShowLoginPanel(false);
@@ -309,6 +341,7 @@ export default function App() {
   const handleZoneInfoClick = (zone: CustomZone) => {
     setSelectedZone(zone);
     setSelectedProtectedArea(null);
+    setSelectedWaterPoint(null);
     setShowMobileOptions(false);
     setShowLoginPanel(false);
   };
@@ -316,6 +349,7 @@ export default function App() {
   const handleProtectedAreaInfoClick = (area: ProtectedArea) => {
     setSelectedProtectedArea(area);
     setSelectedZone(null);
+    setSelectedWaterPoint(null);
     setShowMobileOptions(false);
     setShowLoginPanel(false);
   };
@@ -327,7 +361,7 @@ export default function App() {
 
   const isPanelOpen =
     pois.selectedLocation !== null || isAddingMode || filters.showFilters || filters.isRoutingMode
-    || selectedZone !== null || selectedProtectedArea !== null;
+    || selectedZone !== null || selectedProtectedArea !== null || selectedWaterPoint !== null;
 
   return (
     <div className="relative w-screen overflow-hidden" style={{ height: '100dvh' }}>
@@ -379,29 +413,6 @@ export default function App() {
             <Loader2 className="w-12 h-12 text-emerald-600 animate-spin mx-auto mb-4" />
             <p className="text-gray-700 font-medium">Chargement des points de bivouac...</p>
           </div>
-        </div>
-      )}
-
-      {/* No results message */}
-      {!pois.isLoading && filters.filteredLocations.length === 0 && !isAddingMode && (
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-[500] bg-white rounded-xl shadow-lg p-6 text-center max-w-sm">
-          <div className="text-gray-400 mb-3">
-            <Search className="w-12 h-12 mx-auto" />
-          </div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Aucun spot trouvé</h3>
-          <p className="text-sm text-gray-600 mb-4">
-            {filters.searchTerm || filters.activeFiltersCount > 0
-              ? 'Essayez de modifier vos critères de recherche ou de filtres.'
-              : 'Aucun spot de bivouac disponible pour le moment.'}
-          </p>
-          {(filters.searchTerm || filters.activeFiltersCount > 0) && (
-            <button
-              onClick={filters.resetFilters}
-              className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
-            >
-              Réinitialiser
-            </button>
-          )}
         </div>
       )}
 
@@ -463,11 +474,13 @@ export default function App() {
           userPosition={userPosition}
           selectedZone={selectedZone || editingZone}
           selectedProtectedArea={selectedProtectedArea || editingOsmZone}
+          onWaterPointClick={handleWaterPointClick}
+          selectedWaterPoint={selectedWaterPoint}
         />
       </div>
 
       {/* Water/protected areas loading indicators — desktop only */}
-      {!isAddingMode && !(pois.selectedLocation && window.innerWidth < MOBILE_BREAKPOINT_PX) && !(selectedZone || selectedProtectedArea) && (
+      {!isAddingMode && !(pois.selectedLocation && window.innerWidth < MOBILE_BREAKPOINT_PX) && !(selectedZone || selectedProtectedArea) && !selectedWaterPoint && (
         <div className="hidden md:flex md:absolute md:bottom-24 md:left-1/2 md:-translate-x-1/2 z-[1050] gap-3">
           {map.showWaterPointsButton && !map.isLoadingWaterPoints && map.showWaterPoints && (
             <button
@@ -540,6 +553,17 @@ export default function App() {
             zone={selectedZone}
             protectedArea={selectedProtectedArea}
             onClose={handleCloseZoneInfo}
+          />
+        </Suspense>
+      )}
+
+      {selectedWaterPoint && (
+        <Suspense fallback={null}>
+          <WaterPointDetailsPanel
+            waterPoint={selectedWaterPoint}
+            onClose={() => setSelectedWaterPoint(null)}
+            currentUser={currentUser}
+            onLoginRequired={() => setShowLoginPanel(true)}
           />
         </Suspense>
       )}
@@ -631,7 +655,7 @@ export default function App() {
         </Suspense>
       )}
 
-      <Toaster position="bottom-center" />
+      <Toaster position="bottom-center" closeButton />
 
       {/* Mobile: controls toggle — bottom right (masqué quand le dashboard occupe tout l'écran) */}
       {/* Mobile bottom bar — © row + actions row */}
