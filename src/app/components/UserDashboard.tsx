@@ -13,11 +13,12 @@ import {
   Loader2,
   KeyRound,
   LogOut,
+  Pencil,
 } from 'lucide-react';
 import { PoiLocation, Review } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { BivouacButton } from './ui/bivouac-button';
-import { Input } from './ui/bivouac-input';
+import { Input, Toggle } from './ui/bivouac-input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs';
 import { TripNamePrompt } from './TripNamePrompt';
 import * as api from '../../utils/supabase/api';
@@ -31,7 +32,9 @@ interface UserDashboardProps {
   onClose: () => void;
   locations: PoiLocation[];
   onViewSpotOnMap: (poi: PoiLocation) => void;
+  onEditSpot: (poi: PoiLocation) => void;
   onDeleteSpot: (poiId: string) => Promise<boolean>;
+  onSetPublic?: (poiId: string, isPublic: boolean) => Promise<boolean>;
   onViewTripOnMap: (trip: Trip) => void;
 }
 
@@ -44,9 +47,11 @@ interface RowProps {
   confirmDelete: boolean;
   onRequestDelete: () => void;
   onCancelDelete: () => void;
+  onEdit?: () => void;
+  belowTitle?: React.ReactNode;
 }
 
-function DashboardRow({ title, subtitle, onViewOnMap, onDelete, isDeleting, confirmDelete, onRequestDelete, onCancelDelete }: RowProps) {
+function DashboardRow({ title, subtitle, onViewOnMap, onDelete, isDeleting, confirmDelete, onRequestDelete, onCancelDelete, onEdit, belowTitle }: RowProps) {
   return (
     <div className="flex items-center gap-2 px-3 py-2">
       <div className="flex-1 min-w-0">
@@ -58,8 +63,9 @@ function DashboardRow({ title, subtitle, onViewOnMap, onDelete, isDeleting, conf
           {title}
         </button>
         {subtitle && <span className="text-xs text-gray-500 truncate block">{subtitle}</span>}
+        {belowTitle}
       </div>
-      <div className="w-[72px] flex-shrink-0 flex items-center justify-center gap-1">
+      <div className="flex-shrink-0 flex items-center justify-center gap-1">
         {confirmDelete ? (
           <>
             <button
@@ -88,6 +94,15 @@ function DashboardRow({ title, subtitle, onViewOnMap, onDelete, isDeleting, conf
             >
               <MapIcon className="w-3.5 h-3.5" />
             </button>
+            {onEdit && (
+              <button
+                onClick={onEdit}
+                title="Modifier"
+                className="w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-emerald-700 transition-colors"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+            )}
             <button
               onClick={onRequestDelete}
               title="Supprimer"
@@ -106,7 +121,7 @@ function EmptyState({ label }: { label: string }) {
   return <p className="text-sm text-gray-500 px-1 py-4">{label}</p>;
 }
 
-export function UserDashboard({ onClose, locations, onViewSpotOnMap, onDeleteSpot, onViewTripOnMap }: UserDashboardProps) {
+export function UserDashboard({ onClose, locations, onViewSpotOnMap, onEditSpot, onDeleteSpot, onSetPublic, onViewTripOnMap }: UserDashboardProps) {
   const { currentUser, logout } = useAuth();
   const queryClient = useQueryClient();
   const favorites = useFavorites();
@@ -115,6 +130,7 @@ export function UserDashboard({ onClose, locations, onViewSpotOnMap, onDeleteSpo
 
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [togglingPublicId, setTogglingPublicId] = useState<string | null>(null);
   const [pendingImport, setPendingImport] = useState<RoutePoint[] | null>(null);
   const [isSavingImport, setIsSavingImport] = useState(false);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
@@ -170,6 +186,19 @@ export function UserDashboard({ onClose, locations, onViewSpotOnMap, onDeleteSpo
     } finally {
       setBusyId(null);
       setConfirmId(null);
+    }
+  };
+
+  const handleTogglePublic = async (poi: PoiLocation) => {
+    if (!onSetPublic) return;
+    setTogglingPublicId(poi.id);
+    try {
+      const nextIsPublic = poi.isPublic === false;
+      const success = await onSetPublic(poi.id, nextIsPublic);
+      if (success) toast.success(nextIsPublic ? 'Spot rendu public' : 'Spot rendu privé');
+      else toast.error('Impossible de modifier la visibilité de ce spot');
+    } finally {
+      setTogglingPublicId(null);
     }
   };
 
@@ -346,11 +375,24 @@ export function UserDashboard({ onClose, locations, onViewSpotOnMap, onDeleteSpo
                     key={poi.id}
                     title={poi.title}
                     onViewOnMap={() => onViewSpotOnMap(poi)}
+                    onEdit={() => onEditSpot(poi)}
                     onDelete={() => handleDeleteSpot(poi.id)}
                     isDeleting={busyId === poi.id}
                     confirmDelete={confirmId === poi.id}
                     onRequestDelete={() => setConfirmId(poi.id)}
                     onCancelDelete={() => setConfirmId(null)}
+                    belowTitle={onSetPublic && (
+                      <div className="flex items-center gap-2 mt-1">
+                        {togglingPublicId === poi.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />
+                        ) : (
+                          <Toggle enabled={poi.isPublic !== false} onChange={() => handleTogglePublic(poi)} />
+                        )}
+                        <span className="text-xs text-gray-500">
+                          {poi.isPublic !== false ? 'Public' : 'Privé'}
+                        </span>
+                      </div>
+                    )}
                   />
                 ))}
               </div>

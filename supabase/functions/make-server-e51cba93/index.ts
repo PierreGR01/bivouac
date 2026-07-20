@@ -141,6 +141,25 @@ function isPointInZoneGeometry(point: { lat: number; lng: number }, geometry: an
   return false;
 }
 
+// Géométries des territoires (admin_zones) administrés par un utilisateur — factorisé pour
+// être réutilisé à la fois par canModeratePoi (une seule position) et par le filtrage de
+// visibilité de GET /pois (toute la liste, une seule requête au lieu d'un aller-retour par POI).
+async function getModeratorZoneGeometries(userId: string): Promise<any[]> {
+  const adminClient = getServiceClient();
+  const { data: grants } = await adminClient
+    .from("zone_admins")
+    .select("admin_zone_id")
+    .eq("user_id", userId);
+  const zoneIds = (grants ?? []).map((g: any) => g.admin_zone_id);
+  if (zoneIds.length === 0) return [];
+
+  const { data: zones } = await adminClient
+    .from("admin_zones")
+    .select("geometry")
+    .in("id", zoneIds);
+  return zones ?? [];
+}
+
 // Super-admin can moderate any POI; a zone-admin can moderate any POI located
 // inside one of the administration territories (admin_zones) assigned to them —
 // not just POIs inside a specific regulated zone.
@@ -150,20 +169,68 @@ async function canModeratePoi(c: any, poiPosition: { lat: number; lng: number } 
   if (await isSuperAdmin(user.id)) return true;
   if (!poiPosition || typeof poiPosition.lat !== "number" || typeof poiPosition.lng !== "number") return false;
 
-  const adminClient = getServiceClient();
-  const { data: grants } = await adminClient
-    .from("zone_admins")
-    .select("admin_zone_id")
-    .eq("user_id", user.id);
-  const zoneIds = (grants ?? []).map((g: any) => g.admin_zone_id);
-  if (zoneIds.length === 0) return false;
+  const zones = await getModeratorZoneGeometries(user.id);
+  return zones.some((z: any) => isPointInZoneGeometry(poiPosition, z.geometry));
+}
 
-  const { data: zones } = await adminClient
-    .from("admin_zones")
-    .select("geometry")
-    .in("id", zoneIds);
+interface ModerationContext {
+  isSuper: boolean;
+  userId: string | null;
+  zones: any[];
+}
 
-  return (zones ?? []).some((z: any) => isPointInZoneGeometry(poiPosition, z.geometry));
+// Contexte de modération résolu une seule fois pour filtrer une liste entière de POIs
+// (GET /pois), plutôt qu'un appel canModeratePoi par POI.
+async function getModerationContext(c: any): Promise<ModerationContext> {
+  const user = await getAuthedUser(c);
+  if (!user) return { isSuper: false, userId: null, zones: [] };
+  if (await isSuperAdmin(user.id)) return { isSuper: true, userId: user.id, zones: [] };
+  const zones = await getModeratorZoneGeometries(user.id);
+  return { isSuper: false, userId: user.id, zones };
+}
+
+function canSeePrivatePoi(poi: any, ctx: ModerationContext): boolean {
+  if (ctx.isSuper) return true;
+  if (ctx.userId && poi.createdBy === ctx.userId) return true;
+  return ctx.zones.some((z: any) => isPointInZoneGeometry(poi.position, z.geometry));
+}
+
+// --- Zone optionnelle d'un spot (≤150 m², doit contenir le point) ---
+// Miroir de src/app/utils/poi-zone.ts — dupliqué ici pour que la contrainte ne soit pas
+// contournable par une requête forgée directement contre l'edge function.
+
+const MAX_POI_ZONE_AREA_M2 = 150;
+const METERS_PER_DEGREE_LAT = 111_320;
+
+function poiZoneRing(geometry: any): number[][] | null {
+  if (!geometry) return null;
+  const geom = geometry.type === "Feature" ? geometry.geometry : geometry;
+  if (!geom) return null;
+  if (geom.type === "Polygon") return geom.coordinates[0] ?? null;
+  if (geom.type === "MultiPolygon") return geom.coordinates[0]?.[0] ?? null;
+  return null;
+}
+
+function computePoiZoneAreaM2(geometry: any): number {
+  const ring = poiZoneRing(geometry);
+  if (!ring || ring.length < 3) return 0;
+  const avgLatRad = (ring.reduce((sum: number, p: number[]) => sum + p[1], 0) / ring.length) * (Math.PI / 180);
+  const metersPerDegreeLng = METERS_PER_DEGREE_LAT * Math.cos(avgLatRad);
+  const projected = ring.map(([lng, lat]: number[]) => [lng * metersPerDegreeLng, lat * METERS_PER_DEGREE_LAT]);
+  let area = 0;
+  for (let i = 0; i < projected.length; i++) {
+    const [x1, y1] = projected[i];
+    const [x2, y2] = projected[(i + 1) % projected.length];
+    area += x1 * y2 - x2 * y1;
+  }
+  return Math.abs(area) / 2;
+}
+
+function isValidPoiZone(position: { lat: number; lng: number } | undefined, geometry: any): boolean {
+  if (!geometry) return true;
+  if (!position || typeof position.lat !== "number" || typeof position.lng !== "number") return false;
+  if (!isPointInZoneGeometry(position, geometry)) return false;
+  return computePoiZoneAreaM2(geometry) <= MAX_POI_ZONE_AREA_M2;
 }
 
 function validateBounds(body: any): { south: number; west: number; north: number; east: number } {
@@ -233,11 +300,16 @@ app.get("/make-server-e51cba93/health", safeHandler((c: any) => {
   return c.json({ status: "ok" });
 }));
 
-// Get all POIs — public read
+// Get all POIs — public read, filtered by visibility (spots marked private are only
+// returned to their owner and to admins/territory-admins who can moderate them).
 app.get("/make-server-e51cba93/pois", safeHandler(async (c: any) => {
   try {
     const pois = await kv.getByPrefix("poi:");
-    return c.json({ success: true, data: pois });
+    const ctx = await getModerationContext(c);
+    const visible = ctx.isSuper
+      ? pois
+      : pois.filter((p: any) => p.isPublic !== false || canSeePrivatePoi(p, ctx));
+    return c.json({ success: true, data: visible });
   } catch (error) {
     console.error("Error fetching POIs:", error);
     return c.json({ success: false, error: 'Internal server error' }, 500);
@@ -258,10 +330,14 @@ app.post("/make-server-e51cba93/pois", safeHandler(async (c: any) => {
 
   try {
     const body = await c.req.json();
-    const { id, title, description, photos, season, waterProximity, naturalWaterProximity, regulations, position, altitude, capacity, difficulty, ratings } = body;
+    const { id, title, description, photos, season, waterProximity, naturalWaterProximity, regulations, position, altitude, capacity, difficulty, ratings, zoneGeometry, isPublic } = body;
 
     if (!id || !title || !position) {
       return c.json({ success: false, error: "Missing required fields: id, title, position" }, 400);
+    }
+
+    if (zoneGeometry && !isValidPoiZone(position, zoneGeometry)) {
+      return c.json({ success: false, error: "Zone invalide : elle doit contenir le point du spot et ne pas dépasser 150 m²" }, 400);
     }
 
     const poi = {
@@ -278,6 +354,8 @@ app.post("/make-server-e51cba93/pois", safeHandler(async (c: any) => {
       capacity,
       difficulty,
       ratings: ratings || [],
+      zoneGeometry: zoneGeometry ?? null,
+      isPublic: isPublic !== false,
       createdAt: new Date().toISOString(),
       createdBy: user.id,
     };
@@ -291,7 +369,8 @@ app.post("/make-server-e51cba93/pois", safeHandler(async (c: any) => {
   }
 }));
 
-// Update (patch) a POI — admin (super-admin, or zone-admin whose zone contains this POI) only, field allowlist enforced
+// Update (patch) a POI — the owner, or an admin (super-admin, or zone-admin whose zone
+// contains this POI), field allowlist enforced (disabledUntil is moderator-only).
 app.put("/make-server-e51cba93/pois/:id", safeHandler(async (c: any) => {
   try {
     const id = c.req.param("id");
@@ -302,7 +381,10 @@ app.put("/make-server-e51cba93/pois/:id", safeHandler(async (c: any) => {
       return c.json({ success: false, error: "POI not found" }, 404);
     }
 
-    if (!(await canModeratePoi(c, existing.position))) {
+    const user = await getAuthedUser(c);
+    const isOwner = !!user && !!existing.createdBy && existing.createdBy === user.id;
+    const isModerator = await canModeratePoi(c, existing.position);
+    if (!isOwner && !isModerator) {
       return c.json({ success: false, error: "Unauthorized" }, 401);
     }
 
@@ -310,11 +392,18 @@ app.put("/make-server-e51cba93/pois/:id", safeHandler(async (c: any) => {
     const ALLOWED_FIELDS = new Set([
       "title", "description", "photos", "season", "waterProximity",
       "naturalWaterProximity", "regulations", "altitude", "capacity",
-      "difficulty", "ratings", "disabledUntil",
+      "difficulty", "ratings", "disabledUntil", "isPublic", "zoneGeometry",
     ]);
     const updates = Object.fromEntries(
       Object.entries(raw).filter(([k]) => ALLOWED_FIELDS.has(k))
     );
+
+    // La désactivation temporaire reste une action de modération, pas d'édition par le propriétaire.
+    if (!isModerator) delete updates.disabledUntil;
+
+    if ("zoneGeometry" in updates && !isValidPoiZone(existing.position, updates.zoneGeometry)) {
+      return c.json({ success: false, error: "Zone invalide : elle doit contenir le point du spot et ne pas dépasser 150 m²" }, 400);
+    }
 
     const updated = { ...existing, ...updates };
     await kv.set(`poi:${id}`, updated);

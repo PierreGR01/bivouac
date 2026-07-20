@@ -5,13 +5,14 @@ import { MapPin, Upload, Snowflake, SunSnow, AlertCircle, AlertTriangle, Camera,
 import { Panel } from './ui/bivouac-panel';
 import { BivouacButton, FilterChip } from './ui/bivouac-button';
 import { AlertCard } from './ui/bivouac-card';
-import { DifficultySelector, Input, Textarea } from './ui/bivouac-input';
+import { DifficultySelector, Input, Textarea, Toggle } from './ui/bivouac-input';
 import { useIsMobile } from './ui/use-mobile';
 import { PhotoCaptureModal } from './PhotoCaptureModal';
 import { PoiLocation, SpotPhoto } from '../types';
 import { getPhotoUrl, getPhotoCaption } from '../utils/photo';
 import { CustomZone, getZoneRestrictionStatus, formatZoneConstraints } from '../../utils/supabase/custom-zones-api';
 import { ProtectedArea, findAreasContainingPoint, getProtectedAreaInfo } from '../services/protected-areas';
+import { computeAreaM2, MAX_POI_ZONE_AREA_M2 } from '../utils/poi-zone';
 
 interface AddPoiPanelProps {
   onClose: () => void;
@@ -22,6 +23,10 @@ interface AddPoiPanelProps {
   protectedAreas?: ProtectedArea[];
   mode?: 'create' | 'edit';
   initialPoi?: PoiLocation | null;
+  zoneGeometry?: GeoJSON.Feature | null;
+  onStartDrawZone?: () => void;
+  onRemoveZone?: () => void;
+  isDrawingZone?: boolean;
 }
 
 const NATIONAL_PARK_REGULATION = 'Zone de parc national - bivouac uniquement 19h à 9h';
@@ -116,9 +121,24 @@ export interface NewPoi {
   capacity: '1' | '2-3' | '4-5' | '5+';
   difficulty: number;
   altitude?: number;
+  zoneGeometry?: GeoJSON.Feature | null;
+  isPublic: boolean;
 }
 
-export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition, customZones = [], protectedAreas = [], mode = 'create', initialPoi = null }: AddPoiPanelProps) {
+export function AddPoiPanel({
+  onClose,
+  onSubmit,
+  selectedPosition,
+  onSetPosition,
+  customZones = [],
+  protectedAreas = [],
+  mode = 'create',
+  initialPoi = null,
+  zoneGeometry = null,
+  onStartDrawZone,
+  onRemoveZone,
+  isDrawingZone = false,
+}: AddPoiPanelProps) {
   const isMobile = useIsMobile();
   const isEditMode = mode === 'edit';
 
@@ -152,6 +172,8 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
   const [isNationalPark, setIsNationalPark] = useState(initialRegulations.isNationalPark);
   const [capacity, setCapacity] = useState<'1' | '2-3' | '4-5' | '5+'>(initialPoi?.capacity ?? '2-3');
   const [difficulty, setDifficulty] = useState<number>(initialPoi?.difficulty ?? 2);
+  const [wantsZone, setWantsZone] = useState(!!initialPoi?.zoneGeometry);
+  const [isPublic, setIsPublic] = useState(initialPoi?.isPublic !== false);
   const [isGeolocating, setIsGeolocating] = useState(false);
   const [pendingPhoto, setPendingPhoto] = useState<{ dataUrl: string; source: 'camera' | 'gallery' } | null>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -162,7 +184,12 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
   }, [selectedPosition]);
 
   const isBlocked = zoneStatus.blocked.length > 0 || osmZoneStatus.blocked.length > 0;
-  const isFormValid = Boolean(selectedPosition && title.trim() && description.trim() && !isBlocked);
+  const isFormValid = Boolean(selectedPosition && title.trim() && description.trim() && !isBlocked && !isDrawingZone);
+
+  const handleToggleWantsZone = (checked: boolean) => {
+    setWantsZone(checked);
+    if (!checked) onRemoveZone?.();
+  };
 
   const handleUseMyLocation = () => {
     if ('geolocation' in navigator) {
@@ -270,6 +297,8 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
       position: selectedPosition,
       capacity,
       difficulty,
+      zoneGeometry: wantsZone ? zoneGeometry : null,
+      isPublic,
     });
 
     if (isEditMode) return;
@@ -284,6 +313,8 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
     setIsNationalPark(false);
     setCapacity('2-3');
     setDifficulty(2);
+    setWantsZone(false);
+    setIsPublic(true);
   };
 
   return (
@@ -394,6 +425,49 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
             </div>
           </AlertCard>
         )}
+
+        {/* Zone associée (optionnelle) */}
+        <div className="mb-3">
+          <label className="flex items-center gap-2 cursor-pointer mb-2">
+            <input
+              type="checkbox"
+              checked={wantsZone}
+              onChange={(e) => handleToggleWantsZone(e.target.checked)}
+              className="w-4 h-4 text-orange-600 rounded focus:ring-2 focus:ring-orange-500"
+            />
+            <span className="text-sm font-medium text-gray-800">
+              Associer une zone au spot (max {MAX_POI_ZONE_AREA_M2} m²)
+            </span>
+          </label>
+
+          {wantsZone && (
+            zoneGeometry ? (
+              <div className="flex items-center justify-between gap-2 bg-orange-50 border border-orange-200 rounded-lg p-2.5">
+                <span className="text-sm text-orange-800 font-medium">
+                  Zone de {Math.round(computeAreaM2(zoneGeometry))} m²
+                </span>
+                <div className="flex gap-2 flex-shrink-0">
+                  <BivouacButton type="button" variant="outline" onClick={onStartDrawZone} className="text-xs px-2.5 py-1.5">
+                    Redessiner
+                  </BivouacButton>
+                  <BivouacButton type="button" variant="outline" onClick={onRemoveZone} className="text-xs px-2.5 py-1.5 text-red-700 border-red-200 hover:bg-red-50">
+                    Retirer
+                  </BivouacButton>
+                </div>
+              </div>
+            ) : (
+              <BivouacButton
+                type="button"
+                variant="outline"
+                onClick={onStartDrawZone}
+                disabled={!selectedPosition || isDrawingZone}
+                className="w-full text-sm"
+              >
+                {isDrawingZone ? 'Dessinez le contour sur la carte…' : 'Dessiner la zone sur la carte'}
+              </BivouacButton>
+            )
+          )}
+        </div>
 
         {/* Titre */}
         <div className="mb-3">
@@ -588,6 +662,17 @@ export function AddPoiPanel({ onClose, onSubmit, selectedPosition, onSetPosition
           {!isMobile && (
             <p className="text-xs text-gray-400 mt-1">0 = très facile · 3 = moyen · 5 = difficile</p>
           )}
+        </div>
+
+        {/* Visibilité */}
+        <div className="mb-4 flex items-center justify-between gap-3 border border-gray-200 rounded-lg p-3">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-gray-800">Spot public</p>
+            <p className="text-xs text-gray-500">
+              {isPublic ? 'Visible par tous les utilisateurs' : 'Visible uniquement par vous et les administrateurs'}
+            </p>
+          </div>
+          <Toggle enabled={isPublic} onChange={() => setIsPublic((v) => !v)} />
         </div>
 
         {/* Réglementation */}

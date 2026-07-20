@@ -11,11 +11,14 @@ async function getAuthHeader(): Promise<string> {
 
 export async function fetchPois(): Promise<PoiLocation[]> {
   try {
+    // Requête authentifiée (quand l'utilisateur est connecté) pour que le serveur puisse
+    // filtrer les spots privés en fonction du demandeur (propriétaire/admin vs tiers).
+    const authHeader = await getAuthHeader();
     const response = await fetch(`${EDGE_FUNCTION_URL}/pois`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${ANON_KEY}`,
+        'Authorization': authHeader,
       },
       signal: AbortSignal.timeout(30_000),
     });

@@ -45,7 +45,7 @@ import { Panel } from './ui/bivouac-panel';
 import { BivouacButton } from './ui/bivouac-button';
 import { AlertCard } from './ui/bivouac-card';
 import { SeasonBadge } from './ui/bivouac-badge';
-import { Textarea } from './ui/bivouac-input';
+import { Textarea, Toggle } from './ui/bivouac-input';
 import { DISABLE_DURATIONS, isSpotDisabled, formatRemainingDisableTime, computeDisabledUntil } from '../utils/spot-status';
 import { getPhotoUrl, getPhotoCaption } from '../utils/photo';
 
@@ -55,6 +55,8 @@ interface PoiDetailsPanelProps {
   protectedAreas?: ProtectedArea[];
   customZones?: CustomZone[];
   onSetDisabled?: (poiId: string, disabledUntil: string | null) => Promise<boolean>;
+  onSetPublic?: (poiId: string, isPublic: boolean) => Promise<boolean>;
+  onDeleteSpot?: (poiId: string) => Promise<boolean>;
   onLoginRequired?: () => void;
   onEdit?: () => void;
 }
@@ -75,6 +77,8 @@ export function PoiDetailsPanel({
   protectedAreas = [],
   customZones = [],
   onSetDisabled,
+  onSetPublic,
+  onDeleteSpot,
   onLoginRequired,
   onEdit,
 }: PoiDetailsPanelProps) {
@@ -83,6 +87,8 @@ export function PoiDetailsPanel({
   const { isAdmin, currentUser } = useAuth();
   const { isFavorite, toggleFavorite } = useFavorites();
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isTogglingPublic, setIsTogglingPublic] = useState(false);
+  const isOwner = !!currentUser && !!location?.createdBy && currentUser.id === location.createdBy;
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showDisableForm, setShowDisableForm] = useState(false);
   const [disableMonths, setDisableMonths] = useState(DISABLE_DURATIONS[0].months);
@@ -109,15 +115,36 @@ export function PoiDetailsPanel({
   const handleDeletePoi = async () => {
     setIsDeleting(true);
     try {
-      await api.deletePoi(location.id);
-      alert('Spot supprimé avec succès');
+      if (onDeleteSpot) {
+        const success = await onDeleteSpot(location.id);
+        if (!success) throw new Error('delete failed');
+      } else {
+        await api.deletePoi(location.id);
+      }
+      toast.success('Spot supprimé avec succès');
       onClose();
     } catch (error) {
       console.error('Erreur lors de la suppression:', error);
-      alert('Erreur lors de la suppression du spot');
+      toast.error('Erreur lors de la suppression du spot');
     } finally {
       setIsDeleting(false);
       setShowDeleteConfirm(false);
+    }
+  };
+
+  const handleTogglePublic = async () => {
+    if (!onSetPublic) return;
+    setIsTogglingPublic(true);
+    try {
+      const nextIsPublic = location.isPublic === false;
+      const success = await onSetPublic(location.id, nextIsPublic);
+      if (success) {
+        toast.success(nextIsPublic ? 'Spot rendu public' : 'Spot rendu privé');
+      } else {
+        toast.error('Impossible de modifier la visibilité de ce spot');
+      }
+    } finally {
+      setIsTogglingPublic(false);
     }
   };
 
@@ -208,8 +235,9 @@ export function PoiDetailsPanel({
   );
 
   const isDisableFormOpen = !disabled && showDisableForm;
+  const isPublic = location.isPublic !== false;
 
-  const adminFooter = isAdmin ? (
+  const adminFooter = (isAdmin || isOwner) ? (
     showDeleteConfirm ? (
       <div className="bg-red-50 border border-red-200 rounded-lg p-3">
         <p className="text-sm text-red-800 font-medium mb-3">
@@ -247,17 +275,44 @@ export function PoiDetailsPanel({
             Modifier ce spot
           </BivouacButton>
         )}
-        <div className={isDisableFormOpen ? 'flex flex-col gap-2' : 'flex flex-row gap-2'}>
-          <div className={isDisableFormOpen ? '' : 'flex-1'}>{disableToggleSection}</div>
+        {onSetPublic && (
+          <div className="flex items-center justify-between gap-3 border border-gray-200 rounded-lg p-2.5">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-gray-800">Spot public</p>
+              <p className="text-xs text-gray-500 truncate">
+                {isPublic ? 'Visible par tous' : 'Visible par vous et les admins uniquement'}
+              </p>
+            </div>
+            {isTogglingPublic ? (
+              <Loader2 className="w-4 h-4 animate-spin text-gray-500 flex-shrink-0" />
+            ) : (
+              <Toggle enabled={isPublic} onChange={handleTogglePublic} />
+            )}
+          </div>
+        )}
+        {isAdmin && (
+          <div className={isDisableFormOpen ? 'flex flex-col gap-2' : 'flex flex-row gap-2'}>
+            <div className={isDisableFormOpen ? '' : 'flex-1'}>{disableToggleSection}</div>
+            <BivouacButton
+              variant="destructive"
+              icon={<Trash2 className="w-4 h-4" />}
+              onClick={() => setShowDeleteConfirm(true)}
+              className={`${isDisableFormOpen ? 'w-full' : 'flex-1'} bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 py-2.5`}
+            >
+              Supprimer ce spot
+            </BivouacButton>
+          </div>
+        )}
+        {!isAdmin && isOwner && (
           <BivouacButton
             variant="destructive"
             icon={<Trash2 className="w-4 h-4" />}
             onClick={() => setShowDeleteConfirm(true)}
-            className={`${isDisableFormOpen ? 'w-full' : 'flex-1'} bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 py-2.5`}
+            className="w-full bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 py-2.5"
           >
             Supprimer ce spot
           </BivouacButton>
-        </div>
+        )}
       </div>
     )
   ) : undefined;

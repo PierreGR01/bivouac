@@ -7,7 +7,7 @@ import { hideOsmZone } from '../../utils/supabase/hidden-osm-zones-api';
 import { fetchAdminZones, AdminZone } from '../../utils/supabase/admin-zones-api';
 import { fetchOsmZoneById } from '../services/protected-areas';
 import { BivouacButton } from './ui/bivouac-button';
-import { Input, Textarea, Select } from './ui/bivouac-input';
+import { Input, Textarea, Select, Toggle } from './ui/bivouac-input';
 import { AlertCard } from './ui/bivouac-card';
 
 interface CustomZoneFormProps {
@@ -25,23 +25,6 @@ const RESTRICTION_OPTIONS = [
   { value: 'bivouac_forbidden', label: 'Bivouac interdit' },
   { value: 'fire_forbidden', label: 'Tout type de feux interdits' },
 ];
-
-function Toggle({ enabled, onChange, disabled }: { enabled: boolean; onChange: () => void; disabled?: boolean }) {
-  return (
-    <button
-      type="button"
-      onClick={onChange}
-      disabled={disabled}
-      className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-1 ${
-        enabled ? 'bg-emerald-600' : 'bg-gray-200'
-      } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-    >
-      <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
-        enabled ? 'translate-x-[18px]' : 'translate-x-[3px]'
-      }`} />
-    </button>
-  );
-}
 
 export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, prefill, onRegisterRequestClose }: CustomZoneFormProps) {
   const { currentUser, isSuperAdmin, zoneAdminIds } = useAuth();

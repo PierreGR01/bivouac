@@ -211,6 +211,7 @@ export function MapView({
   const drawControlRef = useRef<any>(null);
   const drawLayerRef = useRef<L.FeatureGroup | null>(null);
   const previewLayerRef = useRef<L.GeoJSON | null>(null);
+  const poiZoneLayerRef = useRef<L.GeoJSON | null>(null);
   const onGeometryDrawnRef = useRef(onGeometryDrawn);
   onGeometryDrawnRef.current = onGeometryDrawn;
   const userMarkerRef = useRef<L.Marker | null>(null);
@@ -1015,6 +1016,28 @@ export function MapView({
       }
     }
   }, [previewGeometry]);
+
+  // Zone complémentaire d'un spot : donnée annexe au point, non affichée sur la carte tant
+  // que la fiche du spot n'est pas ouverte (contrairement aux zones réglementées/territoires,
+  // toujours visibles). Se retire dès la désélection du spot.
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+    const map = mapInstanceRef.current;
+
+    if (poiZoneLayerRef.current) {
+      map.removeLayer(poiZoneLayerRef.current);
+      poiZoneLayerRef.current = null;
+    }
+
+    if (selectedLocation?.zoneGeometry) {
+      const layer = L.geoJSON(selectedLocation.zoneGeometry, {
+        style: { color: '#f97316', weight: 2, fillOpacity: 0.15 },
+        interactive: false,
+      });
+      layer.addTo(map);
+      poiZoneLayerRef.current = layer;
+    }
+  }, [selectedLocation]);
 
   // Gérer le clic sur la carte en mode ajout, routage ou mesure
   useEffect(() => {

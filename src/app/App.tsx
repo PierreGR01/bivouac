@@ -20,6 +20,7 @@ import { AdminZone } from '../utils/supabase/admin-zones-api';
 import { ProtectedArea } from './services/protected-areas';
 import { WaterPoint } from './services/overpass';
 import { PoiLocation } from './types';
+import { isValidPoiZone, MAX_POI_ZONE_AREA_M2 } from './utils/poi-zone';
 
 const PoiDetailsPanel = React.lazy(() => import('./components/PoiDetailsPanel').then(m => ({ default: m.PoiDetailsPanel })));
 const AddPoiPanel = React.lazy(() => import('./components/AddPoiPanel').then(m => ({ default: m.AddPoiPanel })));
@@ -53,6 +54,8 @@ export default function App() {
   const [isMeasuringMode, setIsMeasuringMode] = useState(false);
   const [isDrawingMode, setIsDrawingMode] = useState(false);
   const [drawnGeometry, setDrawnGeometry] = useState<GeoJSON.Feature | null>(null);
+  const [isDrawingPoiZone, setIsDrawingPoiZone] = useState(false);
+  const [poiZoneGeometry, setPoiZoneGeometry] = useState<GeoJSON.Feature | null>(null);
   const [showDiagnostic, setShowDiagnostic] = useState(false);
   const [showLoginPanel, setShowLoginPanel] = useState(false);
   const [showCustomZonesEditor, setShowCustomZonesEditor] = useState(false);
@@ -136,6 +139,8 @@ export default function App() {
   const handleCloseAddPanel = () => {
     setIsAddingMode(false);
     setTemporaryPosition(null);
+    setPoiZoneGeometry(null);
+    setIsDrawingPoiZone(false);
   };
 
   const handleOpenRoutePanel = () => {
@@ -187,6 +192,9 @@ export default function App() {
   };
 
   const handleMapClick = (lat: number, lng: number) => {
+    // Pendant le tracé de la zone du spot, Leaflet Draw gère seul les clics (pose des
+    // sommets du polygone) — ne pas laisser ce handler déplacer la position du point.
+    if (isDrawingPoiZone) return;
     if (isAddingMode) {
       setTemporaryPosition({ lat, lng });
     } else if (filters.isRoutingMode) {
@@ -204,10 +212,12 @@ export default function App() {
     await pois.submitPoi(newPoi, map.waterPoints, () => {
       setIsAddingMode(false);
       setTemporaryPosition(null);
+      setPoiZoneGeometry(null);
     });
   };
 
   const handleOpenEditPanel = () => {
+    setPoiZoneGeometry(pois.selectedLocation?.zoneGeometry ?? null);
     setEditingPoi(pois.selectedLocation);
     pois.setSelectedLocation(null);
   };
@@ -216,6 +226,23 @@ export default function App() {
     const success = await pois.updateSpot(poiId, updates);
     toast[success ? 'success' : 'error'](success ? 'Spot mis à jour' : 'Échec de la mise à jour du spot');
     setEditingPoi(null);
+    setPoiZoneGeometry(null);
+  };
+
+  // Dessin de la zone optionnelle d'un spot (création ou édition) — réutilise le même
+  // handler Leaflet Draw que les zones réglementées/territoires (isDrawingMode dans
+  // MapView), routé différemment ci-dessous selon isDrawingPoiZone.
+  const handleStartPoiZoneDraw = () => {
+    setIsDrawingPoiZone(true);
+    setIsDrawingMode(true);
+  };
+
+  const handleRemovePoiZone = () => setPoiZoneGeometry(null);
+
+  const handleEditSpotFromDashboard = (poi: PoiLocation) => {
+    setShowUserDashboard(false);
+    setPoiZoneGeometry(poi.zoneGeometry ?? null);
+    setEditingPoi(poi);
   };
 
   const handleToggleCustomZones = () => {
@@ -439,6 +466,23 @@ export default function App() {
           isDrawingMode={isDrawingMode}
           onMapClick={handleMapClick}
           onGeometryDrawn={(geometry) => {
+            if (isDrawingPoiZone) {
+              setIsDrawingPoiZone(false);
+              setIsDrawingMode(false);
+              const position = editingPoi ? editingPoi.position : temporaryPosition;
+              if (!position) return;
+              const validation = isValidPoiZone(position, geometry);
+              if (!validation.valid) {
+                toast.error(
+                  validation.reason === 'too_large'
+                    ? `Zone trop grande (${Math.round(validation.areaM2 ?? 0)} m² — max ${MAX_POI_ZONE_AREA_M2} m²). Redessinez la zone.`
+                    : 'La zone doit englober le point du spot. Redessinez la zone.'
+                );
+                return;
+              }
+              setPoiZoneGeometry(geometry);
+              return;
+            }
             setDrawnGeometry(geometry);
             setIsDrawingMode(false);
           }}
@@ -548,8 +592,10 @@ export default function App() {
             protectedAreas={map.allProtectedAreas}
             customZones={map.customZones}
             onSetDisabled={pois.setSpotDisabled}
+            onSetPublic={(poiId, isPublic) => pois.updateSpot(poiId, { isPublic })}
+            onDeleteSpot={pois.deleteSpot}
             onLoginRequired={() => setShowLoginPanel(true)}
-            onEdit={isAdmin ? handleOpenEditPanel : undefined}
+            onEdit={handleOpenEditPanel}
           />
         </Suspense>
       )}
@@ -584,6 +630,10 @@ export default function App() {
             onSetPosition={setTemporaryPosition}
             customZones={map.customZones}
             protectedAreas={map.allProtectedAreas}
+            zoneGeometry={poiZoneGeometry}
+            onStartDrawZone={handleStartPoiZoneDraw}
+            onRemoveZone={handleRemovePoiZone}
+            isDrawingZone={isDrawingPoiZone}
           />
         </Suspense>
       )}
@@ -593,12 +643,16 @@ export default function App() {
           <AddPoiPanel
             mode="edit"
             initialPoi={editingPoi}
-            onClose={() => setEditingPoi(null)}
+            onClose={() => { setEditingPoi(null); setPoiZoneGeometry(null); setIsDrawingPoiZone(false); }}
             onSubmit={(updates) => handleUpdatePoi(editingPoi.id, updates)}
             selectedPosition={editingPoi.position}
             onSetPosition={() => {}}
             customZones={map.customZones}
             protectedAreas={map.allProtectedAreas}
+            zoneGeometry={poiZoneGeometry}
+            onStartDrawZone={handleStartPoiZoneDraw}
+            onRemoveZone={handleRemovePoiZone}
+            isDrawingZone={isDrawingPoiZone}
           />
         </Suspense>
       )}
@@ -876,7 +930,9 @@ export default function App() {
             onClose={() => setShowUserDashboard(false)}
             locations={pois.locations}
             onViewSpotOnMap={handleViewSpotOnMap}
+            onEditSpot={handleEditSpotFromDashboard}
             onDeleteSpot={pois.deleteSpot}
+            onSetPublic={(poiId, isPublic) => pois.updateSpot(poiId, { isPublic })}
             onViewTripOnMap={handleViewTripOnMap}
           />
         </Suspense>
