@@ -99,10 +99,11 @@ export function AdminZoneForm({ geometry, onClose, onSuccess, zone, prefill, onR
   return (
     <>
       <div
-        className="fixed bottom-4 right-4 w-[22rem] bg-white rounded-lg shadow-2xl border border-gray-200 p-4 z-[9999] max-h-[90vh] overflow-y-auto"
-        style={{ position: 'fixed', bottom: '16px', right: '16px', zIndex: 9999 }}
+        className="fixed left-0 right-0 bottom-0 md:left-auto md:right-4 md:bottom-4 w-full md:w-[22rem] bg-white rounded-t-2xl md:rounded-lg shadow-2xl border border-gray-200 z-[9999] flex flex-col"
+        style={{ maxHeight: 'calc(100dvh - 16px)' }}
       >
-        <div className="flex justify-between items-center mb-4 sticky top-0 bg-white pb-2 border-b border-gray-100">
+        {/* Header — hors zone scrollable pour rester toujours accessible (mobile : clavier qui réduit le viewport) */}
+        <div className="flex-shrink-0 flex justify-between items-center px-4 pt-4 pb-3 border-b border-gray-100">
           <h3 className="text-lg font-bold text-gray-800">
             {isEditing ? 'Modifier le territoire' : 'Créer un territoire'}
           </h3>
@@ -112,13 +113,14 @@ export function AdminZoneForm({ geometry, onClose, onSuccess, zone, prefill, onR
         </div>
 
         {error && (
-          <div className="mb-3 bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm flex items-center gap-2">
+          <div className="flex-shrink-0 mx-4 mt-3 bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm flex items-center gap-2">
             <AlertCircle size={15} className="flex-shrink-0" />
             {error}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+        <div className="flex-1 overflow-y-auto px-4 pt-4 pb-2 space-y-4" style={{ scrollbarGutter: 'stable both-edges' }}>
           <Input
             label="Nom du territoire *"
             type="text"
@@ -148,8 +150,9 @@ export function AdminZoneForm({ geometry, onClose, onSuccess, zone, prefill, onR
             className="text-sm px-3 py-2"
             disabled={isLoading}
           />
+        </div>
 
-          <div className="pt-2 border-t border-gray-100">
+          <div className="flex-shrink-0 px-4 pt-3 pb-4 border-t border-gray-100">
             {confirmDelete ? (
               <div className="space-y-2">
                 <p className="text-sm text-red-700 font-medium text-center">
