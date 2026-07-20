@@ -86,10 +86,6 @@ export function WaterPointDetailsPanel({
       <p className="mb-4 text-xs text-gray-400">Source : OpenStreetMap</p>
 
       <div className="mb-4 bg-sky-50 rounded-lg p-4">
-        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">
-          Confirmations terrain
-        </h3>
-
         {isLoading ? (
           <p className="text-sm text-gray-500">Chargement…</p>
         ) : (
@@ -101,7 +97,7 @@ export function WaterPointDetailsPanel({
                 ) : (
                   <XCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
                 )}
-                Dernière confirmation : {latest.is_valid ? 'toujours valable' : 'plus disponible'} — le {formatFrDate(latest.confirmed_on)}
+                Dernière confirmation : {latest.is_valid ? 'actif' : 'inactif'} — le {formatFrDate(latest.confirmed_on)}
               </p>
             ) : (
               <p className="text-sm text-gray-500 mb-2">Personne n'a encore confirmé ce point d'eau.</p>
@@ -116,7 +112,7 @@ export function WaterPointDetailsPanel({
                     ) : (
                       <XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
                     )}
-                    {c.is_valid ? 'Toujours valable' : 'Plus disponible'} — {formatFrDate(c.confirmed_on)}
+                    {c.is_valid ? 'Actif' : 'Inactif'} — {formatFrDate(c.confirmed_on)}
                   </li>
                 ))}
               </ul>
@@ -127,20 +123,14 @@ export function WaterPointDetailsPanel({
         {currentUser ? (
           <div>
             <p className="text-sm text-gray-600 mb-2">Ce point d'eau est-il toujours valable ?</p>
-            <div className="flex items-center gap-2 mb-3">
-              <label className="text-xs text-gray-500" htmlFor="water-point-confirmed-on">
-                Date
-              </label>
+            <div className="flex items-center gap-2">
               <input
-                id="water-point-confirmed-on"
                 type="date"
                 value={confirmedOn}
                 max={todayIsoDate()}
                 onChange={(e) => setConfirmedOn(e.target.value)}
-                className="text-sm rounded-md border border-gray-200 px-2 py-1 focus:ring-1 focus:ring-sky-400"
+                className="text-sm rounded-md border border-gray-200 px-2 py-1.5 focus:ring-1 focus:ring-sky-400"
               />
-            </div>
-            <div className="flex gap-2">
               <BivouacButton
                 variant="primary"
                 size="sm"
@@ -148,7 +138,7 @@ export function WaterPointDetailsPanel({
                 onClick={() => handleConfirm(true)}
                 disabled={isSubmitting}
               >
-                Toujours là
+                Actif
               </BivouacButton>
               <BivouacButton
                 variant="destructive"
@@ -157,7 +147,7 @@ export function WaterPointDetailsPanel({
                 onClick={() => handleConfirm(false)}
                 disabled={isSubmitting}
               >
-                Plus disponible
+                Inactif
               </BivouacButton>
             </div>
           </div>
