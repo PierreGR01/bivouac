@@ -6,7 +6,7 @@
 
 import { isPointInZoneGeometry } from './zone-geometry';
 
-export const MAX_POI_ZONE_AREA_M2 = 150;
+export const MAX_POI_ZONE_AREA_M2 = 2000;
 
 const METERS_PER_DEGREE_LAT = 111_320;
 
@@ -21,7 +21,7 @@ function ringCoordinates(geometry: GeoJSON.Feature | GeoJSON.Geometry | null | u
 }
 
 // Projection équirectangulaire autour de la latitude moyenne de l'anneau, puis formule du
-// lacet (shoelace) sur les coordonnées projetées en mètres. Précis à cette échelle (≤150 m²).
+// lacet (shoelace) sur les coordonnées projetées en mètres. Précis à cette échelle (≤2000 m²).
 export function computeAreaM2(geometry: GeoJSON.Feature | GeoJSON.Geometry | null | undefined): number {
   const ring = ringCoordinates(geometry);
   if (!ring || ring.length < 3) return 0;

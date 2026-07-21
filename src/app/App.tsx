@@ -464,6 +464,7 @@ export default function App() {
           isRoutingMode={filters.isRoutingMode}
           isMeasuringMode={isMeasuringMode}
           isDrawingMode={isDrawingMode}
+          poiZoneAreaLimitM2={isDrawingPoiZone ? MAX_POI_ZONE_AREA_M2 : null}
           onMapClick={handleMapClick}
           onGeometryDrawn={(geometry) => {
             if (isDrawingPoiZone) {

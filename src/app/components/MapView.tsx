@@ -12,6 +12,8 @@ import { CustomZone } from '../../utils/supabase/custom-zones-api';
 import { MapControls } from './MapControls';
 import { MAP_CENTER, MAP_DEFAULT_ZOOM } from '../constants';
 import { distanceToRoute, getRouteBounds } from '../utils/route-distance';
+import { createIgnTopoLayer } from '../utils/ign-topo-layer';
+import { computeAreaM2 } from '../utils/poi-zone';
 
 // Au-delà de ce nombre de points, un marqueur numéroté par point (utile pour quelques
 // waypoints cliqués à la main) devient illisible et coûteux à afficher — le tracé (polyligne)
@@ -77,6 +79,9 @@ interface MapViewProps {
   isRoutingMode?: boolean;
   isMeasuringMode?: boolean;
   isDrawingMode?: boolean;
+  // Quand renseigné, le dessin en cours est celui de la zone complémentaire d'un spot :
+  // affiche un badge de retour live (surface / max) distinct du dessin de zone réglementée/territoire.
+  poiZoneAreaLimitM2?: number | null;
   onMapClick?: (lat: number, lng: number) => void;
   onGeometryDrawn?: (geometry: GeoJSON.Feature) => void;
   previewGeometry?: GeoJSON.Feature | null;
@@ -155,6 +160,7 @@ export function MapView({
   isRoutingMode = false,
   isMeasuringMode = false,
   isDrawingMode = false,
+  poiZoneAreaLimitM2 = null,
   onMapClick,
   onGeometryDrawn,
   previewGeometry,
@@ -214,6 +220,7 @@ export function MapView({
   const poiZoneLayerRef = useRef<L.GeoJSON | null>(null);
   const onGeometryDrawnRef = useRef(onGeometryDrawn);
   onGeometryDrawnRef.current = onGeometryDrawn;
+  const [liveDrawAreaM2, setLiveDrawAreaM2] = useState<number | null>(null);
   const userMarkerRef = useRef<L.Marker | null>(null);
   const searchMarkerRef = useRef<L.Marker | null>(null);
   const searchMarkerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -496,13 +503,11 @@ export function MapView({
         basePane.style.opacity = '';
       }
     } else {
-      // Mode normal : vue topographique par défaut
-      newLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-        attribution: 'Map data: &copy; OpenStreetMap contributors | Map style: &copy; OpenTopoMap',
-        maxZoom: 17,
-        pane: 'baseMapPane'
-      }).addTo(map);
-      
+      // Mode normal : IGN (SCAN 25® jusqu'au zoom 16, sa résolution native maximale,
+      // puis bascule automatique vers Plan IGN v2 — gratuit, sans clé — jusqu'au zoom 19)
+      const ignKey = import.meta.env.VITE_IGN_SCAN25_KEY as string | undefined;
+      newLayer = createIgnTopoLayer(ignKey, { pane: 'baseMapPane' }).addTo(map);
+
       // Retirer le filtre si on n'est pas en mode hiver
       if (basePane) {
         basePane.style.filter = '';
@@ -954,6 +959,8 @@ export function MapView({
       drawControlRef.current = null;
     }
     map.off('draw:created');
+    map.off('draw:drawvertex');
+    setLiveDrawAreaM2(null);
 
     if (isDrawingMode) {
       if (!drawLayerRef.current) {
@@ -968,19 +975,38 @@ export function MapView({
       handler.enable();
       drawControlRef.current = handler;
 
+      // Zone d'un spot : retour live sur la surface tracée (badge dédié), en plus du
+      // tooltip natif de Leaflet.Draw — recalculée à chaque sommet posé.
+      if (poiZoneAreaLimitM2 != null) {
+        setLiveDrawAreaM2(0);
+        map.on('draw:drawvertex', (e: any) => {
+          const latlngs: L.LatLng[] = [];
+          e.layers.eachLayer((l: any) => latlngs.push(l.getLatLng()));
+          if (latlngs.length < 3) {
+            setLiveDrawAreaM2(0);
+            return;
+          }
+          const ring = latlngs.map((ll) => [ll.lng, ll.lat]);
+          setLiveDrawAreaM2(computeAreaM2({ type: 'Polygon', coordinates: [ring] } as any));
+        });
+      }
+
       map.on('draw:created', (e: any) => {
         const layer = e.layer;
         drawLayerRef.current?.addLayer(layer);
         const geometry = layer.toGeoJSON();
         onGeometryDrawnRef.current?.(geometry);
+        setLiveDrawAreaM2(null);
       });
 
       return () => {
         map.off('draw:created');
+        map.off('draw:drawvertex');
         if (drawControlRef.current) {
           drawControlRef.current.disable();
           drawControlRef.current = null;
         }
+        setLiveDrawAreaM2(null);
       };
     } else {
       if (drawLayerRef.current) {
@@ -991,7 +1017,7 @@ export function MapView({
     // onGeometryDrawn est lu via une ref pour ne pas recréer le handler Leaflet.Draw
     // (donc perdre le tracé en cours) à chaque re-render du parent (ex: pan/zoom qui
     // met à jour les bounds dans App.tsx et recrée l'inline callback).
-  }, [isDrawingMode]);
+  }, [isDrawingMode, poiZoneAreaLimitM2]);
 
   // Aperçu d'une géométrie sélectionnée sans dessin manuel (massif prédéfini, import
   // GeoJSON, édition d'un territoire) — sinon rien ne montre visuellement la sélection.
@@ -1889,6 +1915,15 @@ export function MapView({
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
+
+      {/* Retour live sur la surface de la zone d'un spot en cours de tracé */}
+      {isDrawingMode && poiZoneAreaLimitM2 != null && liveDrawAreaM2 !== null && (
+        <div className={`absolute left-1/2 -translate-x-1/2 top-6 z-[1050] rounded-lg shadow-lg px-4 py-2 font-medium text-sm ${
+          liveDrawAreaM2 > poiZoneAreaLimitM2 ? 'bg-red-50 text-red-800 border-l-4 border-red-400' : 'bg-white text-gray-800'
+        }`}>
+          Surface de la zone : {Math.round(liveDrawAreaM2)} m² / {poiZoneAreaLimitM2} m² max
+        </div>
+      )}
 
       {/* Message d'erreur ou d'info - s'affiche au-dessus du bouton si nécessaire */}
       {showWaterPoints && waterError && (

@@ -24,7 +24,7 @@ export interface PoiLocation {
   disabledUntil?: string | null; // ISO 8601 — date de fin de désactivation temporaire, null/absent = actif
   createdBy?: string; // ID de l'utilisateur créateur (dérivé côté serveur, absent sur les spots legacy)
   createdAt?: string; // ISO 8601 — date de création (dérivée côté serveur, absente sur les spots legacy)
-  zoneGeometry?: GeoJSON.Feature | null; // Zone optionnelle (≤150m², doit contenir le point), affichée seulement quand le spot est sélectionné
+  zoneGeometry?: GeoJSON.Feature | null; // Zone optionnelle (≤2000m², doit contenir le point), affichée seulement quand le spot est sélectionné
   isPublic?: boolean; // absent/undefined = public (comportement legacy) ; false = visible uniquement par le créateur et les admins
 }
 

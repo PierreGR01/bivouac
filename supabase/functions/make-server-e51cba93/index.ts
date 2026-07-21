@@ -195,11 +195,11 @@ function canSeePrivatePoi(poi: any, ctx: ModerationContext): boolean {
   return ctx.zones.some((z: any) => isPointInZoneGeometry(poi.position, z.geometry));
 }
 
-// --- Zone optionnelle d'un spot (≤150 m², doit contenir le point) ---
+// --- Zone optionnelle d'un spot (≤ MAX_POI_ZONE_AREA_M2, doit contenir le point) ---
 // Miroir de src/app/utils/poi-zone.ts — dupliqué ici pour que la contrainte ne soit pas
 // contournable par une requête forgée directement contre l'edge function.
 
-const MAX_POI_ZONE_AREA_M2 = 150;
+const MAX_POI_ZONE_AREA_M2 = 2000;
 const METERS_PER_DEGREE_LAT = 111_320;
 
 function poiZoneRing(geometry: any): number[][] | null {
@@ -337,7 +337,7 @@ app.post("/make-server-e51cba93/pois", safeHandler(async (c: any) => {
     }
 
     if (zoneGeometry && !isValidPoiZone(position, zoneGeometry)) {
-      return c.json({ success: false, error: "Zone invalide : elle doit contenir le point du spot et ne pas dépasser 150 m²" }, 400);
+      return c.json({ success: false, error: `Zone invalide : elle doit contenir le point du spot et ne pas dépasser ${MAX_POI_ZONE_AREA_M2} m²` }, 400);
     }
 
     const poi = {
@@ -402,7 +402,7 @@ app.put("/make-server-e51cba93/pois/:id", safeHandler(async (c: any) => {
     if (!isModerator) delete updates.disabledUntil;
 
     if ("zoneGeometry" in updates && !isValidPoiZone(existing.position, updates.zoneGeometry)) {
-      return c.json({ success: false, error: "Zone invalide : elle doit contenir le point du spot et ne pas dépasser 150 m²" }, 400);
+      return c.json({ success: false, error: `Zone invalide : elle doit contenir le point du spot et ne pas dépasser ${MAX_POI_ZONE_AREA_M2} m²` }, 400);
     }
 
     const updated = { ...existing, ...updates };
