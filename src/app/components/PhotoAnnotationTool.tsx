@@ -49,10 +49,31 @@ export function PhotoAnnotationTool({ imageUrl, onSave, onCancel }: PhotoAnnotat
     setNaturalSize({ width: img.naturalWidth, height: img.naturalHeight });
   };
 
+  // The container box does not always match the photo's aspect ratio (e.g. when
+  // max-height clamps it), so the <img> (object-contain) ends up letterboxed inside
+  // it. Compute the actual displayed image rect so points map to the real photo,
+  // not to the full (possibly letterboxed) container.
+  const getImageRect = () => {
+    const { width: cw, height: ch } = containerSize;
+    const { width: nw, height: nh } = naturalSize;
+    if (!cw || !ch || !nw || !nh) {
+      return { width: cw, height: ch, offsetX: 0, offsetY: 0 };
+    }
+    const scale = Math.min(cw / nw, ch / nh);
+    const width = nw * scale;
+    const height = nh * scale;
+    return { width, height, offsetX: (cw - width) / 2, offsetY: (ch - height) / 2 };
+  };
+
   const clientToNormalized = (clientX: number, clientY: number): Point => {
     const rect = containerRef.current!.getBoundingClientRect();
-    const x = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
-    const y = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
+    const imageRect = getImageRect();
+    const x = imageRect.width
+      ? Math.min(1, Math.max(0, (clientX - rect.left - imageRect.offsetX) / imageRect.width))
+      : 0;
+    const y = imageRect.height
+      ? Math.min(1, Math.max(0, (clientY - rect.top - imageRect.offsetY) / imageRect.height))
+      : 0;
     return { x, y };
   };
 
@@ -107,15 +128,18 @@ export function PhotoAnnotationTool({ imageUrl, onSave, onCancel }: PhotoAnnotat
       ctx.fillStyle = `rgba(${gray}, ${gray}, ${gray}, 0.1)`;
       ctx.fill();
       ctx.strokeStyle = `rgb(${gray}, ${gray}, ${gray})`;
-      ctx.lineWidth = containerSize.width ? Math.max(2, (naturalSize.width / containerSize.width) * 2) : 2;
+      const displayedImageWidth = getImageRect().width;
+      ctx.lineWidth = displayedImageWidth ? Math.max(2, (naturalSize.width / displayedImageWidth) * 2) : 2;
       ctx.stroke();
       onSave(canvas.toDataURL('image/jpeg', 0.85));
     };
     img.src = imageUrl;
   };
 
+  const imageRect = getImageRect();
+
   const pointsAttr = points
-    .map((p) => `${p.x * containerSize.width},${p.y * containerSize.height}`)
+    .map((p) => `${imageRect.offsetX + p.x * imageRect.width},${imageRect.offsetY + p.y * imageRect.height}`)
     .join(' ');
 
   return (
@@ -169,8 +193,8 @@ export function PhotoAnnotationTool({ imageUrl, onSave, onCancel }: PhotoAnnotat
                 return (
                   <circle
                     key={`mid-${i}`}
-                    cx={mid.x * containerSize.width}
-                    cy={mid.y * containerSize.height}
+                    cx={imageRect.offsetX + mid.x * imageRect.width}
+                    cy={imageRect.offsetY + mid.y * imageRect.height}
                     r={MIDPOINT_RADIUS}
                     fill="#ffffff"
                     stroke="#1f2937"
@@ -184,8 +208,8 @@ export function PhotoAnnotationTool({ imageUrl, onSave, onCancel }: PhotoAnnotat
               {points.map((p, i) => (
                 <circle
                   key={`pt-${i}`}
-                  cx={p.x * containerSize.width}
-                  cy={p.y * containerSize.height}
+                  cx={imageRect.offsetX + p.x * imageRect.width}
+                  cy={imageRect.offsetY + p.y * imageRect.height}
                   r={HANDLE_RADIUS}
                   fill="#ffffff"
                   stroke="#1f2937"

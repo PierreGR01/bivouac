@@ -393,6 +393,7 @@ app.put("/make-server-e51cba93/pois/:id", safeHandler(async (c: any) => {
       "title", "description", "photos", "season", "waterProximity",
       "naturalWaterProximity", "regulations", "altitude", "capacity",
       "difficulty", "ratings", "disabledUntil", "isPublic", "zoneGeometry",
+      "position",
     ]);
     const updates = Object.fromEntries(
       Object.entries(raw).filter(([k]) => ALLOWED_FIELDS.has(k))
@@ -401,8 +402,24 @@ app.put("/make-server-e51cba93/pois/:id", safeHandler(async (c: any) => {
     // La désactivation temporaire reste une action de modération, pas d'édition par le propriétaire.
     if (!isModerator) delete updates.disabledUntil;
 
-    if ("zoneGeometry" in updates && !isValidPoiZone(existing.position, updates.zoneGeometry)) {
+    if ("position" in updates) {
+      const pos = updates.position;
+      if (!pos || typeof pos.lat !== "number" || typeof pos.lng !== "number" || isNaN(pos.lat) || isNaN(pos.lng)) {
+        return c.json({ success: false, error: "Position invalide" }, 400);
+      }
+    }
+
+    // La zone doit englober la position à jour du spot (celle envoyée dans cette même
+    // requête si le spot est aussi repositionné, sinon la position déjà enregistrée).
+    const effectivePosition = updates.position ?? existing.position;
+    if ("zoneGeometry" in updates && !isValidPoiZone(effectivePosition, updates.zoneGeometry)) {
       return c.json({ success: false, error: `Zone invalide : elle doit contenir le point du spot et ne pas dépasser ${MAX_POI_ZONE_AREA_M2} m²` }, 400);
+    }
+    // Si le spot est repositionné sans repasser par un redessin de zone, s'assurer que la
+    // zone existante contient toujours le nouveau point (sinon la zone deviendrait incohérente).
+    if ("position" in updates && !("zoneGeometry" in updates) && existing.zoneGeometry
+        && !isValidPoiZone(effectivePosition, existing.zoneGeometry)) {
+      return c.json({ success: false, error: "La nouvelle position sort de la zone du spot. Redessinez la zone ou supprimez-la avant de déplacer le spot." }, 400);
     }
 
     const updated = { ...existing, ...updates };

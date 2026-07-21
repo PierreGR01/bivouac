@@ -19,6 +19,8 @@ interface AddPoiPanelProps {
   onSubmit: (poi: NewPoi) => void;
   selectedPosition: { lat: number; lng: number } | null;
   onSetPosition: (position: { lat: number; lng: number } | null) => void;
+  onStartReposition?: () => void;
+  isRepositioning?: boolean;
   customZones?: CustomZone[];
   protectedAreas?: ProtectedArea[];
   mode?: 'create' | 'edit';
@@ -130,6 +132,8 @@ export function AddPoiPanel({
   onSubmit,
   selectedPosition,
   onSetPosition,
+  onStartReposition,
+  isRepositioning = false,
   customZones = [],
   protectedAreas = [],
   mode = 'create',
@@ -188,7 +192,13 @@ export function AddPoiPanel({
 
   const handleToggleWantsZone = (checked: boolean) => {
     setWantsZone(checked);
-    if (!checked) onRemoveZone?.();
+    if (checked) {
+      // Pas de zone existante à conserver : lance directement le tracé, pas de bouton
+      // intermédiaire à cliquer en plus de la case à cocher.
+      if (!zoneGeometry) onStartDrawZone?.();
+    } else {
+      onRemoveZone?.();
+    }
   };
 
   const handleUseMyLocation = () => {
@@ -323,7 +333,7 @@ export function AddPoiPanel({
       <form onSubmit={handleSubmit}>
         {/* Position */}
         <div className="mb-3">
-          {!selectedPosition ? (
+          {!selectedPosition || (isEditMode && isRepositioning) ? (
             <div className="flex gap-2">
               <div className="flex-1 bg-emerald-50 border-l-4 border-emerald-400 p-2.5 rounded-r-lg flex items-center gap-2">
                 <MapPin className="w-4 h-4 text-emerald-600 flex-shrink-0" />
@@ -345,11 +355,23 @@ export function AddPoiPanel({
               </BivouacButton>
             </div>
           ) : (
-            <div className="bg-green-50 rounded-lg p-2.5 flex items-center gap-2 text-green-700">
-              <MapPin className="w-4 h-4 flex-shrink-0" />
-              <span className="text-sm font-medium">
-                {selectedPosition.lat.toFixed(4)}°N, {selectedPosition.lng.toFixed(4)}°E
-              </span>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 bg-green-50 rounded-lg p-2.5 flex items-center gap-2 text-green-700">
+                <MapPin className="w-4 h-4 flex-shrink-0" />
+                <span className="text-sm font-medium">
+                  {selectedPosition.lat.toFixed(4)}°N, {selectedPosition.lng.toFixed(4)}°E
+                </span>
+              </div>
+              {isEditMode && (
+                <BivouacButton
+                  type="button"
+                  variant="outline"
+                  onClick={onStartReposition}
+                  className="flex-shrink-0 text-xs px-2.5 py-1.5"
+                >
+                  Repositionner
+                </BivouacButton>
+              )}
             </div>
           )}
         </div>
@@ -433,6 +455,7 @@ export function AddPoiPanel({
               type="checkbox"
               checked={wantsZone}
               onChange={(e) => handleToggleWantsZone(e.target.checked)}
+              disabled={!selectedPosition}
               className="w-4 h-4 text-orange-600 rounded focus:ring-2 focus:ring-orange-500"
             />
             <span className="text-sm font-medium text-gray-800">
@@ -456,15 +479,11 @@ export function AddPoiPanel({
                 </div>
               </div>
             ) : (
-              <BivouacButton
-                type="button"
-                variant="outline"
-                onClick={onStartDrawZone}
-                disabled={!selectedPosition || isDrawingZone}
-                className="w-full text-sm"
-              >
-                {isDrawingZone ? 'Dessinez le contour sur la carte…' : 'Dessiner la zone sur la carte'}
-              </BivouacButton>
+              <div className="bg-orange-50 border-l-4 border-orange-400 p-2.5 rounded-r-lg text-orange-800 text-sm">
+                {isDrawingZone
+                  ? 'Dessinez le contour sur la carte…'
+                  : 'Décochez puis recochez la case pour relancer le tracé.'}
+              </div>
             )
           )}
         </div>

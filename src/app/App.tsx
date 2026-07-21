@@ -51,6 +51,11 @@ export default function App() {
   const [isAddingMode, setIsAddingMode] = useState(false);
   const [temporaryPosition, setTemporaryPosition] = useState<{ lat: number; lng: number } | null>(null);
   const [editingPoi, setEditingPoi] = useState<PoiLocation | null>(null);
+  // N'active le clic-carte pour déplacer un spot en édition que sur demande explicite —
+  // sinon un simple clic pour regarder la zone tracée déplacerait le spot par erreur (et
+  // invaliderait la zone déjà dessinée autour de l'ancienne position, faisant échouer
+  // l'enregistrement sans message clair).
+  const [isRepositioningPoi, setIsRepositioningPoi] = useState(false);
   const [isMeasuringMode, setIsMeasuringMode] = useState(false);
   const [isDrawingMode, setIsDrawingMode] = useState(false);
   const [drawnGeometry, setDrawnGeometry] = useState<GeoJSON.Feature | null>(null);
@@ -141,6 +146,7 @@ export default function App() {
     setTemporaryPosition(null);
     setPoiZoneGeometry(null);
     setIsDrawingPoiZone(false);
+    setIsDrawingMode(false);
   };
 
   const handleOpenRoutePanel = () => {
@@ -197,6 +203,9 @@ export default function App() {
     if (isDrawingPoiZone) return;
     if (isAddingMode) {
       setTemporaryPosition({ lat, lng });
+    } else if (editingPoi && isRepositioningPoi) {
+      setTemporaryPosition({ lat, lng });
+      setIsRepositioningPoi(false);
     } else if (filters.isRoutingMode) {
       filters.setRoutePoints(prev => [...prev, { lat, lng }]);
       // L'itinéraire s'écarte désormais de la trace enregistrée chargée, le cas échéant.
@@ -219,14 +228,35 @@ export default function App() {
   const handleOpenEditPanel = () => {
     setPoiZoneGeometry(pois.selectedLocation?.zoneGeometry ?? null);
     setEditingPoi(pois.selectedLocation);
+    setTemporaryPosition(null);
+    setIsRepositioningPoi(false);
     pois.setSelectedLocation(null);
+  };
+
+  const handleCloseEditPanel = () => {
+    setEditingPoi(null);
+    setPoiZoneGeometry(null);
+    setIsDrawingPoiZone(false);
+    setIsDrawingMode(false);
+    setTemporaryPosition(null);
+    setIsRepositioningPoi(false);
   };
 
   const handleUpdatePoi = async (poiId: string, updates: NewPoi) => {
     const success = await pois.updateSpot(poiId, updates);
     toast[success ? 'success' : 'error'](success ? 'Spot mis à jour' : 'Échec de la mise à jour du spot');
-    setEditingPoi(null);
-    setPoiZoneGeometry(null);
+    handleCloseEditPanel();
+  };
+
+  const handleStartReposition = () => setIsRepositioningPoi(true);
+
+  // Utilisée comme onSetPosition du panneau d'édition : la position peut aussi être
+  // fixée directement (bouton "Ma position"), pas seulement par un clic sur la carte —
+  // il faut alors aussi désarmer le mode repositionnement, sinon le panneau resterait
+  // affiché comme "en attente d'un clic" malgré la position déjà mise à jour.
+  const handleSetEditPosition = (position: { lat: number; lng: number } | null) => {
+    setTemporaryPosition(position);
+    setIsRepositioningPoi(false);
   };
 
   // Dessin de la zone optionnelle d'un spot (création ou édition) — réutilise le même
@@ -237,12 +267,21 @@ export default function App() {
     setIsDrawingMode(true);
   };
 
-  const handleRemovePoiZone = () => setPoiZoneGeometry(null);
+  // Sort systématiquement du mode dessin carte (checkbox décochée en plein tracé, zone
+  // retirée après coup, etc.) — sinon Leaflet Draw reste actif alors que le panneau ne
+  // montre plus aucune zone en cours, la carte semblant "coincée" en mode dessin.
+  const handleRemovePoiZone = () => {
+    setPoiZoneGeometry(null);
+    setIsDrawingPoiZone(false);
+    setIsDrawingMode(false);
+  };
 
   const handleEditSpotFromDashboard = (poi: PoiLocation) => {
     setShowUserDashboard(false);
     setPoiZoneGeometry(poi.zoneGeometry ?? null);
     setEditingPoi(poi);
+    setTemporaryPosition(null);
+    setIsRepositioningPoi(false);
   };
 
   const handleToggleCustomZones = () => {
@@ -391,6 +430,11 @@ export default function App() {
     pois.selectedLocation !== null || isAddingMode || filters.showFilters || filters.isRoutingMode
     || selectedZone !== null || selectedProtectedArea !== null || selectedWaterPoint !== null;
 
+  // Position affichée/éditable sur la carte : le point temporaire prime, à défaut la
+  // position déjà enregistrée du spot en cours d'édition (permet de replacer un spot
+  // mal positionné sans perdre sa position d'origine tant qu'on n'a pas recliqué).
+  const editablePosition = editingPoi ? (temporaryPosition ?? editingPoi.position) : temporaryPosition;
+
   return (
     <div className="relative w-screen overflow-hidden" style={{ height: '100dvh' }}>
 
@@ -460,7 +504,7 @@ export default function App() {
           locations={filters.filteredLocations}
           onLocationClick={handleLocationClick}
           selectedLocation={pois.selectedLocation}
-          isAddingMode={isAddingMode}
+          isAddingMode={isAddingMode || (!!editingPoi && isRepositioningPoi)}
           isRoutingMode={filters.isRoutingMode}
           isMeasuringMode={isMeasuringMode}
           isDrawingMode={isDrawingMode}
@@ -470,7 +514,7 @@ export default function App() {
             if (isDrawingPoiZone) {
               setIsDrawingPoiZone(false);
               setIsDrawingMode(false);
-              const position = editingPoi ? editingPoi.position : temporaryPosition;
+              const position = editablePosition;
               if (!position) return;
               const validation = isValidPoiZone(position, geometry);
               if (!validation.valid) {
@@ -488,7 +532,7 @@ export default function App() {
             setIsDrawingMode(false);
           }}
           previewGeometry={previewGeometry}
-          temporaryMarkerPosition={temporaryPosition}
+          temporaryMarkerPosition={editablePosition}
           routePoints={filters.routePoints}
           isSmartRouting={filters.isSmartRouting}
           maxDistanceFromRoute={filters.maxDistanceFromRoute}
@@ -644,10 +688,12 @@ export default function App() {
           <AddPoiPanel
             mode="edit"
             initialPoi={editingPoi}
-            onClose={() => { setEditingPoi(null); setPoiZoneGeometry(null); setIsDrawingPoiZone(false); }}
+            onClose={handleCloseEditPanel}
             onSubmit={(updates) => handleUpdatePoi(editingPoi.id, updates)}
-            selectedPosition={editingPoi.position}
-            onSetPosition={() => {}}
+            selectedPosition={editablePosition}
+            onSetPosition={handleSetEditPosition}
+            onStartReposition={handleStartReposition}
+            isRepositioning={isRepositioningPoi}
             customZones={map.customZones}
             protectedAreas={map.allProtectedAreas}
             zoneGeometry={poiZoneGeometry}
