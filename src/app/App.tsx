@@ -654,6 +654,7 @@ export default function App() {
       {(selectedZone || selectedProtectedArea) && (
         <Suspense fallback={null}>
           <ZoneInfoPanel
+            key={selectedZone?.id ?? selectedProtectedArea?.id}
             zone={selectedZone}
             protectedArea={selectedProtectedArea}
             onClose={handleCloseZoneInfo}
@@ -664,6 +665,7 @@ export default function App() {
       {selectedWaterPoint && (
         <Suspense fallback={null}>
           <WaterPointDetailsPanel
+            key={selectedWaterPoint?.id}
             waterPoint={selectedWaterPoint}
             onClose={() => setSelectedWaterPoint(null)}
             currentUser={currentUser}
@@ -726,7 +728,9 @@ export default function App() {
             isLoadingWaterCount={isLoadingRouteWater}
             maxDistance={filters.maxDistanceFromRoute}
             onMaxDistanceChange={filters.setMaxDistanceFromRoute}
+            activeTripName={filters.activeTripName}
             onSaveRoute={handleSaveRoute}
+            onUpdateRoute={handleUpdateRoute}
           />
         </Suspense>
       )}
