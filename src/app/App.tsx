@@ -165,6 +165,14 @@ export default function App() {
     }
   };
 
+  const handleUpdateRoute = async () => {
+    if (!filters.activeTripId) return;
+    const success = await trips.editTrip(filters.activeTripId, { points: filters.routePoints });
+    if (success) {
+      filters.closeRoutePanel();
+    }
+  };
+
   // Recharge le tracé d'un trip enregistré dans l'éditeur d'itinéraire existant (modifiable/
   // ré-enregistrable), plutôt qu'une nouvelle couche carte en lecture seule dédiée.
   const handleViewTripOnMap = (trip: Trip) => {
@@ -207,9 +215,7 @@ export default function App() {
       setTemporaryPosition({ lat, lng });
       setIsRepositioningPoi(false);
     } else if (filters.isRoutingMode) {
-      filters.setRoutePoints(prev => [...prev, { lat, lng }]);
-      // L'itinéraire s'écarte désormais de la trace enregistrée chargée, le cas échéant.
-      if (filters.activeTripId) filters.setActiveTripId(null);
+      filters.addRoutePoint({ lat, lng });
     } else if (showCustomZonesEditor && (editingZone || editingOsmZone)) {
       requestCloseZoneForm.current?.();
     } else if (showAdminZoneEditor && editingAdminZone) {
@@ -710,7 +716,9 @@ export default function App() {
             onClose={filters.closeRoutePanel}
             isSmartRouting={filters.isSmartRouting}
             onToggleSmartRouting={filters.setIsSmartRouting}
-            onClearRoute={filters.deactivateTrip}
+            onClearRoute={filters.clearRoute}
+            onUndo={filters.undoRoute}
+            canUndo={filters.canUndo}
             onFinishRoute={() => filters.setIsRoutingMode(false)}
             routePointsCount={filters.routePoints.length}
             nearbyPoisCount={filters.nearbyPoisCount}

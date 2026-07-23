@@ -49,6 +49,40 @@ export function CountBadge({ count, className }: CountBadgeProps) {
   );
 }
 
+interface StatBadgeProps {
+  icon: React.ReactNode;
+  label: string;
+  value: string | number;
+  variant?: 'blue' | 'emerald' | 'orange' | 'gray';
+  className?: string;
+}
+
+const statBadgeClasses: Record<NonNullable<StatBadgeProps['variant']>, string> = {
+  blue: 'bg-blue-50 text-blue-700',
+  emerald: 'bg-emerald-50 text-emerald-700',
+  orange: 'bg-orange-50 text-orange-700',
+  gray: 'bg-gray-50 text-gray-700',
+};
+
+// Badge compact tenant sur une seule ligne (icône + libellé + valeur) — remplace les
+// anciennes InfoCard trop hautes (label puis gros chiffre sur deux lignes) pour l'outil
+// trace et le panneau Filtres, qui affichent tous deux les mêmes statistiques.
+export function StatBadge({ icon, label, value, variant = 'gray', className }: StatBadgeProps) {
+  return (
+    <div
+      className={cn(
+        'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium overflow-hidden',
+        statBadgeClasses[variant],
+        className
+      )}
+    >
+      <span className="flex-shrink-0">{icon}</span>
+      <span className="truncate">{label}</span>
+      <span className="ml-auto font-bold flex-shrink-0 pl-1">{value}</span>
+    </div>
+  );
+}
+
 interface StatusBadgeProps {
   status: 'success' | 'warning' | 'error' | 'info';
   children: React.ReactNode;

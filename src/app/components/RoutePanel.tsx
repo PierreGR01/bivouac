@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Route, Trash2, Check, Zap, Save } from 'lucide-react';
+import { Route, RotateCcw, Undo2, Check, Zap, Save, Tent, Droplets } from 'lucide-react';
 import { Panel } from './ui/bivouac-panel';
 import { BivouacButton } from './ui/bivouac-button';
-import { AlertCard, InfoCard } from './ui/bivouac-card';
+import { StatBadge } from './ui/bivouac-badge';
 import { RangeSlider } from './ui/bivouac-input';
 import { TripNamePrompt } from './TripNamePrompt';
 import { useAuth } from '../contexts/AuthContext';
@@ -12,6 +12,8 @@ interface RoutePanelProps {
   isSmartRouting: boolean;
   onToggleSmartRouting: (value: boolean) => void;
   onClearRoute: () => void;
+  onUndo: () => void;
+  canUndo: boolean;
   onFinishRoute: () => void;
   routePointsCount: number;
   nearbyPoisCount: number;
@@ -19,7 +21,12 @@ interface RoutePanelProps {
   isLoadingWaterCount?: boolean;
   maxDistance: number;
   onMaxDistanceChange: (value: number) => void;
+  // Nom de la trace chargée si l'itinéraire courant correspond à une trace enregistrée
+  // (import ou tracé) — détermine si "Enregistrer" doit créer une nouvelle trace ou
+  // mettre à jour celle-ci.
+  activeTripName?: string | null;
   onSaveRoute?: (name: string) => Promise<void>;
+  onUpdateRoute?: () => Promise<void>;
 }
 
 export function RoutePanel({
@@ -27,6 +34,8 @@ export function RoutePanel({
   isSmartRouting,
   onToggleSmartRouting,
   onClearRoute,
+  onUndo,
+  canUndo,
   onFinishRoute,
   routePointsCount,
   nearbyPoisCount,
@@ -34,11 +43,14 @@ export function RoutePanel({
   isLoadingWaterCount = false,
   maxDistance,
   onMaxDistanceChange,
+  activeTripName,
   onSaveRoute,
+  onUpdateRoute,
 }: RoutePanelProps) {
   const { currentUser } = useAuth();
   const [showNamePrompt, setShowNamePrompt] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   const handleConfirmSave = async (name: string) => {
     if (!onSaveRoute) return;
@@ -51,29 +63,31 @@ export function RoutePanel({
     }
   };
 
+  const handleUpdate = async () => {
+    if (!onUpdateRoute) return;
+    setIsUpdating(true);
+    try {
+      await onUpdateRoute();
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   return (
     <Panel
       onClose={onClose}
       title="Tracer un itinéraire"
       icon={<Route className="w-5 h-5" />}
     >
-      {/* Instructions */}
-      <AlertCard type="success" className="mb-4">
-        <p className="text-sm">
-          Cliquez sur la carte pour placer des points. Les spots de bivouac et points d'eau
-          proches seront automatiquement filtrés.
-        </p>
-      </AlertCard>
-
       {/* Statistiques */}
-      <div className="grid grid-cols-2 gap-3 mb-4">
-        <InfoCard title="Points d'itinéraire" value={routePointsCount} variant="blue" />
-        <InfoCard title="Spots à proximité" value={nearbyPoisCount} variant="emerald" />
-        <InfoCard
-          title="Points d'eau à proximité"
+      <div className="flex flex-wrap gap-2 mb-4">
+        <StatBadge icon={<Route className="w-3.5 h-3.5" />} label="Points d'itinéraire" value={routePointsCount} variant="blue" />
+        <StatBadge icon={<Tent className="w-3.5 h-3.5" />} label="Spots à proximité" value={nearbyPoisCount} variant="emerald" />
+        <StatBadge
+          icon={<Droplets className="w-3.5 h-3.5" />}
+          label="Points d'eau à proximité"
           value={isLoadingWaterCount ? 'Recherche…' : nearbyWaterCount}
           variant="blue"
-          className="col-span-2"
         />
       </div>
 
@@ -119,9 +133,19 @@ export function RoutePanel({
       </div>
 
       {/* Enregistrer le tracé — réservé aux utilisateurs connectés */}
-      {currentUser && onSaveRoute && (
+      {currentUser && (onSaveRoute || onUpdateRoute) && (
         <div className="mb-4">
-          {showNamePrompt ? (
+          {activeTripName && onUpdateRoute ? (
+            <BivouacButton
+              variant="secondary"
+              icon={<Save className="w-4 h-4" />}
+              onClick={handleUpdate}
+              disabled={routePointsCount < 2 || isUpdating}
+              className="w-full py-2.5"
+            >
+              {isUpdating ? 'Mise à jour…' : `Mettre à jour « ${activeTripName} »`}
+            </BivouacButton>
+          ) : showNamePrompt ? (
             <TripNamePrompt
               onConfirm={handleConfirmSave}
               onCancel={() => setShowNamePrompt(false)}
@@ -142,15 +166,24 @@ export function RoutePanel({
       )}
 
       {/* Actions */}
-      <div className="flex gap-3">
+      <div className="flex gap-2">
         <BivouacButton
-          variant="destructive"
-          icon={<Trash2 className="w-4 h-4" />}
+          variant="ghost"
+          icon={<Undo2 className="w-4 h-4" />}
+          onClick={onUndo}
+          disabled={!canUndo}
+          title="Annuler la dernière action"
+          className="px-3 py-2.5 border border-gray-200"
+        />
+        <BivouacButton
+          variant="outline"
+          icon={<RotateCcw className="w-4 h-4" />}
           onClick={onClearRoute}
           disabled={routePointsCount === 0}
+          title="Réinitialise la vue sans supprimer une trace déjà enregistrée"
           className="flex-1 py-2.5"
         >
-          Effacer
+          Réinitialiser
         </BivouacButton>
         <BivouacButton
           variant="primary"

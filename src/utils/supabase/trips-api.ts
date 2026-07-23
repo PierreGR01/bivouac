@@ -43,6 +43,21 @@ export async function createTrip(trip: TripInput): Promise<Trip | null> {
   return data;
 }
 
+export async function updateTrip(
+  id: string,
+  updates: Partial<Pick<TripInput, 'name' | 'points'>>
+): Promise<Trip | null> {
+  const { data, error } = await supabaseClient
+    .from('trips')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
 export async function deleteTrip(id: string): Promise<void> {
   const { error } = await supabaseClient
     .from('trips')

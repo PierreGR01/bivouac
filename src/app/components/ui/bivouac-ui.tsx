@@ -16,6 +16,7 @@ export {
   SeasonBadge,
   CountBadge,
   StatusBadge,
+  StatBadge,
   type Season,
 } from './bivouac-badge';
 

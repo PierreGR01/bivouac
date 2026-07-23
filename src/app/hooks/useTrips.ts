@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
-import { fetchTrips, createTrip, deleteTrip, Trip, TripInput } from '../../utils/supabase/trips-api';
+import { fetchTrips, createTrip, updateTrip, deleteTrip, Trip, TripInput } from '../../utils/supabase/trips-api';
 
 export function useTrips() {
   const { currentUser } = useAuth();
@@ -29,6 +29,24 @@ export function useTrips() {
     }
   };
 
+  const editTrip = async (id: string, updates: Partial<Pick<TripInput, 'name' | 'points'>>): Promise<boolean> => {
+    if (!currentUser) return false;
+    try {
+      const trip = await updateTrip(id, updates);
+      if (trip) {
+        queryClient.setQueryData<Trip[]>(['trips', currentUser.id], (old = []) =>
+          old.map((t) => (t.id === id ? trip : t))
+        );
+      }
+      toast.success('Trace mise à jour');
+      return true;
+    } catch (error) {
+      console.error('Error updating trip:', error);
+      toast.error('Impossible de mettre à jour la trace');
+      return false;
+    }
+  };
+
   const removeTrip = async (id: string): Promise<boolean> => {
     if (!currentUser) return false;
     try {
@@ -46,6 +64,7 @@ export function useTrips() {
     trips: query.data ?? [],
     isLoading: query.isLoading,
     saveTrip,
+    editTrip,
     removeTrip,
   };
 }

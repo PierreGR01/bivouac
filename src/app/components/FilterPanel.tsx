@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Droplets, Snowflake, SunSnow, Waves, Tent, Mountain, Route, ChevronDown, ChevronUp } from 'lucide-react';
+import { Droplets, Snowflake, SunSnow, Waves, Tent, Mountain, Route, ChevronDown, ChevronUp, Check } from 'lucide-react';
 import { Panel } from './ui/bivouac-panel';
 import { BivouacButton, FilterChip } from './ui/bivouac-button';
 import { DifficultySelector, RangeSlider } from './ui/bivouac-input';
-import { InfoCard } from './ui/bivouac-card';
+import { StatBadge } from './ui/bivouac-badge';
+import { cn } from './ui/utils';
 import { Trip } from '../../utils/supabase/trips-api';
 
 export interface FilterOptions {
@@ -102,22 +103,28 @@ export function FilterPanel({
           trips.length === 0 ? (
             <p className="text-xs text-gray-400">Aucune trace enregistrée pour le moment.</p>
           ) : (
-            <div className="flex flex-col gap-2">
-              {trips.map((trip) => (
-                <label
-                  key={trip.id}
-                  className="flex items-center gap-3 cursor-pointer p-2.5 border border-gray-200 rounded-lg hover:border-emerald-300 transition-colors bg-white"
-                >
-                  <input
-                    type="checkbox"
-                    checked={activeTripId === trip.id}
-                    onChange={() => onToggleTrip(trip)}
-                    className="w-5 h-5 text-emerald-600 rounded focus:ring-2 focus:ring-emerald-500 flex-shrink-0"
-                  />
-                  <Route className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                  <span className="text-sm text-gray-800 flex-1 truncate">{trip.name}</span>
-                </label>
-              ))}
+            <div className="flex flex-wrap gap-2">
+              {trips.map((trip) => {
+                const active = activeTripId === trip.id;
+                return (
+                  <button
+                    key={trip.id}
+                    type="button"
+                    onClick={() => onToggleTrip(trip)}
+                    title={trip.name}
+                    className={cn(
+                      'inline-flex items-center gap-1.5 max-w-full px-2.5 py-1.5 rounded-full border text-xs font-medium transition-colors',
+                      active
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
+                        : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                    )}
+                  >
+                    <Route className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span className="truncate max-w-[10rem]">{trip.name}</span>
+                    {active && <Check className="w-3 h-3 flex-shrink-0" strokeWidth={3} />}
+                  </button>
+                );
+              })}
             </div>
           )
         )}
@@ -133,10 +140,11 @@ export function FilterPanel({
               unit="m"
               displayValue={maxDistanceFromRoute}
             />
-            <div className="grid grid-cols-2 gap-2 mt-3">
-              <InfoCard title="Spots à proximité" value={nearbyPoisCount} variant="emerald" />
-              <InfoCard
-                title="Points d'eau à proximité"
+            <div className="flex flex-wrap gap-2 mt-3">
+              <StatBadge icon={<Tent className="w-3.5 h-3.5" />} label="Spots à proximité" value={nearbyPoisCount} variant="emerald" />
+              <StatBadge
+                icon={<Droplets className="w-3.5 h-3.5" />}
+                label="Points d'eau à proximité"
                 value={isLoadingWaterCount ? 'Recherche…' : nearbyWaterCount}
                 variant="blue"
               />
