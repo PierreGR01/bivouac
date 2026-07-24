@@ -11,7 +11,7 @@ export async function fetchHiddenOsmZones(): Promise<HiddenOsmZone[]> {
       .from('hidden_osm_zones')
       .select('osm_id, osm_name');
     if (error) throw error;
-    return data?.map((r: any) => ({ id: r.osm_id, name: r.osm_name ?? undefined })) ?? [];
+    return data?.map((r: { osm_id: string; osm_name: string | null }) => ({ id: r.osm_id, name: r.osm_name ?? undefined })) ?? [];
   } catch {
     return [];
   }

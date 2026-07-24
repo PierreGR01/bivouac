@@ -5,8 +5,8 @@
 const isDev = import.meta.env.DEV;
 
 export const devLog = {
-  log: (...args: any[]) => isDev && console.log(...args),
-  warn: (...args: any[]) => isDev && console.warn(...args),
-  error: (...args: any[]) => isDev && console.error(...args),
-  info: (...args: any[]) => isDev && console.info(...args),
+  log: (...args: unknown[]) => isDev && console.log(...args),
+  warn: (...args: unknown[]) => isDev && console.warn(...args),
+  error: (...args: unknown[]) => isDev && console.error(...args),
+  info: (...args: unknown[]) => isDev && console.info(...args),
 };

@@ -12,8 +12,7 @@ const METERS_PER_DEGREE_LAT = 111_320;
 
 function ringCoordinates(geometry: GeoJSON.Feature | GeoJSON.Geometry | null | undefined): number[][] | null {
   if (!geometry) return null;
-  const raw = geometry as any;
-  const geom = raw.type === 'Feature' ? raw.geometry : raw;
+  const geom = geometry.type === 'Feature' ? geometry.geometry : geometry;
   if (!geom) return null;
   if (geom.type === 'Polygon') return geom.coordinates[0] ?? null;
   if (geom.type === 'MultiPolygon') return geom.coordinates[0]?.[0] ?? null;

@@ -1,9 +1,24 @@
 import { PoiLocation } from '../types';
 
+// Forme (partielle, non garantie) des anciens POIs stockés avant l'introduction de
+// waterProximity — d'où le typage large : ce sont des données legacy de forme incertaine,
+// validées au runtime ci-dessous plutôt qu'au typage.
+interface LegacyPoi {
+  id?: unknown;
+  position?: { lat?: unknown; lng?: unknown } | null;
+  title?: unknown;
+  description?: unknown;
+  photos?: unknown;
+  season?: unknown;
+  regulations?: unknown;
+  hasWater?: unknown;
+  waterProximity?: unknown;
+}
+
 /**
  * Migre les anciens POIs avec hasWater vers le nouveau format avec waterProximity
  */
-export function migratePoi(poi: any): PoiLocation | null {
+export function migratePoi(poi: LegacyPoi): PoiLocation | null {
   try {
     // Vérifier que les coordonnées sont valides
     if (!poi.position || 
@@ -17,7 +32,7 @@ export function migratePoi(poi: any): PoiLocation | null {
 
     // Si le POI a déjà waterProximity, le retourner tel quel
     if ('waterProximity' in poi) {
-      return poi as PoiLocation;
+      return poi as unknown as PoiLocation;
     }
 
     // Migrer hasWater vers waterProximity
@@ -28,8 +43,9 @@ export function migratePoi(poi: any): PoiLocation | null {
       waterProximity = 'proche';
     }
 
-    // Créer le nouveau POI avec waterProximity
-    const migratedPoi: PoiLocation = {
+    // Créer le nouveau POI avec waterProximity — cast nécessaire, ces champs viennent de
+    // données non typées dont seule la position a été validée au runtime ci-dessus.
+    const migratedPoi = {
       id: poi.id,
       position: poi.position,
       title: poi.title,
@@ -38,7 +54,7 @@ export function migratePoi(poi: any): PoiLocation | null {
       season: poi.season,
       waterProximity,
       regulations: poi.regulations || '',
-    };
+    } as unknown as PoiLocation;
 
     return migratedPoi;
   } catch (error) {
@@ -50,7 +66,7 @@ export function migratePoi(poi: any): PoiLocation | null {
 /**
  * Migre un tableau de POIs
  */
-export function migratePois(pois: any[]): PoiLocation[] {
+export function migratePois(pois: LegacyPoi[]): PoiLocation[] {
   return pois
     .map(migratePoi)
     .filter((poi): poi is PoiLocation => poi !== null);

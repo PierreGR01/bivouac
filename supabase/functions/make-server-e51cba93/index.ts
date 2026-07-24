@@ -207,6 +207,19 @@ const METERS_PER_DEGREE_LAT = 111_320;
 // limite appliquée côté client.
 const MAX_PHOTOS_PER_SPOT = 4;
 
+// Un spot ne doit jamais stocker une photo en base64 inline (c'était l'ancien fonctionnement,
+// remplacé par un upload vers le bucket Storage `spot-photos` — voir POST /photos/upload) :
+// ça fait gonfler `spots.detail` et chaque fetch de la liste. Le flux normal ne produit plus
+// jamais de data URI, mais rien n'empêchait une requête forgée (ou le champ "URL de la photo"
+// côté client) d'en soumettre une directement.
+function hasDataUriPhoto(photos: unknown): boolean {
+  if (!Array.isArray(photos)) return false;
+  return photos.some((p: any) => {
+    const url = typeof p === "string" ? p : p?.url;
+    return typeof url === "string" && url.startsWith("data:");
+  });
+}
+
 // Bornes anti-abus sur les champs texte libres d'un spot (aucune limite client existante
 // à reprendre ; valeurs de départ raisonnables, ajustables si besoin).
 const MAX_TITLE_LENGTH = 120;
@@ -692,6 +705,9 @@ app.post("/make-server-e51cba93/pois", safeHandler(async (c: any) => {
     if (Array.isArray(photos) && photos.length > MAX_PHOTOS_PER_SPOT) {
       return c.json({ success: false, error: `Maximum ${MAX_PHOTOS_PER_SPOT} photos par spot` }, 400);
     }
+    if (hasDataUriPhoto(photos)) {
+      return c.json({ success: false, error: "Les photos doivent être uploadées via /photos/upload, pas fournies en base64" }, 400);
+    }
 
     const poi = {
       id,
@@ -765,6 +781,9 @@ app.put("/make-server-e51cba93/pois/:id", safeHandler(async (c: any) => {
 
     if ("photos" in updates && Array.isArray(updates.photos) && updates.photos.length > MAX_PHOTOS_PER_SPOT) {
       return c.json({ success: false, error: `Maximum ${MAX_PHOTOS_PER_SPOT} photos par spot` }, 400);
+    }
+    if ("photos" in updates && hasDataUriPhoto(updates.photos)) {
+      return c.json({ success: false, error: "Les photos doivent être uploadées via /photos/upload, pas fournies en base64" }, 400);
     }
 
     if ("position" in updates) {
@@ -1429,72 +1448,6 @@ app.post("/make-server-e51cba93/photos/upload", safeHandler(async (c: any) => {
     return c.json({ success: true, url: data.publicUrl });
   } catch (error) {
     console.error("Error handling photo upload:", error);
-    return c.json({ success: false, error: 'Internal server error' }, 500);
-  }
-}));
-
-// ONE-OFF MIGRATION (Phase 3 perf) — reprend les photos encore stockées en base64
-// inline dans `detail.photos` et les uploade vers le bucket Storage, en remplaçant
-// `url` par l'URL publique. Admin only, idempotent (ignore les photos déjà migrées,
-// reconnaissables à une `url` qui n'est plus un data URI). À supprimer une fois
-// validé en prod.
-app.post("/make-server-e51cba93/migrate-photos-to-storage", safeHandler(async (c: any) => {
-  if (!(await requireAdmin(c))) {
-    return c.json({ success: false, error: "Unauthorized" }, 401);
-  }
-
-  try {
-    const pois = await getAllPois();
-    const supabase = getServiceClient();
-    let migratedPhotos = 0;
-    let migratedPois = 0;
-    const failures: string[] = [];
-
-    for (const poi of pois as any[]) {
-      const photos: any[] = poi.photos || [];
-      if (photos.length === 0) continue;
-
-      let changed = false;
-      const newPhotos = [];
-      for (const photo of photos) {
-        const url: string = typeof photo === "string" ? photo : photo?.url;
-        if (!url || !url.startsWith("data:")) {
-          newPhotos.push(photo);
-          continue;
-        }
-        try {
-          const [header, base64Data] = url.split(",");
-          const contentType = header.match(/data:([^;]+);base64/)?.[1] || "image/jpeg";
-          const bytes = Uint8Array.from(atob(base64Data), (ch) => ch.charCodeAt(0));
-          const ext = contentType.split("/")[1]?.split("+")[0]?.replace(/[^a-z0-9]/gi, "") || "jpg";
-          const path = `${poi.createdBy ?? "legacy"}/${crypto.randomUUID()}.${ext}`;
-
-          const { error: uploadError } = await supabase.storage
-            .from("spot-photos")
-            .upload(path, bytes, { contentType, upsert: false });
-          if (uploadError) throw new Error(uploadError.message);
-
-          const { data } = supabase.storage.from("spot-photos").getPublicUrl(path);
-          const caption = typeof photo === "string" ? undefined : photo?.caption;
-          newPhotos.push(caption ? { url: data.publicUrl, caption } : { url: data.publicUrl });
-          migratedPhotos++;
-          changed = true;
-        } catch (err) {
-          console.error(`Failed to migrate a photo for POI ${poi.id}:`, err);
-          failures.push(poi.id);
-          newPhotos.push(photo);
-        }
-      }
-
-      if (changed) {
-        await setPoi({ ...poi, photos: newPhotos });
-        migratedPois++;
-      }
-    }
-
-    return c.json({ success: true, migratedPhotos, migratedPois, failures });
-  } catch (error) {
-    console.error("Error migrating photos to storage:", error);
     return c.json({ success: false, error: 'Internal server error' }, 500);
   }
 }));

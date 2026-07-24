@@ -24,8 +24,7 @@ function isPointInRing(point: Point, ring: number[][]): boolean {
 
 export function isPointInZoneGeometry(point: Point, geometry: GeoJSON.Feature | GeoJSON.Geometry | null | undefined): boolean {
   if (!geometry) return false;
-  const raw = geometry as any;
-  const geom = raw.type === 'Feature' ? raw.geometry : raw;
+  const geom = geometry.type === 'Feature' ? geometry.geometry : geometry;
   if (!geom) return false;
 
   if (geom.type === 'Polygon') {

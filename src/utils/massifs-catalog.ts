@@ -17,14 +17,19 @@ export interface MassifCatalogEntry {
 
 let cache: MassifCatalogEntry[] | null = null;
 
+interface RawMassifFeature {
+  properties: { code: string; title: string; mountain: string; source_note: string };
+  geometry: GeoJSON.Geometry;
+}
+
 export async function fetchMassifsCatalog(): Promise<MassifCatalogEntry[]> {
   if (cache) return cache;
 
   const response = await fetch('/data/massifs-alpins.geojson');
   if (!response.ok) throw new Error('Impossible de charger le catalogue des massifs');
-  const data = await response.json();
+  const data: { features: RawMassifFeature[] } = await response.json();
 
-  cache = (data.features as any[]).map((feature) => ({
+  cache = data.features.map((feature) => ({
     id: String(feature.properties.code),
     name: feature.properties.title as string,
     region: feature.properties.mountain as string,

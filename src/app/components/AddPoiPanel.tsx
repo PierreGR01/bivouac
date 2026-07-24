@@ -257,10 +257,14 @@ export function AddPoiPanel({
       toast.error(`Maximum ${MAX_PHOTOS_PER_SPOT} photos par spot`);
       return;
     }
-    if (newPhotoUrl.trim()) {
-      setPhotos([...photos, { url: newPhotoUrl.trim() }]);
-      setNewPhotoUrl('');
+    const url = newPhotoUrl.trim();
+    if (!url) return;
+    if (!/^https?:\/\//i.test(url)) {
+      toast.error('L\'URL doit être un lien http(s) valide (pas un fichier collé directement)');
+      return;
     }
+    setPhotos([...photos, { url }]);
+    setNewPhotoUrl('');
   };
 
   const handleFileSelect = (source: 'camera' | 'gallery') => (e: React.ChangeEvent<HTMLInputElement>) => {
