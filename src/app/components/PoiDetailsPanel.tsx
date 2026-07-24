@@ -47,7 +47,7 @@ import { AlertCard } from './ui/bivouac-card';
 import { SeasonBadge } from './ui/bivouac-badge';
 import { Textarea, Toggle } from './ui/bivouac-input';
 import { DISABLE_DURATIONS, isSpotDisabled, formatRemainingDisableTime, computeDisabledUntil } from '../utils/spot-status';
-import { getPhotoUrl, getPhotoCaption } from '../utils/photo';
+import { getPhotoUrl, getPhotoThumbUrl, getPhotoCaption } from '../utils/photo';
 
 interface PoiDetailsPanelProps {
   location: PoiLocation | null;
@@ -499,63 +499,31 @@ function PanelContent({
 
   return (
     <>
-      {/* Photo gallery */}
+      {/* Photo gallery — vignettes compactes (image complète chargée seulement à l'ouverture
+          du visualiseur plein écran, cf. modal plus bas) */}
       {location.photos && location.photos.length > 0 && (
-        <div className="relative mb-4">
-          {/* Mobile: horizontal thumbnails */}
-          <div className="flex gap-2 overflow-x-auto pb-2 md:hidden">
-            {location.photos.map((photo, index) => (
-              <button
-                key={index}
-                onClick={() => {
-                  setCurrentPhotoIndex(index);
-                  onPhotoClick?.();
-                }}
-                className={`flex-shrink-0 rounded-lg overflow-hidden border-2 transition-all ${
-                  index === currentPhotoIndex
-                    ? 'border-emerald-500'
-                    : 'border-transparent hover:border-gray-300'
-                }`}
-                style={{ height: '35px', width: '52px' }}
-              >
-                <img
-                  src={getPhotoUrl(photo)}
-                  alt={getPhotoCaption(photo) || `${location.title} - Photo ${index + 1}`}
-                  className="w-full h-full object-cover"
-                />
-              </button>
-            ))}
-          </div>
-
-          {/* Desktop: full image */}
-          <div className="hidden md:block">
+        <div className="flex gap-2 overflow-x-auto pb-2 mb-4">
+          {location.photos.map((photo, index) => (
             <button
-              type="button"
-              onClick={() => onPhotoClick?.()}
-              className="block w-full aspect-video bg-gray-200 rounded-xl overflow-hidden cursor-zoom-in"
+              key={index}
+              onClick={() => {
+                setCurrentPhotoIndex(index);
+                onPhotoClick?.();
+              }}
+              className={`flex-shrink-0 rounded-lg overflow-hidden border-2 transition-all ${
+                index === currentPhotoIndex
+                  ? 'border-emerald-500'
+                  : 'border-transparent hover:border-gray-300'
+              }`}
+              style={{ height: '64px', width: '64px' }}
             >
               <img
-                src={getPhotoUrl(location.photos[currentPhotoIndex])}
-                alt={location.title}
+                src={getPhotoThumbUrl(photo)}
+                alt={getPhotoCaption(photo) || `${location.title} - Photo ${index + 1}`}
                 className="w-full h-full object-cover"
               />
             </button>
-            {location.photos.length > 1 && (
-              <div className="flex justify-center gap-2 mt-3">
-                {location.photos.map((_, index) => (
-                  <button
-                    key={index}
-                    onClick={() => setCurrentPhotoIndex(index)}
-                    className={`h-2 rounded-full transition-all ${
-                      index === currentPhotoIndex
-                        ? 'bg-emerald-500 w-6'
-                        : 'bg-gray-300 w-2 hover:bg-gray-400'
-                    }`}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
+          ))}
         </div>
       )}
 

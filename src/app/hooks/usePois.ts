@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { PoiLocation } from '../types';
 import { mockLocations } from '../data';
@@ -7,18 +7,33 @@ import { migratePois } from '../utils/poi-migration';
 import { calculateWaterProximity, calculateNaturalWaterProximity } from '../utils/water-proximity';
 import { fetchWaterPoints, fetchNearbyStreams } from '../services/overpass';
 import { devLog } from '../utils/logger';
-import { WATER_LOADING_RADIUS_DEG } from '../constants';
+import { WATER_LOADING_RADIUS_DEG, DEFAULT_POIS_BBOX } from '../constants';
 import * as api from '../../utils/supabase/api';
+import { PoisBbox } from '../../utils/supabase/api';
 import { NewPoi } from '../components/AddPoiPanel';
 
-async function fetchPois(): Promise<PoiLocation[]> {
+// Marge autour du viewport réel (évite de recharger au moindre pan/zoom) + arrondi à une
+// grille de 0,05° (bornes de repli en dehors, pour ne jamais rétrécir la zone demandée) —
+// stabilise la clé de cache react-query pour que de petits déplacements réutilisent le
+// même résultat déjà en cache.
+function expandAndRoundBbox(bbox: PoisBbox): PoisBbox {
+  const latSpan = bbox.north - bbox.south;
+  const lngSpan = bbox.east - bbox.west;
+  const latMargin = Math.max(latSpan * 0.25, 0.02);
+  const lngMargin = Math.max(lngSpan * 0.25, 0.02);
+  const grid = 0.05;
+  return {
+    south: Math.floor((bbox.south - latMargin) / grid) * grid,
+    west: Math.floor((bbox.west - lngMargin) / grid) * grid,
+    north: Math.ceil((bbox.north + latMargin) / grid) * grid,
+    east: Math.ceil((bbox.east + lngMargin) / grid) * grid,
+  };
+}
+
+async function fetchPois(bbox: PoisBbox): Promise<PoiLocation[]> {
   try {
-    const pois = await api.fetchPois();
+    const pois = await api.fetchPois(bbox);
     const migrated = migratePois(pois);
-    if (migrated.length === 0) {
-      devLog.log('📌 Utilisation des données de démonstration');
-      return mockLocations;
-    }
     devLog.log(`✅ Chargé ${migrated.length} POI(s) depuis le serveur`);
     return migrated;
   } catch (error: any) {
@@ -27,6 +42,7 @@ async function fetchPois(): Promise<PoiLocation[]> {
       return mockLocations;
     }
     console.error('❌ Erreur lors du chargement des POIs:', error);
+    devLog.log('📌 Utilisation des données de démonstration (échec du chargement)');
     return mockLocations;
   }
 }
@@ -36,14 +52,32 @@ interface SubmitPoiArgs {
   waterPoints: any[];
 }
 
-export function usePois() {
+// Bounds bruts de la carte (mis à jour à chaque `moveend`, non débounced à la source —
+// cf. useMapLayers) ; `null` tant qu'aucun `moveend` n'a encore été reçu.
+export function usePois(mapBounds?: PoisBbox | null) {
   const queryClient = useQueryClient();
   const [selectedLocation, setSelectedLocation] = useState<PoiLocation | null>(null);
   const [serverAvailable, setServerAvailable] = useState(true);
 
+  // Débounce ~400ms avant de répercuter un nouveau bbox sur la query — sinon un pan
+  // continu déclencherait un fetch à chaque frame de `moveend`.
+  const [debouncedBounds, setDebouncedBounds] = useState<PoisBbox>(DEFAULT_POIS_BBOX);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!mapBounds) return;
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(() => setDebouncedBounds(mapBounds), 400);
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    };
+  }, [mapBounds]);
+
+  const effectiveBbox = expandAndRoundBbox(debouncedBounds);
+
   const query = useQuery({
-    queryKey: ['pois'],
-    queryFn: fetchPois,
+    queryKey: ['pois', effectiveBbox],
+    queryFn: () => fetchPois(effectiveBbox),
+    placeholderData: keepPreviousData,
   });
 
 
@@ -102,7 +136,7 @@ export function usePois() {
         devLog.log(`🏔️ Enrichissement: altitude=${altitude}m, eau=${enriched.waterProximity}, naturelle=${enriched.naturalWaterProximity}`);
 
         // Mise à jour du cache local + selectedLocation si le spot est ouvert
-        queryClient.setQueryData<PoiLocation[]>(['pois'], (old = []) =>
+        queryClient.setQueriesData<PoiLocation[]>({ queryKey: ['pois'] }, (old = []) =>
           old.map(p => p.id === poiWithId.id ? { ...p, ...enriched } : p)
         );
         setSelectedLocation(prev =>
@@ -121,7 +155,7 @@ export function usePois() {
     },
 
     onSuccess: (poi) => {
-      queryClient.setQueryData<PoiLocation[]>(['pois'], (old = []) => [...old, poi]);
+      queryClient.setQueriesData<PoiLocation[]>({ queryKey: ['pois'] }, (old = []) => [...old, poi]);
       setSelectedLocation(poi);
     },
 
@@ -141,13 +175,29 @@ export function usePois() {
     // Analytics "vues 30j" du dashboard admin — fire-and-forget, une fois par ouverture.
     api.recordPoiView(loc.id).catch(() => {});
 
+    // GET /pois (liste) ne renvoie que des champs légers — `description` n'existe que
+    // sur un objet déjà enrichi du détail complet. Si absent, on va chercher photos/
+    // reviews/regulations/zoneGeometry et on les injecte dans le spot ouvert ET dans
+    // le cache de la liste (pour ne refaire ce fetch qu'une fois par spot).
+    if (loc.description === undefined) {
+      api.fetchPoiDetail(loc.id).then(detail => {
+        if (!detail) return;
+        setSelectedLocation(prev => prev?.id === loc.id ? { ...prev, ...detail } : prev);
+        queryClient.setQueriesData<PoiLocation[]>({ queryKey: ['pois'] }, (old = []) =>
+          old.map(p => p.id === loc.id ? { ...p, ...detail } : p)
+        );
+      }).catch(() => {
+        devLog.log('⚠️ Détail du spot introuvable (ignoré)');
+      });
+    }
+
     // Re-enrich altitude if missing
     if (loc.altitude === null || loc.altitude === undefined) {
       api.fetchAltitude(loc.position.lat, loc.position.lng)
         .then(altitude => {
           if (altitude == null) return;
           setSelectedLocation(prev => prev?.id === loc.id ? { ...prev, altitude } : prev);
-          queryClient.setQueryData<PoiLocation[]>(['pois'], (old = []) =>
+          queryClient.setQueriesData<PoiLocation[]>({ queryKey: ['pois'] }, (old = []) =>
             old.map(p => p.id === loc.id ? { ...p, altitude } : p)
           );
           api.enrichPoi(loc.id, { altitude }).catch(() => {});
@@ -172,7 +222,7 @@ export function usePois() {
         const naturalWaterProximity = calculateNaturalWaterProximity(loc.position.lat, loc.position.lng, allWaterPoints);
         const enriched = { waterProximity, naturalWaterProximity };
         setSelectedLocation(prev => prev?.id === loc.id ? { ...prev, ...enriched } : prev);
-        queryClient.setQueryData<PoiLocation[]>(['pois'], (old = []) =>
+        queryClient.setQueriesData<PoiLocation[]>({ queryKey: ['pois'] }, (old = []) =>
           old.map(p => p.id === loc.id ? { ...p, ...enriched } : p)
         );
         api.enrichPoi(loc.id, enriched).catch(() => {});
@@ -183,7 +233,7 @@ export function usePois() {
   const setSpotDisabled = useCallback(async (poiId: string, disabledUntil: string | null): Promise<boolean> => {
     const success = await api.updatePoi(poiId, { disabledUntil });
     if (success) {
-      queryClient.setQueryData<PoiLocation[]>(['pois'], (old = []) =>
+      queryClient.setQueriesData<PoiLocation[]>({ queryKey: ['pois'] }, (old = []) =>
         old.map(p => p.id === poiId ? { ...p, disabledUntil } : p)
       );
       setSelectedLocation(prev => prev?.id === poiId ? { ...prev, disabledUntil } : prev);
@@ -194,7 +244,7 @@ export function usePois() {
   const deleteSpot = useCallback(async (poiId: string): Promise<boolean> => {
     try {
       await api.deletePoi(poiId);
-      queryClient.setQueryData<PoiLocation[]>(['pois'], (old = []) => old.filter(p => p.id !== poiId));
+      queryClient.setQueriesData<PoiLocation[]>({ queryKey: ['pois'] }, (old = []) => old.filter(p => p.id !== poiId));
       setSelectedLocation(prev => prev?.id === poiId ? null : prev);
       return true;
     } catch {
@@ -205,7 +255,7 @@ export function usePois() {
   const updateSpot = useCallback(async (poiId: string, updates: Partial<PoiLocation>): Promise<boolean> => {
     const success = await api.updatePoi(poiId, updates);
     if (success) {
-      queryClient.setQueryData<PoiLocation[]>(['pois'], (old = []) =>
+      queryClient.setQueriesData<PoiLocation[]>({ queryKey: ['pois'] }, (old = []) =>
         old.map(p => p.id === poiId ? { ...p, ...updates } : p)
       );
       setSelectedLocation(prev => prev?.id === poiId ? { ...prev, ...updates } : prev);

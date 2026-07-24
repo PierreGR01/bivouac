@@ -1,5 +1,8 @@
 export interface SpotPhoto {
   url: string;
+  // Vignette légère (générée à l'upload) pour l'affichage compact dans la fiche spot —
+  // absente sur les photos migrées avant l'introduction des vignettes (repli sur `url`).
+  thumbUrl?: string;
   caption?: string;
 }
 
@@ -26,6 +29,20 @@ export interface PoiLocation {
   createdAt?: string; // ISO 8601 — date de création (dérivée côté serveur, absente sur les spots legacy)
   zoneGeometry?: GeoJSON.Feature | null; // Zone optionnelle (≤2000m², doit contenir le point), affichée seulement quand le spot est sélectionné
   isPublic?: boolean; // absent/undefined = public (comportement legacy) ; false = visible uniquement par le créateur et les admins
+}
+
+// Ligne allégée renvoyée par GET /pois/admin-list — pas de champs lourds (photos,
+// reviews, description, regulations, zoneGeometry), juste ce qu'il faut pour afficher
+// une ligne de tableau admin à l'échelle d'un territoire ou de toute la plateforme.
+export interface PoiAdminSummary {
+  id: string;
+  position: { lat: number; lng: number };
+  title: string;
+  isPublic: boolean;
+  disabledUntil?: string | null;
+  createdBy?: string;
+  createdAt: string;
+  photosCount: number;
 }
 
 export interface Review {

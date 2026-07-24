@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -15,13 +15,14 @@ import {
   LogOut,
   Pencil,
 } from 'lucide-react';
-import { PoiLocation, Review } from '../types';
+import { PoiLocation } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { BivouacButton } from './ui/bivouac-button';
 import { Input, Toggle } from './ui/bivouac-input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs';
 import { TripNamePrompt } from './TripNamePrompt';
 import * as api from '../../utils/supabase/api';
+import { MyReviewEntry } from '../../utils/supabase/api';
 import { updatePassword } from '../../utils/supabase/auth';
 import { Trip } from '../../utils/supabase/trips-api';
 import { useFavorites } from '../hooks/useFavorites';
@@ -139,24 +140,47 @@ export function UserDashboard({ onClose, locations, onViewSpotOnMap, onEditSpot,
   const [isSubmittingPassword, setIsSubmittingPassword] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  const mySpots = useMemo(
-    () => locations.filter((l) => l.createdBy === currentUser?.id),
-    [locations, currentUser]
-  );
+  // GET /pois (liste) est désormais scopé à la zone de carte visible (Phase 4) — un spot
+  // créé par l'utilisateur ou mis en favori peut se trouver n'importe où, donc ces deux
+  // onglets ne peuvent plus se contenter de filtrer la prop `locations`. Endpoints dédiés,
+  // chacun borné par ce que CET utilisateur possède (pas par le volume de la plateforme).
+  const [mySpots, setMySpots] = useState<PoiLocation[]>([]);
+  useEffect(() => {
+    if (!currentUser) { setMySpots([]); return; }
+    void api.fetchMyPois().then(setMySpots).catch(() => setMySpots([]));
+  }, [currentUser]);
 
-  const myReviews = useMemo(
-    () => locations.flatMap((poi) =>
-      (poi.reviews || [])
-        .filter((r) => r.userId === currentUser?.id)
-        .map((review) => ({ review, poi }))
-    ),
-    [locations, currentUser]
-  );
+  const [savedSpots, setSavedSpots] = useState<PoiLocation[]>([]);
+  useEffect(() => {
+    const ids = [...favorites.favoriteIds];
+    if (ids.length === 0) { setSavedSpots([]); return; }
+    void api.fetchPoisByIds(ids).then(setSavedSpots).catch(() => setSavedSpots([]));
+  }, [favorites.favoriteIds]);
 
-  const savedSpots = useMemo(
-    () => locations.filter((l) => favorites.favoriteIds.has(l.id)),
-    [locations, favorites.favoriteIds]
-  );
+  // GET /pois (liste) ne renvoie plus les `reviews` par spot (allégement Phase 2) — et
+  // un avis peut porter sur le spot de quelqu'un d'autre, donc on ne peut pas se
+  // contenter de scanner `mySpots`. Un endpoint dédié fait ce scan côté serveur et ne
+  // renvoie qu'une petite liste bornée par le nombre d'avis de CET utilisateur.
+  const [myReviewEntries, setMyReviewEntries] = useState<MyReviewEntry[]>([]);
+  useEffect(() => {
+    void api.fetchMyReviews().then(setMyReviewEntries).catch(() => setMyReviewEntries([]));
+  }, [currentUser]);
+
+  // Repère vers l'objet déjà chargé (`locations`, allégé) pour ouvrir un spot sur la
+  // carte avec le plus d'infos possible tout de suite — `selectLocation` complètera
+  // lui-même le détail manquant (photos/reviews/...) si besoin. `description` absent
+  // (pas `''`) dans le fallback : c'est justement le signal que `selectLocation` utilise
+  // pour savoir qu'il doit aller chercher le détail complet.
+  const locationById = useMemo(() => new Map(locations.map((l) => [l.id, l])), [locations]);
+  const reviewEntryToLocation = (entry: MyReviewEntry): PoiLocation =>
+    locationById.get(entry.poiId) ?? ({
+      id: entry.poiId,
+      position: entry.poiPosition,
+      title: entry.poiTitle,
+      photos: [],
+      season: 'toute-annee',
+      waterProximity: null,
+    } as unknown as PoiLocation);
 
   const handleDeleteSpot = async (poiId: string) => {
     setBusyId(poiId);
@@ -170,16 +194,16 @@ export function UserDashboard({ onClose, locations, onViewSpotOnMap, onEditSpot,
     }
   };
 
-  const handleDeleteReview = async (poi: PoiLocation, review: Review) => {
-    const key = review.createdAt ?? `__idx_${(poi.reviews || []).indexOf(review)}__`;
-    setBusyId(key);
+  const handleDeleteReview = async (poiId: string, reviewKey: string) => {
+    setBusyId(reviewKey);
     try {
-      const updatedPoi = await api.deleteReview(poi.id, key);
+      const updatedPoi = await api.deleteReview(poiId, reviewKey);
       if (updatedPoi) {
-        queryClient.setQueryData<PoiLocation[]>(['pois'], (old = []) =>
-          old.map((p) => (p.id === poi.id ? updatedPoi : p))
+        queryClient.setQueriesData<PoiLocation[]>({ queryKey: ['pois'] }, (old = []) =>
+          old.map((p) => (p.id === poiId ? updatedPoi : p))
         );
       }
+      setMyReviewEntries((prev) => prev.filter((e) => !(e.poiId === poiId && e.reviewKey === reviewKey)));
       toast.success('Avis supprimé');
     } catch {
       toast.error("Impossible de supprimer l'avis");
@@ -400,26 +424,23 @@ export function UserDashboard({ onClose, locations, onViewSpotOnMap, onEditSpot,
           </TabsContent>
 
           <TabsContent value="reviews">
-            {myReviews.length === 0 ? (
+            {myReviewEntries.length === 0 ? (
               <EmptyState label="Vous n'avez pas encore posté d'avis." />
             ) : (
               <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 overflow-hidden">
-                {myReviews.map(({ review, poi }, i) => {
-                  const key = review.createdAt ?? `__idx_${i}__`;
-                  return (
-                    <DashboardRow
-                      key={`${poi.id}-${key}`}
-                      title={poi.title}
-                      subtitle={`${review.rating}/5 — ${review.comment}`}
-                      onViewOnMap={() => onViewSpotOnMap(poi)}
-                      onDelete={() => handleDeleteReview(poi, review)}
-                      isDeleting={busyId === key}
-                      confirmDelete={confirmId === key}
-                      onRequestDelete={() => setConfirmId(key)}
-                      onCancelDelete={() => setConfirmId(null)}
-                    />
-                  );
-                })}
+                {myReviewEntries.map((entry) => (
+                  <DashboardRow
+                    key={`${entry.poiId}-${entry.reviewKey}`}
+                    title={entry.poiTitle}
+                    subtitle={`${entry.review.rating}/5 — ${entry.review.comment}`}
+                    onViewOnMap={() => onViewSpotOnMap(reviewEntryToLocation(entry))}
+                    onDelete={() => handleDeleteReview(entry.poiId, entry.reviewKey)}
+                    isDeleting={busyId === entry.reviewKey}
+                    confirmDelete={confirmId === entry.reviewKey}
+                    onRequestDelete={() => setConfirmId(entry.reviewKey)}
+                    onCancelDelete={() => setConfirmId(null)}
+                  />
+                ))}
               </div>
             )}
           </TabsContent>

@@ -21,6 +21,7 @@ import { ProtectedArea } from './services/protected-areas';
 import { WaterPoint } from './services/overpass';
 import { PoiLocation } from './types';
 import { isValidPoiZone, MAX_POI_ZONE_AREA_M2 } from './utils/poi-zone';
+import { fetchPoiDetail } from '../utils/supabase/api';
 
 const PoiDetailsPanel = React.lazy(() => import('./components/PoiDetailsPanel').then(m => ({ default: m.PoiDetailsPanel })));
 const AddPoiPanel = React.lazy(() => import('./components/AddPoiPanel').then(m => ({ default: m.AddPoiPanel })));
@@ -38,9 +39,9 @@ const WaterPointDetailsPanel = React.lazy(() => import('./components/WaterPointD
 export default function App() {
   const { currentUser, isAdmin, isSuperAdmin, zoneAdminIds } = useAuth();
 
-  const pois = usePois();
-  const trips = useTrips();
   const map = useMapLayers();
+  const pois = usePois(map.mapBounds);
+  const trips = useTrips();
   const visibleLocations = useMemo(
     () => isAdmin ? pois.locations : pois.locations.filter(l => !isSpotDisabled(l)),
     [pois.locations, isAdmin]
@@ -282,10 +283,13 @@ export default function App() {
     setIsDrawingMode(false);
   };
 
-  const handleEditSpotFromDashboard = (poi: PoiLocation) => {
+  const handleEditSpotFromDashboard = async (poi: PoiLocation) => {
     setShowUserDashboard(false);
-    setPoiZoneGeometry(poi.zoneGeometry ?? null);
-    setEditingPoi(poi);
+    // `poi` vient d'une liste allégée (GET /pois) — description absente signale qu'il
+    // manque le détail complet (photos/regulations/zoneGeometry) nécessaire à l'édition.
+    const full = poi.description !== undefined ? poi : (await fetchPoiDetail(poi.id)) ?? poi;
+    setPoiZoneGeometry(full.zoneGeometry ?? null);
+    setEditingPoi(full);
     setTemporaryPosition(null);
     setIsRepositioningPoi(false);
   };
@@ -459,7 +463,6 @@ export default function App() {
             currentUser={currentUser}
             onLoginClick={() => setShowLoginPanel(!showLoginPanel)}
             onOpenDashboard={handleOpenDashboard}
-            allLocations={visibleLocations}
             onGeoSelect={(lat, lng, bbox) => {
               (window as any).__mapFitBounds?.(bbox, lat, lng);
             }}

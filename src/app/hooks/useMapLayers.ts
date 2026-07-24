@@ -161,6 +161,7 @@ export function useMapLayers() {
     setWaterPoints,
     showProtectedAreas,
     setShowProtectedAreas,
+    mapBounds,
     setMapBounds,
     showProtectedAreasButton,
     setShowProtectedAreasButton,

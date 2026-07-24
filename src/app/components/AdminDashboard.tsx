@@ -20,7 +20,7 @@ import {
   LogOut,
   Plus,
 } from 'lucide-react';
-import { PoiLocation } from '../types';
+import { PoiLocation, PoiAdminSummary } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { BivouacButton } from './ui/bivouac-button';
 import { Input } from './ui/bivouac-input';
@@ -28,10 +28,9 @@ import { StatusBadge } from './ui/bivouac-badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs';
 import { AdminZonesManager } from './AdminZonesManager';
 import { fetchAdminZones, AdminZone } from '../../utils/supabase/admin-zones-api';
-import { fetchPoiViews30d } from '../../utils/supabase/api';
+import { fetchPoiViews30d, fetchAdminPoisPage } from '../../utils/supabase/api';
 import { updatePassword } from '../../utils/supabase/auth';
 import { fetchUsers, fetchAuthorEmails, deleteUser, AdminUserSummary } from '../../utils/supabase/users-api';
-import { isPointInAnyZone } from '../utils/zone-geometry';
 import { isSpotDisabled, computeDisabledUntil, DISABLE_DURATIONS } from '../utils/spot-status';
 
 interface AdminDashboardProps {
@@ -53,6 +52,8 @@ function formatShortDate(iso?: string): string {
   const d = new Date(iso);
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(-2)}`;
 }
+
+const ADMIN_SPOTS_PAGE_SIZE = 50;
 
 export function AdminDashboard({
   onClose,
@@ -83,16 +84,67 @@ export function AdminDashboard({
   const [deleteUserReviews, setDeleteUserReviews] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
 
+  // Tableau "Spots" — paginé côté serveur (GET /pois/admin-list) plutôt que dérivé de
+  // la prop `locations` complète : un territoire ou toute la plateforme peut compter
+  // des centaines/milliers de spots, et cette route ne renvoie jamais les champs lourds
+  // (photos/reviews/description) — seulement un `photosCount` calculé côté serveur.
+  const [spotRows, setSpotRows] = useState<PoiAdminSummary[]>([]);
+  const [spotsCursor, setSpotsCursor] = useState<string | null>(null);
+  const [spotsTotal, setSpotsTotal] = useState(0);
+  const [spotsLoadingMore, setSpotsLoadingMore] = useState(false);
+
+  const loadMoreSpots = async () => {
+    if (spotsLoadingMore) return;
+    setSpotsLoadingMore(true);
+    try {
+      const page = await fetchAdminPoisPage(spotsCursor, ADMIN_SPOTS_PAGE_SIZE);
+      setSpotRows((prev) => [...prev, ...page.data]);
+      setSpotsCursor(page.nextCursor);
+      setSpotsTotal(page.total);
+    } catch (error) {
+      console.error('Error loading spots page:', error);
+      toast.error('Impossible de charger la suite des spots');
+    } finally {
+      setSpotsLoadingMore(false);
+    }
+  };
+
+  // Repère vers l'objet complet (`locations`, prop déjà chargée par ailleurs) pour les
+  // actions qui ont besoin de plus que le résumé de la ligne (ex: ouvrir le détail sur
+  // la carte). Depuis la Phase 4, `locations` est scopée à la zone de carte visible —
+  // un spot du tableau admin situé hors de cette zone tombera sur le fallback ci-dessous.
+  const locationById = useMemo(() => new Map(locations.map((l) => [l.id, l])), [locations]);
+
+  // `description` volontairement absent (pas `''`) : c'est le signal que `usePois.ts`
+  // (`selectLocation`) utilise pour savoir qu'il doit aller chercher le détail complet.
+  const resolveFullLocation = (row: PoiAdminSummary): PoiLocation =>
+    locationById.get(row.id) ?? ({
+      id: row.id,
+      position: row.position,
+      title: row.title,
+      photos: [],
+      season: 'toute-annee',
+      waterProximity: null,
+      isPublic: row.isPublic,
+      disabledUntil: row.disabledUntil,
+      createdBy: row.createdBy,
+      createdAt: row.createdAt,
+    } as unknown as PoiLocation);
+
   useEffect(() => {
     void (async () => {
       setIsLoading(true);
       try {
-        const [zonesData, viewsData] = await Promise.all([
+        const [zonesData, viewsData, spotsPage] = await Promise.all([
           fetchAdminZones(),
           fetchPoiViews30d(),
+          fetchAdminPoisPage(null, ADMIN_SPOTS_PAGE_SIZE),
         ]);
         setAdminZones(zonesData);
         setViews30d(viewsData);
+        setSpotRows(spotsPage.data);
+        setSpotsCursor(spotsPage.nextCursor);
+        setSpotsTotal(spotsPage.total);
 
         if (isSuperAdmin) {
           const usersData = await fetchUsers();
@@ -100,11 +152,18 @@ export function AdminDashboard({
           setEmailById(Object.fromEntries(usersData.map((u) => [u.id, u.email])));
         } else {
           // Un admin de zone ne peut pas lister tous les comptes — on ne résout que les emails
-          // des auteurs des spots de son propre territoire (cf. logique de coveredLocations).
-          const myZonesData = zonesData.filter((z) => zoneAdminIds.includes(z.id));
-          const geometries = myZonesData.map((z) => z.geometry);
-          const covered = locations.filter((loc) => isPointInAnyZone(loc.position, geometries));
-          const ids = [...new Set(covered.map((l) => l.createdBy).filter((id): id is string => !!id))];
+          // des auteurs des spots de son propre territoire. Ne peut pas se contenter de
+          // `locations` (scopée à la zone de carte visible depuis la Phase 4) ni de la seule
+          // première page de `spotRows` : on reboucle sur admin-list jusqu'à épuisement pour
+          // couvrir tout le territoire, quelle que soit sa taille.
+          const allTerritorySpots: PoiAdminSummary[] = [...spotsPage.data];
+          let cursor = spotsPage.nextCursor;
+          while (cursor) {
+            const page = await fetchAdminPoisPage(cursor, 200);
+            allTerritorySpots.push(...page.data);
+            cursor = page.nextCursor;
+          }
+          const ids = [...new Set(allTerritorySpots.map((l) => l.createdBy).filter((id): id is string => !!id))];
           const emails = await fetchAuthorEmails(ids);
           setEmailById(emails);
         }
@@ -123,14 +182,6 @@ export function AdminDashboard({
     [adminZones, isSuperAdmin, zoneAdminIds]
   );
 
-  // Spots sur lesquels cet admin a un droit de modération — pas "créés par lui" (l'app
-  // n'a pas de notion d'auteur), mais tous ceux situés dans son/ses territoire(s).
-  const coveredLocations = useMemo(() => {
-    if (isSuperAdmin) return locations;
-    const geometries = myZones.map((z) => z.geometry);
-    return locations.filter((loc) => isPointInAnyZone(loc.position, geometries));
-  }, [locations, myZones, isSuperAdmin]);
-
   const roleLabel = isSuperAdmin ? 'Super administrateur' : 'Administrateur de zone';
   const territoryLabel = isSuperAdmin
     ? 'Toute la plateforme'
@@ -138,13 +189,14 @@ export function AdminDashboard({
       ? myZones.map((z) => z.name).join(', ')
       : 'Aucun territoire assigné';
 
-  const handleToggleDisabled = async (poi: PoiLocation) => {
+  const handleToggleDisabled = async (poi: PoiAdminSummary) => {
     setTogglingId(poi.id);
     try {
       const disabled = isSpotDisabled(poi);
       const nextValue = disabled ? null : computeDisabledUntil(DISABLE_DURATIONS[0].months);
       const success = await onSetDisabled(poi.id, nextValue);
       if (success) {
+        setSpotRows((prev) => prev.map((r) => (r.id === poi.id ? { ...r, disabledUntil: nextValue } : r)));
         toast.success(disabled ? 'Spot réactivé' : `Spot désactivé pour ${DISABLE_DURATIONS[0].label}`);
       } else {
         toast.error('Action impossible sur ce spot');
@@ -159,6 +211,8 @@ export function AdminDashboard({
     try {
       const success = await onDeleteSpot(poiId);
       if (success) {
+        setSpotRows((prev) => prev.filter((r) => r.id !== poiId));
+        setSpotsTotal((prev) => Math.max(0, prev - 1));
         toast.success('Spot supprimé');
       } else {
         toast.error('Échec de la suppression');
@@ -363,10 +417,10 @@ export function AdminDashboard({
             {/* Spots du territoire couvert */}
             <TabsContent value="spots">
               <StatusBadge status="info" className="mb-3">
-                {coveredLocations.length} spot{coveredLocations.length !== 1 ? 's' : ''} intégré{coveredLocations.length !== 1 ? 's' : ''} à ce territoire
+                {spotsTotal} spot{spotsTotal !== 1 ? 's' : ''} intégré{spotsTotal !== 1 ? 's' : ''} à ce territoire
               </StatusBadge>
 
-              {coveredLocations.length === 0 ? (
+              {spotRows.length === 0 ? (
                 <p className="text-sm text-gray-500">Aucun spot dans ce territoire pour le moment.</p>
               ) : (
                 <div className="border border-gray-200 rounded-lg overflow-x-auto">
@@ -381,7 +435,7 @@ export function AdminDashboard({
                     <div className="w-[104px] flex-shrink-0 text-center">Actions</div>
                   </div>
                   <div className="divide-y divide-gray-100">
-                    {coveredLocations.map((poi) => {
+                    {spotRows.map((poi) => {
                       const disabled = isSpotDisabled(poi);
                       const isConfirmingDelete = confirmDeleteId === poi.id;
                       return (
@@ -391,7 +445,7 @@ export function AdminDashboard({
                         >
                           <div className="flex-1 min-w-0">
                             <button
-                              onClick={() => onViewOnMap(poi)}
+                              onClick={() => onViewOnMap(resolveFullLocation(poi))}
                               className="text-left text-sm font-medium text-gray-800 hover:text-emerald-700 hover:underline truncate block w-full"
                               title={poi.title}
                             >
@@ -413,7 +467,7 @@ export function AdminDashboard({
                           </div>
                           <div className="w-9 flex-shrink-0 flex items-center justify-center gap-0.5 text-xs text-gray-600">
                             <ImageIcon className="w-3.5 h-3.5 flex-shrink-0" />
-                            {poi.photos?.length ?? 0}
+                            {poi.photosCount}
                           </div>
                           <div className="w-[104px] flex-shrink-0 flex items-center justify-center gap-1">
                             {isConfirmingDelete ? (
@@ -438,7 +492,7 @@ export function AdminDashboard({
                             ) : (
                               <>
                                 <button
-                                  onClick={() => onViewOnMap(poi)}
+                                  onClick={() => onViewOnMap(resolveFullLocation(poi))}
                                   title="Voir sur la carte"
                                   className="w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-emerald-700 transition-colors"
                                 >
@@ -469,6 +523,20 @@ export function AdminDashboard({
                     })}
                   </div>
                   </div>
+                </div>
+              )}
+
+              {spotsCursor && (
+                <div className="flex justify-center mt-3">
+                  <BivouacButton
+                    variant="secondary"
+                    size="sm"
+                    icon={spotsLoadingMore ? <Loader2 className="w-4 h-4 animate-spin" /> : undefined}
+                    onClick={loadMoreSpots}
+                    disabled={spotsLoadingMore}
+                  >
+                    Charger plus de spots
+                  </BivouacButton>
                 </div>
               )}
             </TabsContent>

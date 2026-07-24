@@ -74,6 +74,26 @@
   opacity: 0.5;
 }
 
+/* Clusters de spots (leaflet.markercluster) — même orange que les marqueurs "toute saison"
+   (.custom-marker-summer, #ea580c) quel que soit le nombre de points regroupés, plutôt que
+   les couleurs par défaut de la lib (vert/jaune/orange selon la taille du cluster). */
+.marker-cluster-small,
+.marker-cluster-medium,
+.marker-cluster-large {
+  background-color: rgba(234, 88, 12, 0.35);
+}
+
+.marker-cluster-small div,
+.marker-cluster-medium div,
+.marker-cluster-large div {
+  background-color: #ea580c;
+}
+
+.marker-cluster span {
+  color: #ffffff;
+  font-weight: 600;
+}
+
 /* Leaflet popup customization */
 .leaflet-popup-content-wrapper {
   border-radius: 8px;

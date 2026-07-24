@@ -1,5 +1,3 @@
-import { PoiLocation } from '../types';
-
 export const DISABLE_DURATIONS = [
   { months: 1, label: '1 mois' },
   { months: 3, label: '3 mois' },
@@ -13,7 +11,7 @@ export function computeDisabledUntil(months: number): string {
   return date.toISOString();
 }
 
-export function isSpotDisabled(location: PoiLocation): boolean {
+export function isSpotDisabled(location: { disabledUntil?: string | null }): boolean {
   return !!location.disabledUntil && new Date(location.disabledUntil).getTime() > Date.now();
 }
 

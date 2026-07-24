@@ -2,6 +2,9 @@ import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import L from 'leaflet';
 import 'leaflet-draw';
 import 'leaflet-draw/dist/leaflet.draw.css';
+import 'leaflet.markercluster';
+import 'leaflet.markercluster/dist/MarkerCluster.css';
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import { Trash2, ChevronDown, ChevronUp, Info, X } from 'lucide-react';
 import { NIVOSES, NivoseStation } from '../data/nivoses';
 import { PoiLocation } from '../types';
@@ -27,6 +30,19 @@ const MAX_SMART_ROUTING_WAYPOINTS = 25;
 // même limite d'esprit que les 35 points du calque viewport, adaptée à l'emprise plus large
 // d'un itinéraire complet.
 const MAX_ROUTE_WATER_MARKERS = 150;
+
+function buildSpotMarkerIcon(location: PoiLocation, isSelected: boolean): L.DivIcon {
+  const markerClass = isSelected
+    ? (location.season === 'hiver' ? 'custom-marker-winter-selected' : 'custom-marker-selected')
+    : location.season === 'hiver'
+    ? 'custom-marker-winter'
+    : 'custom-marker-summer';
+  return L.divIcon({
+    className: isSpotDisabled(location) ? `${markerClass} custom-marker-disabled` : markerClass,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+  });
+}
 
 function makeCrosshairIcon(color: string, size: number): L.DivIcon {
   const h = size / 2;
@@ -204,6 +220,11 @@ export function MapView({
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markersRef = useRef<L.Marker[]>([]);
+  const markersByIdRef = useRef<Map<string, L.Marker>>(new Map());
+  const locationsByIdRef = useRef<Map<string, PoiLocation>>(new Map());
+  const selectedLocationIdRef = useRef<string | null>(null);
+  const spotClusterGroupRef = useRef<any>(null);
+  const isSpiderfiedRef = useRef(false);
   const temporaryMarkerRef = useRef<L.Marker | null>(null);
   const routeMarkersRef = useRef<L.Marker[]>([]);
   const routeLayerRef = useRef<L.Polyline | null>(null);
@@ -294,6 +315,35 @@ export function MapView({
     
     tileLayerRef.current = tileLayer;
     mapInstanceRef.current = map;
+
+    // Regroupement des marqueurs de spots — évite d'afficher des centaines/milliers de
+    // pins individuels à faible zoom. `disableClusteringAtZoom` désactive le clustering
+    // au-delà d'un certain niveau (les spots redeviennent des pins individuels une fois
+    // suffisamment dézoomé/proche).
+    // `spiderfyOnMaxZoom`/`zoomToBoundsOnClick` désactivés : la logique interne de la lib
+    // (_zoomOrSpiderfy) ne fait éclater un cluster que s'il est déjà à son niveau de zoom le
+    // plus profond possible — sinon, sans zoomToBoundsOnClick, un clic ne fait RIEN. On
+    // reprend donc la main sur le clic ci-dessous (`clusterclick`, événement toujours émis
+    // par la lib quel que soit ce réglage) pour toujours éclater directement, sans jamais
+    // zoomer automatiquement.
+    const spotClusterGroup = (L as any).markerClusterGroup({
+      maxClusterRadius: 50,
+      disableClusteringAtZoom: 15,
+      spiderfyOnMaxZoom: false,
+      zoomToBoundsOnClick: false,
+      showCoverageOnHover: false,
+    });
+    spotClusterGroup.addTo(map);
+    spotClusterGroupRef.current = spotClusterGroup;
+
+    spotClusterGroup.on('clusterclick', (e: any) => {
+      e.layer.spiderfy();
+    });
+
+    // Suivi de l'état "écarté" (spiderfy) — lu par le handler de clic des marqueurs pour
+    // savoir s'il faut zoomer jusqu'au niveau sans cluster (cf. isSpiderfiedRef plus bas).
+    spotClusterGroup.on('spiderfied', () => { isSpiderfiedRef.current = true; });
+    spotClusterGroup.on('unspiderfied', () => { isSpiderfiedRef.current = false; });
 
     // Listener permanent — notifie les bounds à chaque moveend, indépendamment de showWaterPoints
     map.on('moveend', () => {
@@ -441,6 +491,7 @@ export function MapView({
       map.remove();
       mapInstanceRef.current = null;
       tileLayerRef.current = null;
+      spotClusterGroupRef.current = null;
       delete (window as any).__mapZoomIn;
       delete (window as any).__mapZoomOut;
       delete (window as any).__mapCenterTo;
@@ -1236,57 +1287,79 @@ export function MapView({
     };
   }, [isMeasuringMode, measureStartPoint, currentMousePos, measureDistance]);
 
-  // Gérer les marqueurs permanents
+  // Gérer les marqueurs permanents (regroupés via spotClusterGroupRef, cf. init de la carte).
+  // Volontairement SANS `selectedLocation` en dépendance : reconstruire tout le groupe de
+  // clusters à chaque sélection forçait un `clearLayers()` qui refermait immédiatement un
+  // cluster "écarté" (spiderfy) dès qu'on cliquait un de ses points — le point sélectionné
+  // disparaissait sans qu'on sache où il était passé. Le style du marqueur sélectionné est
+  // géré séparément ci-dessous, par un simple `setIcon()` sur le marqueur déjà en place.
   useEffect(() => {
-    if (!mapInstanceRef.current) return;
+    if (!mapInstanceRef.current || !spotClusterGroupRef.current) return;
 
     // Supprimer les anciens marqueurs
-    markersRef.current.forEach(marker => marker.remove());
+    spotClusterGroupRef.current.clearLayers();
     markersRef.current = [];
+    markersByIdRef.current = new Map();
+    locationsByIdRef.current = new Map();
 
     // Ajouter les nouveaux marqueurs
     locations.forEach((location) => {
       // Valider les coordonnées
-      if (!location.position || 
-          typeof location.position.lat !== 'number' || 
+      if (!location.position ||
+          typeof location.position.lat !== 'number' ||
           typeof location.position.lng !== 'number' ||
-          isNaN(location.position.lat) || 
+          isNaN(location.position.lat) ||
           isNaN(location.position.lng)) {
         console.warn('Location avec coordonnées invalides ignorée:', location);
         return;
       }
 
-      // Déterminer la classe CSS selon la saison et l'état sélectionné
-      const isSelected = selectedLocation?.id === location.id;
-      const markerClass = isSelected
-        ? (location.season === 'hiver' ? 'custom-marker-winter-selected' : 'custom-marker-selected')
-        : location.season === 'hiver'
-        ? 'custom-marker-winter'
-        : 'custom-marker-summer';
-
-      const customIcon = L.divIcon({
-        className: isSpotDisabled(location) ? `${markerClass} custom-marker-disabled` : markerClass,
-        iconSize: [24, 24],
-        iconAnchor: [12, 12],
-      });
-
+      const isSelected = selectedLocationIdRef.current === location.id;
       const marker = L.marker([location.position.lat, location.position.lng], {
-        icon: customIcon
+        icon: buildSpotMarkerIcon(location, isSelected),
       });
 
       marker.bindPopup(`<div class="text-sm"><h3 class="font-semibold">${location.title}</h3></div>`);
-      
+
       marker.on('click', () => {
-        if (!isAddingMode) {
-          onLocationClick(location);
+        if (isAddingMode) return;
+        // Un point cliqué pendant qu'il est "écarté" (spiderfy) doit rester visible et
+        // identifiable : on zoome jusqu'au niveau où le clustering se désactive plutôt que
+        // de simplement le sélectionner sur place (où le regroupement le masquerait aussitôt).
+        const wasSpiderfied = isSpiderfiedRef.current;
+        onLocationClick(location);
+        if (wasSpiderfied) {
+          (window as any).__mapFlyToSpot?.(location.position.lat, location.position.lng);
+        } else {
           (window as any).__mapPanToSpot?.(location.position.lat, location.position.lng);
         }
       });
 
-      marker.addTo(mapInstanceRef.current!);
+      spotClusterGroupRef.current.addLayer(marker);
       markersRef.current.push(marker);
+      markersByIdRef.current.set(location.id, marker);
+      locationsByIdRef.current.set(location.id, location);
     });
-  }, [locations, selectedLocation, onLocationClick, isAddingMode]);
+  }, [locations, onLocationClick, isAddingMode]);
+
+  // Restyle uniquement le marqueur sélectionné/désélectionné (pas de recreate du groupe de
+  // clusters — cf. commentaire ci-dessus).
+  useEffect(() => {
+    const prevId = selectedLocationIdRef.current;
+    const nextId = selectedLocation?.id ?? null;
+    if (prevId === nextId) return;
+
+    if (prevId) {
+      const prevMarker = markersByIdRef.current.get(prevId);
+      const prevLocation = locationsByIdRef.current.get(prevId);
+      if (prevMarker && prevLocation) prevMarker.setIcon(buildSpotMarkerIcon(prevLocation, false));
+    }
+    if (nextId && selectedLocation) {
+      const nextMarker = markersByIdRef.current.get(nextId);
+      if (nextMarker) nextMarker.setIcon(buildSpotMarkerIcon(selectedLocation, true));
+    }
+    selectedLocationIdRef.current = nextId;
+  }, [selectedLocation]);
 
   // Gérer le marqueur temporaire
   useEffect(() => {

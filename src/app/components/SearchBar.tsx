@@ -4,6 +4,7 @@ import { useNominatim, NominatimResult } from '../hooks/useNominatim';
 import { PoiLocation } from '../types';
 import { BivouacButton } from './ui/bivouac-button';
 import { CountBadge } from './ui/bivouac-badge';
+import { fetchPois, PoisBbox } from '../../utils/supabase/api';
 
 interface SearchBarProps {
   searchTerm: string;
@@ -17,7 +18,6 @@ interface SearchBarProps {
   currentUser?: { email?: string } | null;
   onLoginClick?: () => void;
   onOpenDashboard?: () => void;
-  allLocations?: PoiLocation[];
   onGeoSelect?: (lat: number, lng: number, boundingbox: [string, string, string, string]) => void;
   onSpotSelect?: (spot: PoiLocation) => void;
 }
@@ -53,37 +53,72 @@ function parseNominatimName(result: NominatimResult): { name: string; detail: st
   return { name, detail };
 }
 
-function useNearbySpots(suggestions: NominatimResult[], allLocations: PoiLocation[] | undefined, radiusKm = 15) {
-  return React.useMemo(() => {
-    if (!allLocations || suggestions.length === 0) return [];
+// La liste principale des spots (`pois.locations`) est scopée à la zone de carte visible
+// (Phase 4) — un lieu recherché peut être n'importe où, donc on fetch spécifiquement les
+// spots autour du/des lieu(x) suggéré(s) plutôt que de filtrer la liste déjà chargée.
+// Une seule requête (bbox englobant toutes les suggestions + rayon), pas une par suggestion.
+function useNearbySpots(suggestions: NominatimResult[], radiusKm = 15) {
+  const [nearby, setNearby] = React.useState<Array<{ spot: PoiLocation; distKm: number; nearName: string }>>([]);
 
-    const seen = new Set<string>();
-    const results: Array<{ spot: PoiLocation; distKm: number; nearName: string }> = [];
+  React.useEffect(() => {
+    if (suggestions.length === 0) {
+      setNearby([]);
+      return;
+    }
 
-    for (const s of suggestions) {
-      const sLat = parseFloat(s.lat);
-      const sLon = parseFloat(s.lon);
-      const { name: osmName } = parseNominatimName(s);
+    let cancelled = false;
+    (async () => {
+      const lats = suggestions.map(s => parseFloat(s.lat));
+      const lons = suggestions.map(s => parseFloat(s.lon));
+      const avgLat = lats.reduce((a, b) => a + b, 0) / lats.length;
+      const latPad = radiusKm / 111.32;
+      const lonPad = radiusKm / (111.32 * Math.cos(avgLat * Math.PI / 180));
+      const bbox: PoisBbox = {
+        south: Math.min(...lats) - latPad,
+        north: Math.max(...lats) + latPad,
+        west: Math.min(...lons) - lonPad,
+        east: Math.max(...lons) + lonPad,
+      };
 
-      for (const loc of allLocations) {
-        const d = haversineKm(sLat, sLon, loc.position.lat, loc.position.lng);
-        if (d <= radiusKm) {
-          if (!seen.has(loc.id)) {
-            seen.add(loc.id);
-            results.push({ spot: loc, distKm: d, nearName: osmName });
-          } else {
-            const existing = results.find(r => r.spot.id === loc.id);
-            if (existing && d < existing.distKm) {
-              existing.distKm = d;
-              existing.nearName = osmName;
+      try {
+        const spots = await fetchPois(bbox);
+        if (cancelled) return;
+
+        const seen = new Set<string>();
+        const results: Array<{ spot: PoiLocation; distKm: number; nearName: string }> = [];
+
+        for (const s of suggestions) {
+          const sLat = parseFloat(s.lat);
+          const sLon = parseFloat(s.lon);
+          const { name: osmName } = parseNominatimName(s);
+
+          for (const spot of spots) {
+            const d = haversineKm(sLat, sLon, spot.position.lat, spot.position.lng);
+            if (d <= radiusKm) {
+              if (!seen.has(spot.id)) {
+                seen.add(spot.id);
+                results.push({ spot, distKm: d, nearName: osmName });
+              } else {
+                const existing = results.find(r => r.spot.id === spot.id);
+                if (existing && d < existing.distKm) {
+                  existing.distKm = d;
+                  existing.nearName = osmName;
+                }
+              }
             }
           }
         }
-      }
-    }
 
-    return results.sort((a, b) => a.distKm - b.distKm).slice(0, 4);
-  }, [suggestions, allLocations, radiusKm]);
+        setNearby(results.sort((a, b) => a.distKm - b.distKm).slice(0, 4));
+      } catch {
+        if (!cancelled) setNearby([]);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [suggestions, radiusKm]);
+
+  return nearby;
 }
 
 export function SearchBar({
@@ -98,7 +133,6 @@ export function SearchBar({
   currentUser = null,
   onLoginClick,
   onOpenDashboard,
-  allLocations,
   onGeoSelect,
   onSpotSelect,
 }: SearchBarProps) {
@@ -108,7 +142,7 @@ export function SearchBar({
   const desktopSearchRef = React.useRef<HTMLDivElement>(null);
 
   const { suggestions, isLoading: isGeoLoading } = useNominatim(searchTerm);
-  const nearbySpots = useNearbySpots(suggestions, allLocations);
+  const nearbySpots = useNearbySpots(suggestions);
 
   const hasDropdownContent = searchTerm.trim().length >= 2 && (isGeoLoading || suggestions.length > 0 || nearbySpots.length > 0);
 

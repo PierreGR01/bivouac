@@ -10,6 +10,7 @@ import { useIsMobile } from './ui/use-mobile';
 import { PhotoCaptureModal } from './PhotoCaptureModal';
 import { PoiLocation, SpotPhoto } from '../types';
 import { getPhotoUrl, getPhotoCaption } from '../utils/photo';
+import { uploadPhoto } from '../../utils/supabase/api';
 import { CustomZone, getZoneRestrictionStatus, formatZoneConstraints } from '../../utils/supabase/custom-zones-api';
 import { ProtectedArea, findAreasContainingPoint, getProtectedAreaInfo } from '../services/protected-areas';
 import { computeAreaM2, MAX_POI_ZONE_AREA_M2 } from '../utils/poi-zone';
@@ -46,12 +47,22 @@ function normalizeInitialPhotos(photos?: (string | SpotPhoto)[]): SpotPhoto[] {
   if (!photos) return [];
   return photos.map((photo) => {
     const caption = getPhotoCaption(photo);
-    return caption ? { url: getPhotoUrl(photo), caption } : { url: getPhotoUrl(photo) };
+    const thumbUrl = typeof photo === 'string' ? undefined : photo.thumbUrl;
+    return {
+      url: getPhotoUrl(photo),
+      ...(thumbUrl ? { thumbUrl } : {}),
+      ...(caption ? { caption } : {}),
+    };
   });
 }
 
-// Target: keep stored photos around 2 Mo (they're persisted as base64 strings in the DB,
-// not in object storage), so we retry at lower quality/size until we fit under this budget.
+// Miroir de la limite appliquée côté serveur (index.ts, POST/PUT /pois) — vérifiée aussi
+// ici pour ne pas laisser l'utilisateur compresser/uploader une photo qui sera de toute
+// façon rejetée à l'enregistrement.
+const MAX_PHOTOS_PER_SPOT = 4;
+
+// Target: keep uploaded photos around 2 Mo (compressed client-side before upload to
+// Supabase Storage), so we retry at lower quality/size until we fit under this budget.
 const TARGET_PHOTO_BYTES = 2 * 1024 * 1024;
 const MAX_PHOTO_BYTES = 2.5 * 1024 * 1024;
 const COMPRESSION_STEPS: Array<{ maxDimension: number; quality: number }> = [
@@ -66,6 +77,24 @@ const COMPRESSION_STEPS: Array<{ maxDimension: number; quality: number }> = [
 
 function dataUrlBytes(dataUrl: string): number {
   return (dataUrl.length * 3) / 4;
+}
+
+// Vignette générée à l'upload pour l'affichage compact de la fiche spot (~64px) — 160px
+// donne de la marge pour les écrans retina sans reproduire le poids de l'image complète.
+const THUMBNAIL_MAX_DIMENSION = 160;
+const THUMBNAIL_QUALITY = 0.6;
+
+function loadImage(dataUrl: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Impossible de charger l'image"));
+    img.src = dataUrl;
+  });
+}
+
+function dataUrlToBlob(dataUrl: string): Promise<Blob> {
+  return fetch(dataUrl).then((r) => r.blob());
 }
 
 function drawToDataUrl(img: HTMLImageElement, maxDimension: number, quality: number): string {
@@ -180,6 +209,7 @@ export function AddPoiPanel({
   const [isPublic, setIsPublic] = useState(initialPoi?.isPublic !== false);
   const [isGeolocating, setIsGeolocating] = useState(false);
   const [pendingPhoto, setPendingPhoto] = useState<{ dataUrl: string; source: 'camera' | 'gallery' } | null>(null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const selectedPositionRef = useRef(selectedPosition);
@@ -223,6 +253,10 @@ export function AddPoiPanel({
   };
 
   const handleAddPhoto = () => {
+    if (photos.length >= MAX_PHOTOS_PER_SPOT) {
+      toast.error(`Maximum ${MAX_PHOTOS_PER_SPOT} photos par spot`);
+      return;
+    }
     if (newPhotoUrl.trim()) {
       setPhotos([...photos, { url: newPhotoUrl.trim() }]);
       setNewPhotoUrl('');
@@ -234,6 +268,11 @@ export function AddPoiPanel({
     const file = inputEl.files?.[0];
     inputEl.value = '';
     if (!file || !file.type.startsWith('image/')) return;
+
+    if (photos.length >= MAX_PHOTOS_PER_SPOT) {
+      toast.error(`Maximum ${MAX_PHOTOS_PER_SPOT} photos par spot`);
+      return;
+    }
 
     if (!selectedPositionRef.current) {
       gps(file)
@@ -265,10 +304,36 @@ export function AddPoiPanel({
     else galleryInputRef.current?.click();
   };
 
-  const handleConfirmPhoto = (finalImageUrl: string, caption: string) => {
+  const handleConfirmPhoto = async (finalImageUrl: string, caption: string) => {
+    if (photos.length >= MAX_PHOTOS_PER_SPOT) {
+      toast.error(`Maximum ${MAX_PHOTOS_PER_SPOT} photos par spot`);
+      setPendingPhoto(null);
+      return;
+    }
     const trimmedCaption = caption.trim();
-    setPhotos((prev) => [...prev, trimmedCaption ? { url: finalImageUrl, caption: trimmedCaption } : { url: finalImageUrl }]);
-    setPendingPhoto(null);
+    setIsUploadingPhoto(true);
+    try {
+      const img = await loadImage(finalImageUrl);
+      const thumbDataUrl = drawToDataUrl(img, THUMBNAIL_MAX_DIMENSION, THUMBNAIL_QUALITY);
+      const [fullBlob, thumbBlob] = await Promise.all([
+        dataUrlToBlob(finalImageUrl),
+        dataUrlToBlob(thumbDataUrl),
+      ]);
+      const [uploadedUrl, uploadedThumbUrl] = await Promise.all([
+        uploadPhoto(fullBlob),
+        uploadPhoto(thumbBlob),
+      ]);
+      setPhotos((prev) => [...prev, {
+        url: uploadedUrl,
+        thumbUrl: uploadedThumbUrl,
+        ...(trimmedCaption ? { caption: trimmedCaption } : {}),
+      }]);
+      setPendingPhoto(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Impossible d'envoyer la photo. Réessayez.");
+    } finally {
+      setIsUploadingPhoto(false);
+    }
   };
 
   const handleRemovePhoto = (index: number) => {
@@ -517,7 +582,9 @@ export function AddPoiPanel({
         {/* Photos */}
         <div className="mb-3">
           {!isMobile && (
-            <label className="block text-sm font-semibold mb-1.5 text-gray-700">Photos</label>
+            <label className="block text-sm font-semibold mb-1.5 text-gray-700">
+              Photos ({photos.length}/{MAX_PHOTOS_PER_SPOT})
+            </label>
           )}
 
           {photos.length > 0 && (
@@ -562,6 +629,12 @@ export function AddPoiPanel({
             className="hidden"
           />
 
+          {photos.length >= MAX_PHOTOS_PER_SPOT ? (
+            <p className="text-xs text-gray-500">
+              Limite de {MAX_PHOTOS_PER_SPOT} photos atteinte — supprimez-en une pour en ajouter une autre.
+            </p>
+          ) : (
+            <>
           <div className="flex gap-2">
             {isMobile && (
               <BivouacButton
@@ -610,6 +683,8 @@ export function AddPoiPanel({
                 Ajouter
               </BivouacButton>
             </div>
+          )}
+            </>
           )}
         </div>
 
@@ -747,6 +822,7 @@ export function AddPoiPanel({
         onConfirm={handleConfirmPhoto}
         onRetake={handleRetakePhoto}
         onCancel={() => setPendingPhoto(null)}
+        isSubmitting={isUploadingPhoto}
       />
     )}
     </>

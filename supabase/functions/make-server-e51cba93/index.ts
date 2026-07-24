@@ -202,6 +202,11 @@ function canSeePrivatePoi(poi: any, ctx: ModerationContext): boolean {
 const MAX_POI_ZONE_AREA_M2 = 2000;
 const METERS_PER_DEGREE_LAT = 111_320;
 
+// Miroir de MAX_PHOTOS_PER_SPOT dans AddPoiPanel.tsx — même raison que MAX_POI_ZONE_AREA_M2 :
+// une requête forgée directement contre l'Edge Function ne doit pas pouvoir contourner la
+// limite appliquée côté client.
+const MAX_PHOTOS_PER_SPOT = 4;
+
 function poiZoneRing(geometry: any): number[][] | null {
   if (!geometry) return null;
   const geom = geometry.type === "Feature" ? geometry.geometry : geometry;
@@ -300,11 +305,190 @@ app.get("/make-server-e51cba93/health", safeHandler((c: any) => {
   return c.json({ status: "ok" });
 }));
 
+// --- Stockage des POIs — table `spots` (indexée) comme source de vérité, avec
+// double-écriture vers kv_store (legacy) en filet de sécurité pendant la transition.
+// La forme de l'objet "poi" retournée par ces helpers est identique à celle qui
+// était stockée dans kv_store, pour ne rien changer à la logique des routes.
+
+function poiToRow(poi: any) {
+  const {
+    id, position, title, season, isPublic, disabledUntil,
+    createdBy, createdAt, altitude, capacity, difficulty,
+    waterProximity, naturalWaterProximity, ...rest
+  } = poi;
+  return {
+    id,
+    lat: position?.lat,
+    lng: position?.lng,
+    title: title ?? "",
+    season: season ?? "toute-annee",
+    is_public: isPublic !== false,
+    disabled_until: disabledUntil ?? null,
+    created_by: createdBy ?? null,
+    created_at: createdAt ?? new Date().toISOString(),
+    altitude: altitude ?? null,
+    capacity: capacity ?? null,
+    difficulty: difficulty ?? null,
+    water_proximity: waterProximity ?? null,
+    natural_water_proximity: naturalWaterProximity ?? null,
+    photos_count: Array.isArray(rest.photos) ? rest.photos.length : 0,
+    detail: rest,
+  };
+}
+
+function rowToPoi(row: any): any {
+  return {
+    id: row.id,
+    position: { lat: row.lat, lng: row.lng },
+    title: row.title,
+    season: row.season,
+    isPublic: row.is_public,
+    disabledUntil: row.disabled_until,
+    createdBy: row.created_by ?? undefined,
+    createdAt: row.created_at,
+    altitude: row.altitude ?? undefined,
+    capacity: row.capacity ?? undefined,
+    difficulty: row.difficulty ?? undefined,
+    waterProximity: row.water_proximity ?? null,
+    naturalWaterProximity: row.natural_water_proximity ?? undefined,
+    ...row.detail,
+  };
+}
+
+async function getAllPois(): Promise<any[]> {
+  const { data, error } = await getServiceClient().from("spots").select("*");
+  if (error) throw new Error(error.message);
+  return (data ?? []).map(rowToPoi);
+}
+
+// Version allégée pour les listings admin (potentiellement des milliers de lignes à
+// l'échelle d'un territoire ou de toute la plateforme) — ne sélectionne aucun champ
+// lourd (`detail`, donc pas de photos/reviews/description/regulations/zoneGeometry).
+interface PoiSummary {
+  id: string;
+  position: { lat: number; lng: number };
+  title: string;
+  isPublic: boolean;
+  disabledUntil: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  photosCount: number;
+}
+
+async function getPoiSummaries(): Promise<PoiSummary[]> {
+  const { data, error } = await getServiceClient()
+    .from("spots")
+    .select("id, lat, lng, title, is_public, disabled_until, created_by, created_at, photos_count");
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row: any) => ({
+    id: row.id,
+    position: { lat: row.lat, lng: row.lng },
+    title: row.title,
+    isPublic: row.is_public,
+    disabledUntil: row.disabled_until,
+    createdBy: row.created_by ?? undefined,
+    createdAt: row.created_at,
+    photosCount: row.photos_count ?? 0,
+  }));
+}
+
+// Version allégée pour le listing PUBLIC (carte, dashboard utilisateur) — mêmes champs
+// typés que PoiSummary, mais garde `season`/`altitude`/`capacity`/`difficulty`/
+// `waterProximity`/`naturalWaterProximity` que la carte et les filtres utilisent
+// directement sur chaque item de la liste (contrairement aux champs vraiment lourds :
+// photos, reviews, description, regulations, zoneGeometry — jamais renvoyés ici).
+function rowToPoiListItem(row: any): any {
+  return {
+    id: row.id,
+    position: { lat: row.lat, lng: row.lng },
+    title: row.title,
+    season: row.season,
+    isPublic: row.is_public,
+    disabledUntil: row.disabled_until,
+    createdBy: row.created_by ?? undefined,
+    createdAt: row.created_at,
+    altitude: row.altitude ?? undefined,
+    capacity: row.capacity ?? undefined,
+    difficulty: row.difficulty ?? undefined,
+    waterProximity: row.water_proximity ?? null,
+    naturalWaterProximity: row.natural_water_proximity ?? undefined,
+    photosCount: row.photos_count ?? 0,
+  };
+}
+
+interface Bbox { south: number; west: number; north: number; east: number; }
+
+async function getAllPoiListItems(bbox?: Bbox): Promise<any[]> {
+  let query = getServiceClient()
+    .from("spots")
+    .select("id, lat, lng, title, season, is_public, disabled_until, created_by, created_at, altitude, capacity, difficulty, water_proximity, natural_water_proximity, photos_count");
+  if (bbox) {
+    query = query.gte("lat", bbox.south).lte("lat", bbox.north).gte("lng", bbox.west).lte("lng", bbox.east);
+  }
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return (data ?? []).map(rowToPoiListItem);
+}
+
+function encodePoiCursor(p: PoiSummary): string {
+  return btoa(JSON.stringify({ createdAt: p.createdAt, id: p.id }));
+}
+
+function decodePoiCursor(raw: string): { createdAt: string; id: string } | null {
+  try {
+    const parsed = JSON.parse(atob(raw));
+    if (typeof parsed?.createdAt === "string" && typeof parsed?.id === "string") return parsed;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function getPoi(id: string): Promise<any | null> {
+  const { data, error } = await getServiceClient().from("spots").select("*").eq("id", id).maybeSingle();
+  if (error) throw new Error(error.message);
+  return data ? rowToPoi(data) : null;
+}
+
+async function setPoi(poi: any): Promise<void> {
+  const { error } = await getServiceClient().from("spots").upsert(poiToRow(poi), { onConflict: "id" });
+  if (error) throw new Error(error.message);
+  await kv.set(`poi:${poi.id}`, poi);
+}
+
+async function deletePoi(id: string): Promise<void> {
+  const { error } = await getServiceClient().from("spots").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  await kv.del(`poi:${id}`);
+}
+
+async function deletePoisBulk(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const { error } = await getServiceClient().from("spots").delete().in("id", ids);
+  if (error) throw new Error(error.message);
+  await kv.mdel(...ids.map((id) => `poi:${id}`));
+}
+
+function parseBboxQuery(c: any): Bbox | undefined {
+  const south = Number(c.req.query("south"));
+  const west = Number(c.req.query("west"));
+  const north = Number(c.req.query("north"));
+  const east = Number(c.req.query("east"));
+  const valid = [south, west, north, east].every((n) => isFinite(n))
+    && south >= -90 && north <= 90 && south <= north
+    && west >= -180 && east <= 180 && west <= east;
+  return valid ? { south, west, north, east } : undefined;
+}
+
 // Get all POIs — public read, filtered by visibility (spots marked private are only
 // returned to their owner and to admins/territory-admins who can moderate them).
+// Bbox optionnel (south/west/north/east) — utilisé par la carte pour ne charger que les
+// spots de la zone affichée ; absent = comportement historique (tout renvoyer), gardé
+// pour ne pas casser un appelant qui n'enverrait pas ces paramètres.
 app.get("/make-server-e51cba93/pois", safeHandler(async (c: any) => {
   try {
-    const pois = await kv.getByPrefix("poi:");
+    const bbox = parseBboxQuery(c);
+    const pois = await getAllPoiListItems(bbox);
     const ctx = await getModerationContext(c);
     const visible = ctx.isSuper
       ? pois
@@ -312,6 +496,133 @@ app.get("/make-server-e51cba93/pois", safeHandler(async (c: any) => {
     return c.json({ success: true, data: visible });
   } catch (error) {
     console.error("Error fetching POIs:", error);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+}));
+
+// Liste paginée pour le tableau de bord admin — super-admin (toute la plateforme) ou
+// admin de zone (son/ses territoire(s) uniquement). Volontairement distincte de
+// GET /pois : ne renvoie jamais de champs lourds (photos/reviews/description/...),
+// seulement un `photosCount` calculé côté serveur, et pagine par curseur (createdAt, id)
+// pour rester performant quel que soit le nombre de spots.
+app.get("/make-server-e51cba93/pois/admin-list", safeHandler(async (c: any) => {
+  if (!(await requireAnyAdmin(c))) {
+    return c.json({ success: false, error: "Unauthorized" }, 401);
+  }
+
+  try {
+    const ctx = await getModerationContext(c);
+    let summaries = await getPoiSummaries();
+    if (!ctx.isSuper) {
+      summaries = summaries.filter((p) => ctx.zones.some((z: any) => isPointInZoneGeometry(p.position, z.geometry)));
+    }
+
+    summaries.sort((a, b) => {
+      const byDate = b.createdAt.localeCompare(a.createdAt);
+      return byDate !== 0 ? byDate : b.id.localeCompare(a.id);
+    });
+
+    const limit = Math.min(Math.max(parseInt(c.req.query("limit") ?? "50", 10) || 50, 1), 200);
+    const cursorParam = c.req.query("cursor");
+    let startIndex = 0;
+    if (cursorParam) {
+      const decoded = decodePoiCursor(cursorParam);
+      if (decoded) {
+        const idx = summaries.findIndex((p) => p.createdAt === decoded.createdAt && p.id === decoded.id);
+        startIndex = idx >= 0 ? idx + 1 : 0;
+      }
+    }
+
+    const page = summaries.slice(startIndex, startIndex + limit);
+    const nextCursor = (startIndex + limit) < summaries.length ? encodePoiCursor(page[page.length - 1]) : null;
+
+    return c.json({ success: true, data: page, nextCursor, total: summaries.length });
+  } catch (error) {
+    console.error("Error fetching admin POI list:", error);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+}));
+
+// Avis postés par l'utilisateur courant, à travers TOUS les spots (pas seulement les
+// siens) — utilisé par l'onglet "Mes avis" du dashboard utilisateur. GET /pois étant
+// désormais allégé (pas de champ `reviews`), ce scan doit se faire côté serveur ;
+// la réponse elle-même reste petite (bornée par le nombre d'avis de CET utilisateur,
+// pas par le nombre total de spots de la plateforme).
+app.get("/make-server-e51cba93/pois/my-reviews", safeHandler(async (c: any) => {
+  const user = await getAuthedUser(c);
+  if (!user) {
+    return c.json({ success: false, error: "Connexion requise" }, 401);
+  }
+  try {
+    const pois = await getAllPois();
+    const myReviews = pois.flatMap((poi: any) => {
+      const reviews: any[] = poi.reviews || [];
+      return reviews
+        .map((review: any, idx: number) => ({ review, idx }))
+        .filter(({ review }: any) => review?.userId === user.id)
+        .map(({ review, idx }: any) => ({
+          review,
+          reviewKey: review.createdAt ?? `__idx_${idx}__`,
+          poiId: poi.id,
+          poiTitle: poi.title,
+          poiPosition: poi.position,
+        }));
+    });
+    return c.json({ success: true, data: myReviews });
+  } catch (error) {
+    console.error("Error fetching user's reviews:", error);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+}));
+
+// Spots créés par l'utilisateur courant — utilisé par l'onglet "Mes spots" du dashboard.
+// GET /pois étant désormais scopé à la zone visible de la carte (Phase 4), ce listing ne
+// peut plus en dépendre : un spot créé par l'utilisateur mais hors du viewport actuel
+// doit rester visible dans son propre dashboard. Bornée par le nombre de spots CE
+// compte a créé, pas par le volume total de la plateforme.
+app.get("/make-server-e51cba93/pois/mine", safeHandler(async (c: any) => {
+  const user = await getAuthedUser(c);
+  if (!user) {
+    return c.json({ success: false, error: "Connexion requise" }, 401);
+  }
+  try {
+    const { data, error } = await getServiceClient()
+      .from("spots")
+      .select("id, lat, lng, title, season, is_public, disabled_until, created_by, created_at, altitude, capacity, difficulty, water_proximity, natural_water_proximity, photos_count")
+      .eq("created_by", user.id);
+    if (error) throw new Error(error.message);
+    return c.json({ success: true, data: (data ?? []).map(rowToPoiListItem) });
+  } catch (error) {
+    console.error("Error fetching user's own POIs:", error);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+}));
+
+// Résout un ensemble d'ids de spots (ex: favoris) en items légers, indépendamment de la
+// zone visible de la carte — un favori hors du viewport courant doit rester résolvable.
+// Filtré par la même règle de visibilité que la liste principale.
+app.get("/make-server-e51cba93/pois/by-ids", safeHandler(async (c: any) => {
+  try {
+    const raw = c.req.query("ids") ?? "";
+    const ids = [...new Set(raw.split(",").map((s: string) => s.trim()).filter(Boolean))].slice(0, 300);
+    if (ids.length === 0) {
+      return c.json({ success: true, data: [] });
+    }
+
+    const { data, error } = await getServiceClient()
+      .from("spots")
+      .select("id, lat, lng, title, season, is_public, disabled_until, created_by, created_at, altitude, capacity, difficulty, water_proximity, natural_water_proximity, photos_count")
+      .in("id", ids as string[]);
+    if (error) throw new Error(error.message);
+
+    const items = (data ?? []).map(rowToPoiListItem);
+    const ctx = await getModerationContext(c);
+    const visible = ctx.isSuper
+      ? items
+      : items.filter((p: any) => p.isPublic !== false || canSeePrivatePoi(p, ctx));
+    return c.json({ success: true, data: visible });
+  } catch (error) {
+    console.error("Error fetching POIs by ids:", error);
     return c.json({ success: false, error: 'Internal server error' }, 500);
   }
 }));
@@ -340,6 +651,10 @@ app.post("/make-server-e51cba93/pois", safeHandler(async (c: any) => {
       return c.json({ success: false, error: `Zone invalide : elle doit contenir le point du spot et ne pas dépasser ${MAX_POI_ZONE_AREA_M2} m²` }, 400);
     }
 
+    if (Array.isArray(photos) && photos.length > MAX_PHOTOS_PER_SPOT) {
+      return c.json({ success: false, error: `Maximum ${MAX_PHOTOS_PER_SPOT} photos par spot` }, 400);
+    }
+
     const poi = {
       id,
       title,
@@ -360,7 +675,7 @@ app.post("/make-server-e51cba93/pois", safeHandler(async (c: any) => {
       createdBy: user.id,
     };
 
-    await kv.set(`poi:${id}`, poi);
+    await setPoi(poi);
     console.log(`✅ POI créé avec altitude: ${altitude || 'N/A'}m, capacité: ${capacity || 'N/A'}, difficulté: ${difficulty || 'N/A'}`);
     return c.json({ success: true, data: poi });
   } catch (error) {
@@ -376,7 +691,7 @@ app.put("/make-server-e51cba93/pois/:id", safeHandler(async (c: any) => {
     const id = c.req.param("id");
     const raw = await c.req.json();
 
-    const existing = await kv.get(`poi:${id}`);
+    const existing = await getPoi(id);
     if (!existing) {
       return c.json({ success: false, error: "POI not found" }, 404);
     }
@@ -402,6 +717,10 @@ app.put("/make-server-e51cba93/pois/:id", safeHandler(async (c: any) => {
     // La désactivation temporaire reste une action de modération, pas d'édition par le propriétaire.
     if (!isModerator) delete updates.disabledUntil;
 
+    if ("photos" in updates && Array.isArray(updates.photos) && updates.photos.length > MAX_PHOTOS_PER_SPOT) {
+      return c.json({ success: false, error: `Maximum ${MAX_PHOTOS_PER_SPOT} photos par spot` }, 400);
+    }
+
     if ("position" in updates) {
       const pos = updates.position;
       if (!pos || typeof pos.lat !== "number" || typeof pos.lng !== "number" || isNaN(pos.lat) || isNaN(pos.lng)) {
@@ -423,7 +742,7 @@ app.put("/make-server-e51cba93/pois/:id", safeHandler(async (c: any) => {
     }
 
     const updated = { ...existing, ...updates };
-    await kv.set(`poi:${id}`, updated);
+    await setPoi(updated);
     console.log(`✅ POI ${id} mis à jour (altitude: ${updated.altitude ?? 'N/A'}m, eau: ${updated.waterProximity ?? 'N/A'})`);
     return c.json({ success: true, data: updated });
   } catch (error) {
@@ -456,7 +775,7 @@ app.post("/make-server-e51cba93/pois/:id/rate", safeHandler(async (c: any) => {
       return c.json({ success: false, error: "Comment must be at least 3 words" }, 400);
     }
 
-    const poi = await kv.get(`poi:${id}`);
+    const poi = await getPoi(id);
     if (!poi) {
       return c.json({ success: false, error: "POI not found" }, 404);
     }
@@ -467,7 +786,7 @@ app.post("/make-server-e51cba93/pois/:id/rate", safeHandler(async (c: any) => {
       ratings: [...(poi.ratings || []), rating],
       reviews: [...(poi.reviews || []), review],
     };
-    await kv.set(`poi:${id}`, updatedPoi);
+    await setPoi(updatedPoi);
     console.log(`✅ Note ajoutée au POI ${id}: ${rating}/5 — "${comment.trim()}"`);
     return c.json({ success: true, data: updatedPoi });
   } catch (error) {
@@ -487,7 +806,7 @@ app.post("/make-server-e51cba93/pois/:id/view", safeHandler(async (c: any) => {
 
   try {
     const id = c.req.param("id");
-    const poi = await kv.get(`poi:${id}`);
+    const poi = await getPoi(id);
     if (!poi) {
       return c.json({ success: false, error: "POI not found" }, 404);
     }
@@ -534,7 +853,7 @@ app.delete("/make-server-e51cba93/pois/:id/reviews/:createdAt", safeHandler(asyn
   try {
     const id = c.req.param("id");
     const createdAt = decodeURIComponent(c.req.param("createdAt"));
-    const poi = await kv.get(`poi:${id}`);
+    const poi = await getPoi(id);
     if (!poi) return c.json({ success: false, error: "POI not found" }, 404);
 
     const reviews: any[] = poi.reviews || [];
@@ -551,7 +870,7 @@ app.delete("/make-server-e51cba93/pois/:id/reviews/:createdAt", safeHandler(asyn
       ? reviews.filter((_, i) => i !== parseInt(idxMatch[1]))
       : reviews.filter((r: any) => r.createdAt !== createdAt);
     const updatedPoi = { ...poi, reviews: updatedReviews, ratings: updatedReviews.map((r: any) => r.rating) };
-    await kv.set(`poi:${id}`, updatedPoi);
+    await setPoi(updatedPoi);
     return c.json({ success: true, data: updatedPoi });
   } catch (error) {
     return c.json({ success: false, error: 'Internal server error' }, 500);
@@ -566,17 +885,83 @@ app.delete("/make-server-e51cba93/pois", safeHandler(async (c: any) => {
 
   try {
     console.log("🗑️ Reset endpoint called - fetching all POIs...");
-    const pois = await kv.getByPrefix("poi:");
-    const keys = pois.map((poi: any) => `poi:${poi.id}`);
+    const pois = await getAllPois();
+    const ids = pois.map((poi: any) => poi.id);
 
-    console.log(`📊 Found ${keys.length} POIs to delete`);
-    if (keys.length > 0) {
-      await kv.mdel(...keys);
-      console.log(`✅ Successfully deleted ${keys.length} POIs`);
+    console.log(`📊 Found ${ids.length} POIs to delete`);
+    if (ids.length > 0) {
+      await deletePoisBulk(ids);
+      console.log(`✅ Successfully deleted ${ids.length} POIs`);
     }
-    return c.json({ success: true, deletedCount: keys.length });
+    return c.json({ success: true, deletedCount: ids.length });
   } catch (error) {
     console.error("❌ Error resetting POIs:", error);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+}));
+
+// ONE-OFF MIGRATION (Phase 1 perf) — copie les POIs de kv_store_e51cba93 vers la
+// table `spots`. Ne touche PAS kv_store (lecture seule), upsert sur `id` donc
+// idempotent et sans risque à ré-exécuter. Admin only. À supprimer une fois la
+// Phase 2 (bascule des routes /pois sur `spots`) validée en prod.
+app.post("/make-server-e51cba93/migrate-spots-to-table", safeHandler(async (c: any) => {
+  if (!(await requireAdmin(c))) {
+    return c.json({ success: false, error: "Unauthorized" }, 401);
+  }
+
+  try {
+    const pois = await kv.getByPrefix("poi:");
+    const rows: any[] = [];
+    const skipped: string[] = [];
+
+    for (const poi of pois as any[]) {
+      const lat = poi?.position?.lat;
+      const lng = poi?.position?.lng;
+      if (typeof lat !== "number" || typeof lng !== "number" || isNaN(lat) || isNaN(lng) || !poi?.id) {
+        skipped.push(poi?.id ?? "(sans id)");
+        continue;
+      }
+      const {
+        position, id, title, season, isPublic, disabledUntil,
+        createdBy, createdAt, altitude, capacity, difficulty,
+        waterProximity, naturalWaterProximity, ...rest
+      } = poi;
+      rows.push({
+        id,
+        lat,
+        lng,
+        title: title ?? "",
+        season: season ?? "toute-annee",
+        is_public: isPublic !== false,
+        disabled_until: disabledUntil ?? null,
+        created_by: createdBy ?? null,
+        created_at: createdAt ?? new Date().toISOString(),
+        altitude: altitude ?? null,
+        capacity: capacity ?? null,
+        difficulty: difficulty ?? null,
+        water_proximity: waterProximity ?? null,
+        natural_water_proximity: naturalWaterProximity ?? null,
+        detail: rest,
+      });
+    }
+
+    const supabase = getServiceClient();
+    const BATCH = 500;
+    let migrated = 0;
+    for (let i = 0; i < rows.length; i += BATCH) {
+      const batch = rows.slice(i, i + BATCH);
+      const { error } = await supabase.from("spots").upsert(batch, { onConflict: "id" });
+      if (error) {
+        console.error("❌ Erreur migration spots (batch):", error);
+        return c.json({ success: false, error: error.message, migratedSoFar: migrated }, 500);
+      }
+      migrated += batch.length;
+    }
+
+    console.log(`✅ Migration spots: ${migrated}/${pois.length} POIs copiés, ${skipped.length} ignorés`);
+    return c.json({ success: true, totalKvPois: pois.length, migrated, skipped });
+  } catch (error) {
+    console.error("❌ Error migrating spots:", error);
     return c.json({ success: false, error: 'Internal server error' }, 500);
   }
 }));
@@ -718,7 +1103,7 @@ app.get("/make-server-e51cba93/users", safeHandler(async (c: any) => {
       page++;
     }
 
-    const pois = await kv.getByPrefix("poi:");
+    const pois = await getAllPois();
     const spotsCount = new Map<string, number>();
     const reviewsCount = new Map<string, number>();
     for (const poi of pois) {
@@ -786,11 +1171,11 @@ app.delete("/make-server-e51cba93/users/:id", safeHandler(async (c: any) => {
     const deleteReviews = !!body.deleteReviews;
 
     if (deleteSpots || deleteReviews) {
-      const pois = await kv.getByPrefix("poi:");
+      const pois = await getAllPois();
 
       if (deleteSpots) {
-        const ownKeys = pois.filter((p: any) => p.createdBy === id).map((p: any) => `poi:${p.id}`);
-        if (ownKeys.length > 0) await kv.mdel(...ownKeys);
+        const ownIds = pois.filter((p: any) => p.createdBy === id).map((p: any) => p.id);
+        if (ownIds.length > 0) await deletePoisBulk(ownIds);
       }
 
       if (deleteReviews) {
@@ -800,7 +1185,7 @@ app.delete("/make-server-e51cba93/users/:id", safeHandler(async (c: any) => {
           if (!reviews.some((r: any) => r.userId === id)) continue;
           const updatedReviews = reviews.filter((r: any) => r.userId !== id);
           const updated = { ...poi, reviews: updatedReviews, ratings: updatedReviews.map((r: any) => r.rating) };
-          await kv.set(`poi:${poi.id}`, updated);
+          await setPoi(updated);
         }
       }
     }
@@ -837,17 +1222,45 @@ app.patch("/make-server-e51cba93/pois/:id/enrich", safeHandler(async (c: any) =>
       return c.json({ success: false, error: "No valid enrichment fields" }, 400);
     }
 
-    const existing = await kv.get(`poi:${id}`);
+    const existing = await getPoi(id);
     if (!existing) {
       return c.json({ success: false, error: "POI not found" }, 404);
     }
 
     const updated = { ...existing, ...updates };
-    await kv.set(`poi:${id}`, updated);
+    await setPoi(updated);
     console.log(`✅ POI ${id} enrichi (altitude: ${updated.altitude ?? 'N/A'}m, eau: ${updated.waterProximity ?? 'N/A'}, naturelle: ${updated.naturalWaterProximity ?? 'N/A'})`);
     return c.json({ success: true, data: updated });
   } catch (error) {
     console.error("Error enriching POI:", error);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+}));
+
+// Détail complet d'un POI (photos, reviews, description, regulations, zoneGeometry...) —
+// appelé à l'ouverture d'un spot puisque GET /pois (liste) ne renvoie plus ces champs.
+// IMPORTANT: enregistrée APRÈS toutes les routes GET /pois/<literal> ci-dessus
+// (admin-list, my-reviews, views-30d), sinon ce :id générique les intercepterait.
+app.get("/make-server-e51cba93/pois/:id", safeHandler(async (c: any) => {
+  try {
+    const id = c.req.param("id");
+    const poi = await getPoi(id);
+    if (!poi) {
+      return c.json({ success: false, error: "POI not found" }, 404);
+    }
+
+    if (poi.isPublic === false) {
+      const ctx = await getModerationContext(c);
+      const isOwner = !!ctx.userId && poi.createdBy === ctx.userId;
+      const isModerator = ctx.isSuper || ctx.zones.some((z: any) => isPointInZoneGeometry(poi.position, z.geometry));
+      if (!isOwner && !isModerator) {
+        return c.json({ success: false, error: "Unauthorized" }, 401);
+      }
+    }
+
+    return c.json({ success: true, data: poi });
+  } catch (error) {
+    console.error("Error fetching POI detail:", error);
     return c.json({ success: false, error: 'Internal server error' }, 500);
   }
 }));
@@ -857,7 +1270,7 @@ app.patch("/make-server-e51cba93/pois/:id/enrich", safeHandler(async (c: any) =>
 app.delete("/make-server-e51cba93/pois/:id", safeHandler(async (c: any) => {
   try {
     const id = c.req.param("id");
-    const existing = await kv.get(`poi:${id}`);
+    const existing = await getPoi(id);
     if (!existing) {
       return c.json({ success: false, error: "POI not found" }, 404);
     }
@@ -869,10 +1282,125 @@ app.delete("/make-server-e51cba93/pois/:id", safeHandler(async (c: any) => {
     }
 
     console.log(`🗑️ Deleting POI with id: ${id}`);
-    await kv.del(`poi:${id}`);
+    await deletePoi(id);
     return c.json({ success: true });
   } catch (error) {
     console.error("Error deleting POI:", error);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+}));
+
+// --- Photos de spots — Supabase Storage (bucket public `spot-photos`) ---
+// Remplace le stockage base64 inline dans `detail` (jusqu'à 2,5 Mo/photo transportés
+// à chaque fetch de spot). Upload requiert un compte, rate-limité comme la création
+// de spot ; le bucket étant public, la lecture ne passe pas par cette fonction.
+
+const MAX_PHOTO_UPLOAD_BYTES = 3 * 1024 * 1024;
+
+app.post("/make-server-e51cba93/photos/upload", safeHandler(async (c: any) => {
+  const user = await getAuthedUser(c);
+  if (!user) {
+    return c.json({ success: false, error: "Connexion requise pour ajouter une photo" }, 401);
+  }
+
+  const ip = c.req.header("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
+  if (!checkRateLimit(`photo-upload:${ip}`, 60)) {
+    return c.json({ success: false, error: "Too many requests" }, 429);
+  }
+
+  try {
+    const contentType = c.req.header("Content-Type") || "";
+    if (!contentType.startsWith("image/")) {
+      return c.json({ success: false, error: "Type de fichier invalide" }, 400);
+    }
+
+    const bytes = new Uint8Array(await c.req.arrayBuffer());
+    if (bytes.byteLength === 0 || bytes.byteLength > MAX_PHOTO_UPLOAD_BYTES) {
+      return c.json({ success: false, error: "Fichier invalide ou trop volumineux" }, 400);
+    }
+
+    const ext = contentType.split("/")[1]?.split("+")[0]?.replace(/[^a-z0-9]/gi, "") || "jpg";
+    const path = `${user.id}/${crypto.randomUUID()}.${ext}`;
+
+    const supabase = getServiceClient();
+    const { error: uploadError } = await supabase.storage
+      .from("spot-photos")
+      .upload(path, bytes, { contentType, upsert: false });
+    if (uploadError) {
+      console.error("Error uploading photo to storage:", uploadError);
+      return c.json({ success: false, error: "Échec de l'upload de la photo" }, 500);
+    }
+
+    const { data } = supabase.storage.from("spot-photos").getPublicUrl(path);
+    return c.json({ success: true, url: data.publicUrl });
+  } catch (error) {
+    console.error("Error handling photo upload:", error);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+}));
+
+// ONE-OFF MIGRATION (Phase 3 perf) — reprend les photos encore stockées en base64
+// inline dans `detail.photos` et les uploade vers le bucket Storage, en remplaçant
+// `url` par l'URL publique. Admin only, idempotent (ignore les photos déjà migrées,
+// reconnaissables à une `url` qui n'est plus un data URI). À supprimer une fois
+// validé en prod.
+app.post("/make-server-e51cba93/migrate-photos-to-storage", safeHandler(async (c: any) => {
+  if (!(await requireAdmin(c))) {
+    return c.json({ success: false, error: "Unauthorized" }, 401);
+  }
+
+  try {
+    const pois = await getAllPois();
+    const supabase = getServiceClient();
+    let migratedPhotos = 0;
+    let migratedPois = 0;
+    const failures: string[] = [];
+
+    for (const poi of pois as any[]) {
+      const photos: any[] = poi.photos || [];
+      if (photos.length === 0) continue;
+
+      let changed = false;
+      const newPhotos = [];
+      for (const photo of photos) {
+        const url: string = typeof photo === "string" ? photo : photo?.url;
+        if (!url || !url.startsWith("data:")) {
+          newPhotos.push(photo);
+          continue;
+        }
+        try {
+          const [header, base64Data] = url.split(",");
+          const contentType = header.match(/data:([^;]+);base64/)?.[1] || "image/jpeg";
+          const bytes = Uint8Array.from(atob(base64Data), (ch) => ch.charCodeAt(0));
+          const ext = contentType.split("/")[1]?.split("+")[0]?.replace(/[^a-z0-9]/gi, "") || "jpg";
+          const path = `${poi.createdBy ?? "legacy"}/${crypto.randomUUID()}.${ext}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from("spot-photos")
+            .upload(path, bytes, { contentType, upsert: false });
+          if (uploadError) throw new Error(uploadError.message);
+
+          const { data } = supabase.storage.from("spot-photos").getPublicUrl(path);
+          const caption = typeof photo === "string" ? undefined : photo?.caption;
+          newPhotos.push(caption ? { url: data.publicUrl, caption } : { url: data.publicUrl });
+          migratedPhotos++;
+          changed = true;
+        } catch (err) {
+          console.error(`Failed to migrate a photo for POI ${poi.id}:`, err);
+          failures.push(poi.id);
+          newPhotos.push(photo);
+        }
+      }
+
+      if (changed) {
+        await setPoi({ ...poi, photos: newPhotos });
+        migratedPois++;
+      }
+    }
+
+    return c.json({ success: true, migratedPhotos, migratedPois, failures });
+  } catch (error) {
+    console.error("Error migrating photos to storage:", error);
     return c.json({ success: false, error: 'Internal server error' }, 500);
   }
 }));
