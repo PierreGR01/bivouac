@@ -99,14 +99,6 @@ export async function getZoneAdminIds(userId: string): Promise<string[]> {
   return data.map((row: { admin_zone_id: string }) => row.admin_zone_id);
 }
 
-export function getAuthToken() {
-  return localStorage.getItem('supabase_token');
-}
-
-export function setAuthToken(token: string) {
-  localStorage.setItem('supabase_token', token);
-}
-
 export function removeAuthToken() {
   localStorage.removeItem('supabase_token');
 }

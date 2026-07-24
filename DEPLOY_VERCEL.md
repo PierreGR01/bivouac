@@ -69,9 +69,9 @@ Une fois en ligne, vérifier :
 - Le rafraîchissement sur une route profonde (ex. `/map`) ne renvoie pas un 404 — sinon le rewrite SPA n'est pas pris en compte.
 - La carte Leaflet s'affiche, les tuiles chargent.
 - Les appels Supabase fonctionnent (ouvrir la console réseau, regarder les `fetch` vers `https://fdzcdmyehllqvofysgdf.supabase.co/...`).
-- Les Edge Functions Supabase (`supabase/functions/server/`) sont déployées séparément via :
+- Les Edge Functions Supabase (`supabase/functions/make-server-e51cba93/`) sont déployées séparément via :
   ```bash
-  npx supabase functions deploy server
+  npx supabase functions deploy make-server-e51cba93
   ```
   (à faire **uniquement** si tu n'as pas encore déployé tes functions, ou si tu en as modifié.)
 

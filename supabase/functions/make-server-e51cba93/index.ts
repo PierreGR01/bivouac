@@ -207,6 +207,25 @@ const METERS_PER_DEGREE_LAT = 111_320;
 // limite appliquée côté client.
 const MAX_PHOTOS_PER_SPOT = 4;
 
+// Bornes anti-abus sur les champs texte libres d'un spot (aucune limite client existante
+// à reprendre ; valeurs de départ raisonnables, ajustables si besoin).
+const MAX_TITLE_LENGTH = 120;
+const MAX_DESCRIPTION_LENGTH = 3000;
+const MAX_REGULATIONS_LENGTH = 3000;
+
+function validateTextFieldLengths(fields: Record<string, unknown>): string | null {
+  if (typeof fields.title === "string" && fields.title.length > MAX_TITLE_LENGTH) {
+    return `Le titre ne doit pas dépasser ${MAX_TITLE_LENGTH} caractères`;
+  }
+  if (typeof fields.description === "string" && fields.description.length > MAX_DESCRIPTION_LENGTH) {
+    return `La description ne doit pas dépasser ${MAX_DESCRIPTION_LENGTH} caractères`;
+  }
+  if (typeof fields.regulations === "string" && fields.regulations.length > MAX_REGULATIONS_LENGTH) {
+    return `Le champ réglementation ne doit pas dépasser ${MAX_REGULATIONS_LENGTH} caractères`;
+  }
+  return null;
+}
+
 function poiZoneRing(geometry: any): number[][] | null {
   if (!geometry) return null;
   const geom = geometry.type === "Feature" ? geometry.geometry : geometry;
@@ -257,19 +276,33 @@ function validateTimeout(val: unknown, maxSec = 60): number {
   return isFinite(n) && n >= 5 && n <= maxSec ? n : 30;
 }
 
-// In-memory sliding-window rate limiter (resets on cold start — acceptable for Edge Functions)
-const _rateWindows = new Map<string, { count: number; resetAt: number }>();
-
-function checkRateLimit(key: string, maxPerWindow: number, windowMs = 3_600_000): boolean {
-  const now = Date.now();
-  const w = _rateWindows.get(key);
-  if (!w || now > w.resetAt) {
-    _rateWindows.set(key, { count: 1, resetAt: now + windowMs });
+// Persistent sliding-window rate limiter backed by the `rate_limits` table (see migration
+// 20260724150001_create_rate_limits.sql). Atomic upsert via RPC — survives cold starts and
+// horizontal scaling, unlike a per-instance in-memory Map.
+async function checkRateLimit(key: string, maxPerWindow: number, windowSec = 3600): Promise<boolean> {
+  const { data, error } = await getServiceClient().rpc("check_and_increment_rate_limit", {
+    p_key: key,
+    p_max: maxPerWindow,
+    p_window_seconds: windowSec,
+  });
+  if (error) {
+    console.error("Rate limit check failed (failing open):", error);
     return true;
   }
-  if (w.count >= maxPerWindow) return false;
-  w.count++;
-  return true;
+  return !!data;
+}
+
+// The Edge Function's own reverse proxy appends the real client IP as the LAST hop of
+// X-Forwarded-For; any earlier hop (including the first, which a client request arrives
+// with by default) can be forged by the caller. Prefer `x-real-ip` when present (set by
+// the platform, not appendable by the client).
+function getClientIp(c: any): string {
+  const realIp = c.req.header("x-real-ip");
+  if (realIp) return realIp.trim();
+  const xff = c.req.header("x-forwarded-for");
+  if (!xff) return "unknown";
+  const hops = xff.split(",").map((h: string) => h.trim()).filter(Boolean);
+  return hops[hops.length - 1] ?? "unknown";
 }
 
 // --- CORS ---
@@ -634,17 +667,22 @@ app.post("/make-server-e51cba93/pois", safeHandler(async (c: any) => {
     return c.json({ success: false, error: "Connexion requise pour créer un spot" }, 401);
   }
 
-  const ip = c.req.header("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
-  if (!checkRateLimit(`create:${ip}`, 20)) {
+  const ip = getClientIp(c);
+  if (!(await checkRateLimit(`create:${ip}`, 20))) {
     return c.json({ success: false, error: "Too many requests" }, 429);
   }
 
   try {
     const body = await c.req.json();
-    const { id, title, description, photos, season, waterProximity, naturalWaterProximity, regulations, position, altitude, capacity, difficulty, ratings, zoneGeometry, isPublic } = body;
+    const { id, title, description, photos, season, waterProximity, naturalWaterProximity, regulations, position, altitude, capacity, difficulty, zoneGeometry, isPublic } = body;
 
     if (!id || !title || !position) {
       return c.json({ success: false, error: "Missing required fields: id, title, position" }, 400);
+    }
+
+    const lengthError = validateTextFieldLengths({ title, description, regulations });
+    if (lengthError) {
+      return c.json({ success: false, error: lengthError }, 400);
     }
 
     if (zoneGeometry && !isValidPoiZone(position, zoneGeometry)) {
@@ -668,7 +706,9 @@ app.post("/make-server-e51cba93/pois", safeHandler(async (c: any) => {
       altitude,
       capacity,
       difficulty,
-      ratings: ratings || [],
+      // `ratings` n'est jamais fourni par le client (cf. src/app/types.ts) — toujours dérivé
+      // côté serveur des reviews (POST /pois/:id/rate), jamais accepté en écriture directe.
+      ratings: [] as number[],
       zoneGeometry: zoneGeometry ?? null,
       isPublic: isPublic !== false,
       createdAt: new Date().toISOString(),
@@ -703,11 +743,12 @@ app.put("/make-server-e51cba93/pois/:id", safeHandler(async (c: any) => {
       return c.json({ success: false, error: "Unauthorized" }, 401);
     }
 
-    // Allowlist: only known enrichment/content fields may be updated
+    // Allowlist: only known enrichment/content fields may be updated. `ratings` is excluded —
+    // toujours dérivé côté serveur des reviews, jamais modifiable via cette route générique.
     const ALLOWED_FIELDS = new Set([
       "title", "description", "photos", "season", "waterProximity",
       "naturalWaterProximity", "regulations", "altitude", "capacity",
-      "difficulty", "ratings", "disabledUntil", "isPublic", "zoneGeometry",
+      "difficulty", "disabledUntil", "isPublic", "zoneGeometry",
       "position",
     ]);
     const updates = Object.fromEntries(
@@ -716,6 +757,11 @@ app.put("/make-server-e51cba93/pois/:id", safeHandler(async (c: any) => {
 
     // La désactivation temporaire reste une action de modération, pas d'édition par le propriétaire.
     if (!isModerator) delete updates.disabledUntil;
+
+    const lengthError = validateTextFieldLengths(updates);
+    if (lengthError) {
+      return c.json({ success: false, error: lengthError }, 400);
+    }
 
     if ("photos" in updates && Array.isArray(updates.photos) && updates.photos.length > MAX_PHOTOS_PER_SPOT) {
       return c.json({ success: false, error: `Maximum ${MAX_PHOTOS_PER_SPOT} photos par spot` }, 400);
@@ -758,8 +804,8 @@ app.post("/make-server-e51cba93/pois/:id/rate", safeHandler(async (c: any) => {
     return c.json({ success: false, error: "Connexion requise pour poster un avis" }, 401);
   }
 
-  const ip = c.req.header("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
-  if (!checkRateLimit(`rate:${ip}`, 30)) {
+  const ip = getClientIp(c);
+  if (!(await checkRateLimit(`rate:${ip}`, 30))) {
     return c.json({ success: false, error: "Too many requests" }, 429);
   }
 
@@ -799,8 +845,8 @@ app.post("/make-server-e51cba93/pois/:id/rate", safeHandler(async (c: any) => {
 // required. Stored as one daily-bucket KV row per POI (not one row per view) so the
 // table stays small regardless of traffic.
 app.post("/make-server-e51cba93/pois/:id/view", safeHandler(async (c: any) => {
-  const ip = c.req.header("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
-  if (!checkRateLimit(`view:${ip}`, 300)) {
+  const ip = getClientIp(c);
+  if (!(await checkRateLimit(`view:${ip}`, 300))) {
     return c.json({ success: false, error: "Too many requests" }, 429);
   }
 
@@ -1131,14 +1177,28 @@ app.get("/make-server-e51cba93/users", safeHandler(async (c: any) => {
 // Resolve emails for a set of user ids — any admin (used by the spots table's author column,
 // including zone-admins who can't call the full /users listing above)
 app.post("/make-server-e51cba93/users/emails", safeHandler(async (c: any) => {
-  if (!(await requireAnyAdmin(c))) {
+  const requester = await getAuthedUser(c);
+  if (!requester || !(await isAnyAdmin(requester.id))) {
     return c.json({ success: false, error: "Unauthorized" }, 401);
   }
   try {
     const body = await c.req.json();
-    const ids = Array.isArray(body.ids)
+    let ids = Array.isArray(body.ids)
       ? [...new Set(body.ids.filter((id: unknown) => typeof id === "string"))].slice(0, 500)
       : [];
+
+    // A zone-admin (not super-admin) may only resolve emails for authors of POIs located
+    // in one of their own administration territories — not the whole user base.
+    if (!(await isSuperAdmin(requester.id))) {
+      const zones = await getModeratorZoneGeometries(requester.id);
+      const pois = await getAllPois();
+      const allowedAuthorIds = new Set(
+        pois
+          .filter((p: any) => p?.createdBy && zones.some((z: any) => isPointInZoneGeometry(p.position, z.geometry)))
+          .map((p: any) => p.createdBy)
+      );
+      ids = ids.filter((id) => allowedAuthorIds.has(id));
+    }
 
     const adminClient = getServiceClient();
     const entries = await Promise.all(ids.map(async (id) => {
@@ -1203,10 +1263,23 @@ app.delete("/make-server-e51cba93/users/:id", safeHandler(async (c: any) => {
   }
 }));
 
-// Enrich a POI (altitude, water proximity) — rate-limited, no admin required
+// Enrich a POI (altitude, water proximity) — called automatically by any logged-in
+// visitor opening a spot whose enrichment fields are still empty (lazy fill, see
+// src/app/hooks/usePois.ts). NOT owner/moderator-gated by design — but a field is only
+// ever filled in when currently empty, never overwritten, so a malicious authenticated
+// user can't vandalize an already-enriched spot.
+const isValidWaterProximity = (v: unknown) => v === null || v === "proche" || v === "éloigné";
+const isValidNaturalWaterProximity = (v: unknown) => v === null || v === "proche";
+const isValidAltitude = (v: unknown) => typeof v === "number" && isFinite(v) && v >= -500 && v <= 9000;
+
 app.patch("/make-server-e51cba93/pois/:id/enrich", safeHandler(async (c: any) => {
-  const ip = c.req.header("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
-  if (!checkRateLimit(`enrich:${ip}`, 60)) {
+  const user = await getAuthedUser(c);
+  if (!user) {
+    return c.json({ success: false, error: "Connexion requise" }, 401);
+  }
+
+  const ip = getClientIp(c);
+  if (!(await checkRateLimit(`enrich:${ip}`, 60))) {
     return c.json({ success: false, error: "Too many requests" }, 429);
   }
 
@@ -1214,17 +1287,23 @@ app.patch("/make-server-e51cba93/pois/:id/enrich", safeHandler(async (c: any) =>
     const id = c.req.param("id");
     const raw = await c.req.json();
 
-    const ALLOWED = new Set(["altitude", "waterProximity", "naturalWaterProximity"]);
-    const updates = Object.fromEntries(
-      Object.entries(raw).filter(([k]) => ALLOWED.has(k))
-    );
-    if (Object.keys(updates).length === 0) {
-      return c.json({ success: false, error: "No valid enrichment fields" }, 400);
-    }
-
     const existing = await getPoi(id);
     if (!existing) {
       return c.json({ success: false, error: "POI not found" }, 404);
+    }
+
+    const VALIDATORS: Record<string, (v: unknown) => boolean> = {
+      altitude: isValidAltitude,
+      waterProximity: isValidWaterProximity,
+      naturalWaterProximity: isValidNaturalWaterProximity,
+    };
+    const updates = Object.fromEntries(
+      Object.entries(raw).filter(([k, v]) =>
+        VALIDATORS[k] && (existing[k] === undefined || existing[k] === null) && VALIDATORS[k](v)
+      )
+    );
+    if (Object.keys(updates).length === 0) {
+      return c.json({ success: true, data: existing });
     }
 
     const updated = { ...existing, ...updates };
@@ -1297,26 +1376,41 @@ app.delete("/make-server-e51cba93/pois/:id", safeHandler(async (c: any) => {
 
 const MAX_PHOTO_UPLOAD_BYTES = 3 * 1024 * 1024;
 
+// Allowlist of accepted image types, each verified against the actual file bytes (not just
+// the client-supplied Content-Type header) — rejects e.g. an `image/svg+xml` upload carrying
+// a stored-XSS payload, since the bucket serves uploads back as public, directly-openable URLs.
+const PHOTO_MAGIC_BYTES: Record<string, (bytes: Uint8Array) => boolean> = {
+  "image/png": (b) => b.length >= 4 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47,
+  "image/jpeg": (b) => b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
+  "image/webp": (b) => b.length >= 12
+    && b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46
+    && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50,
+};
+
 app.post("/make-server-e51cba93/photos/upload", safeHandler(async (c: any) => {
   const user = await getAuthedUser(c);
   if (!user) {
     return c.json({ success: false, error: "Connexion requise pour ajouter une photo" }, 401);
   }
 
-  const ip = c.req.header("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
-  if (!checkRateLimit(`photo-upload:${ip}`, 60)) {
+  const ip = getClientIp(c);
+  if (!(await checkRateLimit(`photo-upload:${ip}`, 60))) {
     return c.json({ success: false, error: "Too many requests" }, 429);
   }
 
   try {
     const contentType = c.req.header("Content-Type") || "";
-    if (!contentType.startsWith("image/")) {
+    const magicCheck = PHOTO_MAGIC_BYTES[contentType];
+    if (!magicCheck) {
       return c.json({ success: false, error: "Type de fichier invalide" }, 400);
     }
 
     const bytes = new Uint8Array(await c.req.arrayBuffer());
     if (bytes.byteLength === 0 || bytes.byteLength > MAX_PHOTO_UPLOAD_BYTES) {
       return c.json({ success: false, error: "Fichier invalide ou trop volumineux" }, 400);
+    }
+    if (!magicCheck(bytes)) {
+      return c.json({ success: false, error: "Le contenu du fichier ne correspond pas au type déclaré" }, 400);
     }
 
     const ext = contentType.split("/")[1]?.split("+")[0]?.replace(/[^a-z0-9]/gi, "") || "jpg";
@@ -1407,6 +1501,11 @@ app.post("/make-server-e51cba93/migrate-photos-to-storage", safeHandler(async (c
 
 // Altitude proxy — public read
 app.get("/make-server-e51cba93/altitude", safeHandler(async (c: any) => {
+  const ip = getClientIp(c);
+  if (!(await checkRateLimit(`altitude:${ip}`, 120))) {
+    return c.json({ success: false, error: "Too many requests" }, 429);
+  }
+
   try {
     const lat = c.req.query("lat");
     const lng = c.req.query("lng");
@@ -1448,6 +1547,11 @@ app.get("/make-server-e51cba93/altitude", safeHandler(async (c: any) => {
 
 // Overpass proxy — drinking water points
 app.post("/make-server-e51cba93/water-points", safeHandler(async (c: any) => {
+  const ip = getClientIp(c);
+  if (!(await checkRateLimit(`water-points:${ip}`, 60))) {
+    return c.json({ success: false, error: "Too many requests" }, 429);
+  }
+
   try {
     const body = await c.req.json();
 
@@ -1512,6 +1616,11 @@ app.post("/make-server-e51cba93/water-points", safeHandler(async (c: any) => {
 
 // Overpass proxy — streams/rivers for proximity calculation
 app.post("/make-server-e51cba93/stream-points", safeHandler(async (c: any) => {
+  const ip = getClientIp(c);
+  if (!(await checkRateLimit(`stream-points:${ip}`, 60))) {
+    return c.json({ success: false, error: "Too many requests" }, 429);
+  }
+
   try {
     const body = await c.req.json();
 
@@ -1553,6 +1662,11 @@ app.post("/make-server-e51cba93/stream-points", safeHandler(async (c: any) => {
 
 // Overpass proxy — protected areas
 app.post("/make-server-e51cba93/protected-areas", safeHandler(async (c: any) => {
+  const ip = getClientIp(c);
+  if (!(await checkRateLimit(`protected-areas:${ip}`, 60))) {
+    return c.json({ success: false, error: "Too many requests" }, 429);
+  }
+
   try {
     const body = await c.req.json();
 
@@ -1617,6 +1731,11 @@ app.post("/make-server-e51cba93/protected-areas", safeHandler(async (c: any) => 
 
 // Overpass proxy — fetch single OSM zone by type+id (for geometry reset)
 app.post("/make-server-e51cba93/protected-areas-by-id", safeHandler(async (c: any) => {
+  const ip = getClientIp(c);
+  if (!(await checkRateLimit(`protected-areas-by-id:${ip}`, 60))) {
+    return c.json({ success: false, error: "Too many requests" }, 429);
+  }
+
   try {
     const body = await c.req.json();
     const type = String(body.type ?? '');
@@ -1655,6 +1774,11 @@ app.post("/make-server-e51cba93/protected-areas-by-id", safeHandler(async (c: an
 
 // Overpass proxy — protected area names only (for admin dropdown, no geometry)
 app.post("/make-server-e51cba93/protected-areas-names", safeHandler(async (c: any) => {
+  const ip = getClientIp(c);
+  if (!(await checkRateLimit(`protected-areas-names:${ip}`, 60))) {
+    return c.json({ success: false, error: "Too many requests" }, 429);
+  }
+
   try {
     const body = await c.req.json();
     let south: number, west: number, north: number, east: number;
