@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Droplet, CheckCircle2, XCircle } from 'lucide-react';
 import { Panel } from './ui/bivouac-panel';

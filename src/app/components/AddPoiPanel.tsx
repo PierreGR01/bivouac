@@ -1,7 +1,7 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { toast } from 'sonner';
 import { gps } from 'exifr/dist/mini.esm.mjs';
-import { MapPin, Upload, Snowflake, SunSnow, AlertCircle, AlertTriangle, Camera, Image as ImageIcon, Mountain, Tent, Locate, Loader2, X } from 'lucide-react';
+import { MapPin, Upload, Snowflake, SunSnow, AlertCircle, AlertTriangle, Camera, Image as ImageIcon, Tent, Locate, Loader2, X } from 'lucide-react';
 import { Panel } from './ui/bivouac-panel';
 import { BivouacButton, FilterChip } from './ui/bivouac-button';
 import { AlertCard } from './ui/bivouac-card';
@@ -363,6 +363,11 @@ export function AddPoiPanel({
       }
     }
 
+    // En mode création, le panneau se ferme lui-même (côté parent) uniquement en cas de
+    // succès de l'enregistrement — voir handleSubmitPoi/onSuccess dans App.tsx. Réinitialiser
+    // les champs locaux ici serait soit invisible (succès : le panneau se démonte presque
+    // aussitôt), soit destructeur (échec : le panneau resterait ouvert mais vidé, faisant
+    // perdre à l'utilisateur ce qu'il venait de saisir alors que rien n'a été enregistré).
     onSubmit({
       title: title.trim(),
       description: description.trim(),
@@ -375,21 +380,6 @@ export function AddPoiPanel({
       zoneGeometry: wantsZone ? zoneGeometry : null,
       isPublic,
     });
-
-    if (isEditMode) return;
-
-    setTitle('');
-    setDescription('');
-    setPhotos([]);
-    setNewPhotoUrl('');
-    setSeason('été');
-    setHasRegulations(false);
-    setRegulationDetails('');
-    setIsNationalPark(false);
-    setCapacity('2-3');
-    setDifficulty(2);
-    setWantsZone(false);
-    setIsPublic(true);
   };
 
   return (

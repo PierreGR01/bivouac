@@ -5,7 +5,10 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "dev": "vite"
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write ."
   },
   "dependencies": {
     "@radix-ui/react-accordion": "1.2.3",
@@ -56,13 +59,24 @@
     "tw-animate-css": "1.3.8"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "4.1.12",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "4.7.0",
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.26",
+    "globals": "^15.15.0",
+    "prettier": "^3.9.6",
     "puppeteer-core": "^25.2.1",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "supabase": "^2.96.0",
     "tailwindcss": "4.1.12",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.65.0",
     "vite": "6.3.5"
   },
   "peerDependencies": {

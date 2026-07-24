@@ -197,8 +197,9 @@ async function executeOverpassQueryWithRetry(
     }
     
     // Si toutes les tentatives échouent, incrémenter le compteur d'échecs
-    if (error?.message?.includes('504') || error?.message?.includes('429') || 
-        error?.message?.includes('503') || error?.message?.includes('surchargée')) {
+    const message = error instanceof Error ? error.message : '';
+    if (message.includes('504') || message.includes('429') ||
+        message.includes('503') || message.includes('surchargée')) {
       failedRequestsCount++;
       lastFailureTime = Date.now();
       devLog.warn(`❌ Toutes les tentatives échouées (${retryCount + 1}/${MAX_RETRIES}). Échecs totaux: ${failedRequestsCount}`);

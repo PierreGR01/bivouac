@@ -1,4 +1,3 @@
-import React from 'react';
 import { ShieldAlert, ExternalLink, Clock, Calendar, Volume2, Radio, Trash2, Droplets } from 'lucide-react';
 import { Panel } from './ui/bivouac-panel';
 import { CustomZone } from '../../utils/supabase/custom-zones-api';

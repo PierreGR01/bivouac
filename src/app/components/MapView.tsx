@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import L from 'leaflet';
 import 'leaflet-draw';
 import 'leaflet-draw/dist/leaflet.draw.css';
@@ -9,8 +9,8 @@ import { Trash2, ChevronDown, ChevronUp, Info, X } from 'lucide-react';
 import { NIVOSES, NivoseStation } from '../data/nivoses';
 import { PoiLocation } from '../types';
 import { isSpotDisabled } from '../utils/spot-status';
-import { fetchWaterPoints, WaterPoint, RateLimitError, filterAndSortWaterPoints } from '../services/overpass';
-import { ProtectedArea, getProtectedAreaLabel, getProtectedAreaInfo, shouldDisplayOnMap } from '../services/protected-areas';
+import { fetchWaterPoints, WaterPoint, filterAndSortWaterPoints } from '../services/overpass';
+import { ProtectedArea, getProtectedAreaInfo, shouldDisplayOnMap } from '../services/protected-areas';
 import { CustomZone } from '../../utils/supabase/custom-zones-api';
 import { MapControls } from './MapControls';
 import { MAP_CENTER, MAP_DEFAULT_ZOOM } from '../constants';
@@ -248,10 +248,10 @@ export function MapView({
   const rainRadarLayersRef = useRef<L.TileLayer[]>([]);
   const rainRadarAnimRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const rainRadarIndexRef = useRef(0);
-  const [forecastMode, setForecastMode] = useState(false);
+  const [forecastMode] = useState(false);
   const [legendOpen, setLegendOpen] = useState(false);
   const [attribOpen, setAttribOpen] = useState(false);
-  const [nowcastDurationMin, setNowcastDurationMin] = useState(0);
+  const [, setNowcastDurationMin] = useState(0);
   const lightningEsRef = useRef<EventSource | null>(null);
   const lightningMarkersRef = useRef<{ marker: L.CircleMarker; timeout: ReturnType<typeof setTimeout> }[]>([]);
   // Wind animation
@@ -273,10 +273,10 @@ export function MapView({
   const [nivoError, setNivoError] = useState<string | null>(null);
   
   const [waterPoints, setWaterPoints] = useState<WaterPoint[]>([]);
-  const [isLoadingWater, setIsLoadingWater] = useState(false);
+  const [, setIsLoadingWater] = useState(false);
   const [waterError, setWaterError] = useState<string | null>(null);
   const [hasUserInteracted, setHasUserInteracted] = useState(false);
-  const [showRefreshButton, setShowRefreshButton] = useState(false);
+  const [, setShowRefreshButton] = useState(false);
   const [isManualLoad, setIsManualLoad] = useState(false);
 
   // Points d'eau le long du tracé — indépendants du calque "Points d'eau" (viewport) :
@@ -296,7 +296,7 @@ export function MapView({
   const [measureStartPoint, setMeasureStartPoint] = useState<{ lat: number; lng: number } | null>(null);
   const [measureDistance, setMeasureDistance] = useState<number | null>(null);
   const [currentMousePos, setCurrentMousePos] = useState<{ lat: number; lng: number } | null>(null);
-  const [mapMoveCounter, setMapMoveCounter] = useState(0); // Pour forcer le re-render du panneau de mesure
+  const [, setMapMoveCounter] = useState(0); // Pour forcer le re-render du panneau de mesure
 
   // Initialiser la carte
   useEffect(() => {
@@ -1883,11 +1883,11 @@ export function MapView({
           polygonStyle
         );
 
-        polygon.on('mouseenter', function() {
+        polygon.on('mouseenter', function (this: L.Polygon) {
           this.bringToFront();
           this.setStyle({ weight: 3, opacity: 1 });
         });
-        polygon.on('mouseleave', function() {
+        polygon.on('mouseleave', function (this: L.Polygon) {
           this.setStyle({ weight: isAreaSelected ? 3 : 2, opacity: 0.8 });
         });
         polygon.on('click', () => onProtectedAreaClick?.(area));
@@ -1939,20 +1939,20 @@ export function MapView({
 
       // Extraire les anneaux selon le type GeoJSON (Polygon ou MultiPolygon)
       const rings: [number, number][][] = geom.type === 'Polygon'
-        ? [geom.coordinates[0].map((c: [number, number]) => [c[1], c[0]])]
+        ? [geom.coordinates[0].map((c: GeoJSON.Position): [number, number] => [c[1], c[0]])]
         : geom.type === 'MultiPolygon'
-          ? (geom as GeoJSON.MultiPolygon).coordinates.map(poly => poly[0].map((c: [number, number]) => [c[1], c[0]]))
+          ? (geom as GeoJSON.MultiPolygon).coordinates.map(poly => poly[0].map((c: GeoJSON.Position): [number, number] => [c[1], c[0]]))
           : [];
 
       rings.forEach(ring => {
         if (ring.length < 3) return;
         const polygon = L.polygon(ring as [number, number][], polygonStyle);
 
-        polygon.on('mouseenter', function() {
+        polygon.on('mouseenter', function (this: L.Polygon) {
           this.bringToFront();
           this.setStyle({ weight: 3, opacity: 1, fillOpacity: isZoneSelected ? 0.25 : 0.35 });
         });
-        polygon.on('mouseleave', function() {
+        polygon.on('mouseleave', function (this: L.Polygon) {
           this.setStyle({ weight: isZoneSelected ? 3 : 2, opacity: 0.9, fillOpacity: zoneFillOpacity });
         });
         polygon.on('click', () => onZoneClick?.(zone));

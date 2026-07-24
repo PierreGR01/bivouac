@@ -1,4 +1,3 @@
-import React from 'react';
 import { Droplet, BanIcon, Route, Plus, Minus, Ruler, Snowflake, Locate, Settings, CloudRain } from 'lucide-react';
 import { WeatherOptionsPanel } from './WeatherOptionsPanel';
 

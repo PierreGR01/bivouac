@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { X, RotateCcw, Pencil, Check, Loader2 } from 'lucide-react';
 import { BivouacButton } from './ui/bivouac-button';
 import { PhotoAnnotationTool } from './PhotoAnnotationTool';

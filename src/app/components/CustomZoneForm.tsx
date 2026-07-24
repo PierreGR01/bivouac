@@ -27,7 +27,7 @@ const RESTRICTION_OPTIONS = [
 ];
 
 export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, prefill, onRegisterRequestClose }: CustomZoneFormProps) {
-  const { currentUser, isSuperAdmin, zoneAdminIds } = useAuth();
+  const { isSuperAdmin, zoneAdminIds } = useAuth();
   const queryClient = useQueryClient();
   const isEditing = !!zone;
   const isOsmZone = !!osmZoneId;
@@ -223,9 +223,6 @@ export function CustomZoneForm({ geometry, onClose, onSuccess, zone, osmZoneId, 
       setIsResetting(false);
     }
   };
-
-  const inputClass = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500';
-  const smallInputClass = 'w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500';
 
   return (
     <>

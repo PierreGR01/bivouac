@@ -99,7 +99,7 @@ export function usePois(mapBounds?: PoisBbox | null) {
         ...newPoi,
         waterProximity: null,
         naturalWaterProximity: null,
-        altitude: null,
+        altitude: undefined,
       };
 
       const success = await api.createPoi(poiWithId);
@@ -129,7 +129,7 @@ export function usePois(mapBounds?: PoisBbox | null) {
       ]).then(([altitude, localWaterPoints, nearbyStreams]) => {
         const allWaterPoints = [...(localWaterPoints as any[]), ...(nearbyStreams as any[])];
         const enriched: Partial<PoiLocation> = {
-          altitude,
+          altitude: altitude ?? undefined,
           waterProximity: calculateWaterProximity(newPoi.position!.lat, newPoi.position!.lng, allWaterPoints),
           naturalWaterProximity: calculateNaturalWaterProximity(newPoi.position!.lat, newPoi.position!.lng, allWaterPoints),
         };

@@ -1,4 +1,3 @@
-import React from 'react';
 import { Wind, CloudLightning, Thermometer } from 'lucide-react';
 import { Switch } from './ui/switch';
 

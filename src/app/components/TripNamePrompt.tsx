@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Check, X } from 'lucide-react';
 import { BivouacButton } from './ui/bivouac-button';
 import { Input } from './ui/bivouac-input';

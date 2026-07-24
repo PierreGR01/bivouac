@@ -121,7 +121,7 @@ export function isPointInCustomZone(point: { lat: number; lng: number }, zone: C
   let geom: GeoJSON.Geometry | null = null;
   const rawObj = raw as Record<string, unknown>;
   if (rawObj.type === 'Feature') {
-    geom = (rawObj as GeoJSON.Feature).geometry as GeoJSON.Geometry;
+    geom = (rawObj as unknown as GeoJSON.Feature).geometry as GeoJSON.Geometry;
   } else if (rawObj.type === 'Polygon' || rawObj.type === 'MultiPolygon') {
     geom = raw as GeoJSON.Geometry;
   }

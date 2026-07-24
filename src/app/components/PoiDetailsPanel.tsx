@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { toast } from 'sonner';
 import { PoiLocation } from '../types';
 import {
@@ -91,11 +91,11 @@ export function PoiDetailsPanel({
   const isOwner = !!currentUser && !!location?.createdBy && currentUser.id === location.createdBy;
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showDisableForm, setShowDisableForm] = useState(false);
-  const [disableMonths, setDisableMonths] = useState(DISABLE_DURATIONS[0].months);
+  const [disableMonths, setDisableMonths] = useState<number>(DISABLE_DURATIONS[0].months);
   const [isTogglingDisabled, setIsTogglingDisabled] = useState(false);
 
-  if (!location) return null;
-
+  // Les Hooks doivent s'exécuter inconditionnellement à chaque rendu — le early return sur
+  // `location` manquant doit donc venir APRÈS, jamais avant, un appel de Hook (Rules of Hooks).
   const areasContainingPoi = useMemo(() => {
     if (!location || protectedAreas.length === 0) return [];
     return findAreasContainingPoint(
@@ -111,6 +111,8 @@ export function PoiDetailsPanel({
       customZones
     );
   }, [location, customZones]);
+
+  if (!location) return null;
 
   const handleDeletePoi = async () => {
     setIsDeleting(true);

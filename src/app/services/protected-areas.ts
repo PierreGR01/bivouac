@@ -24,6 +24,9 @@ export interface ProtectedArea {
     designation?: string;
     description?: string;
     website?: string;
+    // OSM tags are an open-ended key-value bag — any tag key can appear on an element,
+    // so the named fields above (documentation/autocomplete) can't be exhaustive.
+    [key: string]: string | undefined;
   };
   areaType: 'national_park' | 'regional_park' | 'nature_reserve' | 'protected_area' | 'wilderness' | 'natura2000' | 'military' | 'heritage' | 'prefectural_decree' | 'camping_restriction';
   protectionLevel: 'strict' | 'moderate' | 'low';
@@ -354,7 +357,6 @@ function parseProtectedAreas(data: any): ProtectedArea[] {
     let areaType: ProtectedArea['areaType'] = 'protected_area';
     let protectionLevel: ProtectedArea['protectionLevel'] = 'moderate';
 
-    const protectionTitle = (tags.protection_title || '').toLowerCase();
     const designation = (tags.designation || '').toLowerCase();
 
     if (tags.boundary === 'national_park') {
@@ -660,8 +662,8 @@ function assembleGeoJSONRings(ways: WaySegment[]): number[][][] {
 
   while (remaining.length > 0) {
     const cur = remaining.shift()!;
-    let nodeIds = [...cur.nodeIds];
-    let coords = [...cur.coords];
+    const nodeIds = [...cur.nodeIds];
+    const coords = [...cur.coords];
 
     let changed = true;
     while (changed && remaining.length > 0) {
@@ -842,7 +844,7 @@ export function clearCache(): void {
  * Précharge les zones protégées (compatibilité - non utilisé dans la nouvelle version)
  */
 export async function preloadRegionProtectedAreas(
-  onProgress?: (message: string) => void
+  _onProgress?: (message: string) => void
 ): Promise<{ success: boolean; areasCount: number; error?: string }> {
   devLog.log('⚠️ Préchargement région désactivé - chargement à la demande seulement');
   return { success: true, areasCount: 0 };

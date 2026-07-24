@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Loader2, Trash2, UserPlus, ShieldCheck, Pencil, Plus, ChevronDown, ChevronUp } from 'lucide-react';
 import { Panel } from './ui/bivouac-panel';
@@ -194,7 +194,7 @@ export function AdminZonesManager({ onClose, onCreateNew, onEditZone, embedded =
   if (embedded) return content;
 
   return (
-    <Panel onClose={onClose} title="Zones d'administration" icon={<ShieldCheck className="w-5 h-5" />}>
+    <Panel onClose={onClose ?? (() => {})} title="Zones d'administration" icon={<ShieldCheck className="w-5 h-5" />}>
       {content}
     </Panel>
   );

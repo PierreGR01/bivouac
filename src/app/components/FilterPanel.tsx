@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Droplets, Snowflake, SunSnow, Waves, Tent, Mountain, Route, ChevronDown, ChevronUp, Check } from 'lucide-react';
+import { useState } from 'react';
+import { Droplets, Snowflake, SunSnow, Waves, Tent, Route, ChevronDown, ChevronUp, Check } from 'lucide-react';
 import { Panel } from './ui/bivouac-panel';
 import { BivouacButton, FilterChip } from './ui/bivouac-button';
 import { DifficultySelector, RangeSlider } from './ui/bivouac-input';

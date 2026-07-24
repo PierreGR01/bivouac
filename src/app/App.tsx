@@ -1,15 +1,13 @@
 import React, { useState, useRef, useMemo, useEffect, Suspense } from 'react';
 import { toast, Toaster } from 'sonner';
-import { devLog } from './utils/logger';
 import { MapView } from './components/MapView';
 import { WeatherOptionsPanel } from './components/WeatherOptionsPanel';
 import { SearchBar } from './components/SearchBar';
-import { FilterOptions } from './components/FilterPanel';
 import { NewPoi } from './components/AddPoiPanel';
 import { MOBILE_BREAKPOINT_PX } from './constants';
 import { useAuth } from './contexts/AuthContext';
 import { isSpotDisabled } from './utils/spot-status';
-import { Tent, Plus, Loader2, AlertCircle, Settings, BanIcon, Droplet, ChevronUp, ChevronDown, Snowflake, Locate, CloudRain } from 'lucide-react';
+import { Plus, Loader2, BanIcon, Droplet, ChevronUp, ChevronDown, Snowflake, Locate, CloudRain } from 'lucide-react';
 import { usePois } from './hooks/usePois';
 import { useMapLayers } from './hooks/useMapLayers';
 import { useFilters } from './hooks/useFilters';
@@ -31,7 +29,6 @@ const LoginPanel = React.lazy(() => import('./components/LoginPanel').then(m => 
 const CustomZonesEditor = React.lazy(() => import('./components/CustomZonesEditor').then(m => ({ default: m.CustomZonesEditor })));
 const AdminDashboard = React.lazy(() => import('./components/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
 const UserDashboard = React.lazy(() => import('./components/UserDashboard').then(m => ({ default: m.UserDashboard })));
-const ServerStatus = React.lazy(() => import('./components/ServerStatus').then(m => ({ default: m.ServerStatus })));
 const WaterPointsInfo = React.lazy(() => import('./components/WaterPointsInfo').then(m => ({ default: m.WaterPointsInfo })));
 const ZoneInfoPanel = React.lazy(() => import('./components/ZoneInfoPanel').then(m => ({ default: m.ZoneInfoPanel })));
 const WaterPointDetailsPanel = React.lazy(() => import('./components/WaterPointDetailsPanel').then(m => ({ default: m.WaterPointDetailsPanel })));
@@ -62,7 +59,6 @@ export default function App() {
   const [drawnGeometry, setDrawnGeometry] = useState<GeoJSON.Feature | null>(null);
   const [isDrawingPoiZone, setIsDrawingPoiZone] = useState(false);
   const [poiZoneGeometry, setPoiZoneGeometry] = useState<GeoJSON.Feature | null>(null);
-  const [showDiagnostic, setShowDiagnostic] = useState(false);
   const [showLoginPanel, setShowLoginPanel] = useState(false);
   const [showCustomZonesEditor, setShowCustomZonesEditor] = useState(false);
   const [editingZone, setEditingZone] = useState<CustomZone | null>(null);
@@ -474,19 +470,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Diagnostic serveur — désormais seul bouton flottant desktop, indépendant de l'admin */}
-      {!anyDashboardActive && !pois.serverAvailable && !isAddingMode && (
-        <div className="hidden md:flex absolute top-6 right-6 z-[600] items-center gap-3">
-          <button
-            onClick={() => setShowDiagnostic(!showDiagnostic)}
-            className="flex items-center gap-2 px-3 py-2 bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200 transition-colors shadow-lg"
-            title="Diagnostic du serveur"
-          >
-            <Settings className="w-5 h-5" />
-          </button>
-        </div>
-      )}
-
       {/* Loading overlay */}
       {pois.isLoading && (
         <div className="absolute inset-0 z-[600] backdrop-blur-sm flex items-center justify-center">
@@ -754,22 +737,6 @@ export default function App() {
             isLoadingWaterCount={isLoadingRouteWater}
           />
         </Suspense>
-      )}
-
-      {showDiagnostic && (
-        <div className="fixed inset-0 z-[1000] bg-black bg-opacity-50 flex items-center justify-center p-4">
-          <div className="relative max-w-3xl w-full">
-            <button
-              onClick={() => setShowDiagnostic(false)}
-              className="absolute -top-2 -right-2 bg-white rounded-full p-2 shadow-lg hover:bg-gray-100 transition-colors z-10"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-            <Suspense fallback={null}><ServerStatus /></Suspense>
-          </div>
-        </div>
       )}
 
       {map.showWaterPointsInfo && (

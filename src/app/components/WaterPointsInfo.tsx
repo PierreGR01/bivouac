@@ -1,5 +1,4 @@
-import React from 'react';
-import { AlertCircle, Droplet } from 'lucide-react';
+import { Droplet } from 'lucide-react';
 import { BivouacButton } from './ui/bivouac-button';
 import { Card } from './ui/bivouac-card';
 
